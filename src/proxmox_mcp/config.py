@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     )
     redis_url: SecretStr = SecretStr("redis://localhost:6379/0")
     log_level: Literal["debug", "info", "warning", "error"] = "info"
+    credential_provider: Literal["development", "hashicorp_vault"] = "development"
+    vault_url: str | None = None
+    vault_token: SecretStr | None = None
     dangerous_operations: DangerousOperationSettings = Field(
         default_factory=DangerousOperationSettings
     )

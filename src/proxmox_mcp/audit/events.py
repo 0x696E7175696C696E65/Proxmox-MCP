@@ -32,6 +32,7 @@ class AuditEvent(BaseModel):
     timestamp: datetime = Field(default_factory=_utc_now)
     event_type: str
     correlation_id: str
+    tenant_id: str | None = None
     actor_user_id: str
     actor_agent_id: str
     tool_name: str

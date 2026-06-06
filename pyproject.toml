@@ -11,7 +11,9 @@ requires-python = ">=3.13"
 license = { text = "MIT" }
 authors = [{ name = "0x696E7175696C696E65" }]
 dependencies = [
+  "alembic>=1.16",
   "asyncpg>=0.30",
+  "asyncssh>=2.14",
   "fastmcp>=2.0",
   "pydantic>=2.11",
   "pydantic-settings>=2.9",
@@ -22,6 +24,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "aiosqlite>=0.21",
   "pip-audit>=2.7",
   "pyright>=1.1",
   "pytest>=8.3",

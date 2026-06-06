@@ -1,70 +1,140 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import cast
 
 from fastmcp import FastMCP
 
-from proxmox_mcp.audit.events import AuditEvent, AuditTarget
 from proxmox_mcp.audit.writer import AuditWriter, InMemoryAuditWriter
 from proxmox_mcp.config import Settings
+from proxmox_mcp.proxmox import (
+    ProxmoxApiClient,
+    register_dangerous_tools,
+    register_read_only_tools,
+    register_safe_mutation_tools,
+)
+from proxmox_mcp.schemas.envelope import (
+    Actor,
+    RequestOptions,
+    Target,
+    ToolErrorResponse,
+    ToolRequest,
+    ToolResponse,
+)
+from proxmox_mcp.security import SecurityPlaneGuard
+from proxmox_mcp.ssh import (
+    InMemorySshRecordingStore,
+    SshClient,
+    SshCommandPolicy,
+    SshRecordingStore,
+    SshSessionManager,
+)
+from proxmox_mcp.ssh.tools import register_ssh_tools
+from proxmox_mcp.tools.context import ToolExecutionContext
+from proxmox_mcp.tools.internal import (
+    HEALTH_CHECK_DEFINITION,
+    register_internal_tools,
+)
+from proxmox_mcp.tools.internal import (
+    build_health_payload as _build_health_payload,
+)
+from proxmox_mcp.tools.registry import ToolRegistry
 
 
 def build_health_payload(settings: Settings) -> dict[str, str | int]:
-    return {
-        "status": "ok",
-        "service": "enterprise-proxmox-mcp",
-        "environment": settings.environment,
-        "port": settings.server_port,
-    }
-
-
-def _health_audit_event(
-    event_type: str,
-    result_status: Literal["started", "success"],
-) -> AuditEvent:
-    return AuditEvent(
-        event_type=event_type,
-        correlation_id="health_check",
-        actor_user_id="system",
-        actor_agent_id="system",
-        tool_name="health_check",
-        operation="internal.health.read",
-        target=AuditTarget(resource_type="internal", resource_id="health"),
-        result_status=result_status,
-    )
+    return _build_health_payload(settings)
 
 
 async def health_check(
     settings: Settings,
     audit_writer: AuditWriter,
 ) -> dict[str, str | int]:
-    await audit_writer.write(
-        _health_audit_event(event_type="tool.execution.started", result_status="started")
+    request = ToolRequest(
+        request_id="health_check",
+        correlation_id="health_check",
+        actor=Actor(user_id="system", agent_id="system"),
+        target=Target(resource_type="internal", resource_id="health"),
+        options=RequestOptions(dry_run=True),
+    )
+    registry = ToolRegistry(guard=SecurityPlaneGuard())
+    registry.register(HEALTH_CHECK_DEFINITION)
+    response = await registry.execute(
+        "health_check",
+        request,
+        ToolExecutionContext(request=request, settings=settings, audit_writer=audit_writer),
     )
 
-    payload = build_health_payload(settings)
+    if isinstance(response, ToolErrorResponse):
+        raise RuntimeError(response.error.message)
 
-    await audit_writer.write(
-        _health_audit_event(event_type="tool.execution.finished", result_status="success")
-    )
+    return _unwrap_health_result(response)
 
-    return payload
+
+def _unwrap_health_result(response: ToolResponse) -> dict[str, str | int]:
+    raw_result: object = response.result
+    if not isinstance(raw_result, dict):
+        raise TypeError("health_check returned a non-mapping result")
+
+    result = cast(dict[str, object], raw_result)
+    status = result.get("status")
+    service = result.get("service")
+    environment = result.get("environment")
+    port = result.get("port")
+    if not (
+        isinstance(status, str)
+        and isinstance(service, str)
+        and isinstance(environment, str)
+        and isinstance(port, int)
+    ):
+        raise TypeError("health_check returned an invalid payload")
+
+    return {
+        "status": status,
+        "service": service,
+        "environment": environment,
+        "port": port,
+    }
 
 
 def build_server(
     settings: Settings | None = None,
     audit_writer: AuditWriter | None = None,
+    proxmox_client: ProxmoxApiClient | None = None,
+    ssh_client: SshClient | None = None,
+    ssh_command_policy: SshCommandPolicy | None = None,
+    ssh_session_manager: SshSessionManager | None = None,
+    ssh_recording_store: SshRecordingStore | None = None,
 ) -> FastMCP:
     settings = Settings() if settings is None else settings
     audit_writer = InMemoryAuditWriter() if audit_writer is None else audit_writer
+    ssh_command_policy = SshCommandPolicy() if ssh_command_policy is None else ssh_command_policy
+    ssh_session_manager = (
+        SshSessionManager() if ssh_session_manager is None else ssh_session_manager
+    )
+    ssh_recording_store = (
+        InMemorySshRecordingStore() if ssh_recording_store is None else ssh_recording_store
+    )
 
     app = FastMCP("Enterprise Proxmox MCP")
+    registry = ToolRegistry(guard=SecurityPlaneGuard())
+    register_internal_tools(registry)
+    register_read_only_tools(registry)
+    register_safe_mutation_tools(registry)
+    register_dangerous_tools(registry)
+    register_ssh_tools(registry)
 
-    @app.tool(name="health_check")
-    async def health_check_tool() -> dict[str, str | int]:  # pyright: ignore[reportUnusedFunction]
-        """Registered by FastMCP through the decorator above."""
-        return await health_check(settings, audit_writer)
+    def context_factory(request: ToolRequest) -> ToolExecutionContext:
+        return ToolExecutionContext(
+            request=request,
+            settings=settings,
+            audit_writer=audit_writer,
+            proxmox_client=proxmox_client,
+            ssh_client=ssh_client,
+            ssh_command_policy=ssh_command_policy,
+            ssh_session_manager=ssh_session_manager,
+            ssh_recording_store=ssh_recording_store,
+        )
 
+    registry.register_with_fastmcp(app, context_factory)
     return app
 
 
