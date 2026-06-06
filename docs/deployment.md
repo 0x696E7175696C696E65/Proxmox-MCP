@@ -115,6 +115,19 @@ Recommended pod controls:
 - Resource requests and limits.
 - Liveness, readiness, and startup probes.
 
+Kubernetes probes must call the application health endpoints over HTTPS:
+
+- Readiness: `GET https://<pod>:8443/health/ready`
+- Liveness: `GET https://<pod>:8443/health/live`
+- Startup: `GET https://<pod>:8443/health/ready`
+
+The provided manifest uses `httpGet.scheme: HTTPS` with the named `https`
+container port. Kubernetes HTTPS probes do not provide full custom CA trust
+configuration, so production operators should use certificates trusted by the
+node environment or terminate probe traffic through an approved internal
+trust path. Do not replace these probes with raw TCP probes because TCP checks
+cannot verify that dependency-aware readiness is functioning.
+
 ## High Availability Design
 
 The MCP server is stateless except for PostgreSQL and Redis. Multiple replicas can serve requests concurrently when they share:

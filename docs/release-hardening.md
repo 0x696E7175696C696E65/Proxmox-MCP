@@ -6,11 +6,12 @@ Before tagging a preview release, run:
 
 1. Formatting, linting, type checking, and unit tests.
 2. Tool catalog contract tests against `docs/tool-specification.md`.
-3. Alembic migration upgrade tests against a disposable database plus model/schema parity checks.
+3. Alembic migration upgrade tests against disposable SQLite and PostgreSQL databases plus model/schema parity checks.
 4. Security invariant regression suite for auth, RBAC, policy, approvals, audit evidence, redaction, and transport enforcement.
-5. Docker image build and Trivy image scan.
-6. Dependency vulnerability audit and SBOM generation.
-7. Lab-only SSH, chaos, and performance gates when Proxmox lab credentials are configured.
+5. Kubernetes manifest validation for HTTPS health probes and release workflow contracts.
+6. Secret scanning, dependency vulnerability audit, Docker image build, Trivy image scan, and SBOM generation.
+7. Release-candidate evidence validation for CI, distribution, hardening, migration, SBOM, image scan, compatibility, and lab evidence artifacts.
+8. Lab-only SSH, chaos, and performance gates when Proxmox lab credentials are configured.
 
 Current lab-rollout evidence:
 
@@ -18,10 +19,10 @@ Current lab-rollout evidence:
 - `python -m ruff check .`: clean
 - `python -m pyright`: `0 errors, 0 warnings`
 - Security invariant suite: `54 passed`
-- `python -m pytest`: `230 passed, 6 skipped`
+- `python -m pytest`: `249 passed, 6 skipped` before Phase 1 wiring; rerun full verification after each gate change.
 - Lab skips were expected because `PROXMOX_MCP_LAB_ENABLED=true` was not configured in the local environment.
 - Domain-pack contract tests cover VM/LXC, storage/ZFS/LVM/disk, network/firewall, backup, Ceph/HA, SSH/console, and observability runtime wiring.
-- Release hardening gates now include `tests/release/test_migration_gate.py`, `tests/chaos/`, and `tests/performance/`.
+- Release hardening gates now include `tests/release/test_migration_gate.py`, `tests/deploy/test_kubernetes_manifest.py`, `tests/release/test_workflow_contracts.py`, `tests/chaos/`, and `tests/performance/`.
 - Compatibility evidence is tracked in `docs/proxmox-compatibility.md` and must be updated before tagging a release candidate.
 
 ## Remaining Release Qualification Matrix
@@ -29,13 +30,14 @@ Current lab-rollout evidence:
 | Area | Current readiness | Required tests | Release gate |
 | --- | --- | --- | --- |
 | Documentation truthfulness | Preview status reconciled across README, roadmap, domain-pack status, and this runbook | Documentation review and CI markdown checks | Release checklist confirms no production-ready claims without evidence |
-| Migrations | Alembic migration exists for audit events | Disposable database upgrade validation and model/schema parity check | `hardening.yml` runs `tests/release/test_migration_gate.py` |
+| Migrations | Alembic migration exists for audit, approval, and idempotency records | SQLite and PostgreSQL upgrade validation plus model/schema parity checks | `hardening.yml` runs SQLite and PostgreSQL migration gates |
 | Container supply chain | Docker image builds in distribution workflow | Image vulnerability scan and SBOM artifact upload | `hardening.yml` uploads Trivy SARIF and SBOM artifacts |
-| Runtime readiness | HTTPS runtime and static health payload exist | Dependency-aware live/ready probes for TLS, database, Redis, secret backend, and migration state | Kubernetes probes use HTTPS endpoints once trust behavior is configured |
+| Runtime readiness | Dependency-aware live/ready payloads and HTTPS runtime exist | Manifest tests assert HTTPS `/health/live`, `/health/ready`, and startup probes | Kubernetes probes use HTTPS endpoints and do not fall back to raw TCP |
 | Shared-state HA | Deployment manifests describe replicas; some runtime stores are still in-memory | Multi-replica approval consumption, idempotency locking, audit persistence, SSH session/recording behavior | HA test suite documents replica-safe paths and explicit sticky-session constraints |
 | Internal observability | In-process metrics/log/trace wiring exists | Query tests for audit events plus explicit external-source responses for metrics, alerts, and trends | Internal tools must return real source data or `external_source_required` |
 | Guarded Proxmox tools | Guarded tools fail visibly instead of returning fake success | Contract, unit, and opt-in lab tests per promoted tool | Tool promotion checklist and evidence must be attached |
 | Compatibility | Disposable lab evidence exists for the current lab only | Version/topology matrix for tested Proxmox and optional Ceph/HA/PBS features | Release notes include compatibility report |
+| Release evidence | Evidence requirements are explicit | Release-candidate workflow fails when required evidence artifacts are missing or invalid | `.github/workflows/release-candidate.yml` runs `scripts/validate_release_evidence.py` |
 | Chaos and load | Deterministic non-lab chaos/load gates exist; live lab gates remain opt-in | `tests/chaos/`, `tests/performance/`, and lab gates when credentials are configured | Hardening workflow runs executable pytest gates and fails closed when lab gates are enabled without required lab config |
 
 ## Chaos Scenarios
@@ -64,6 +66,6 @@ Security-critical dependencies must fail closed. Optional observability exporter
 - SSH interactive sessions should remain sticky to a single replica until a session broker is introduced.
 - Lab chaos gates require operator-provided Proxmox credentials and are not enabled by default.
 - SIEM exporters format payloads locally; production delivery retries should be backed by a durable queue.
-- Approval and SSH session paths still need shared-state validation before multi-replica production claims.
-- Readiness is being upgraded from static process status to dependency-aware checks.
+- SSH session paths still need shared-state validation before multi-replica production claims.
+- Release-candidate validation requires evidence artifacts to be staged under the configured evidence directory.
 - Backend-specific operations without universal safe semantics remain guarded with `NOT_IMPLEMENTED` until lab evidence exists.

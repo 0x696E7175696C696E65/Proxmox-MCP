@@ -49,15 +49,26 @@ spec:
             - name: https
               containerPort: 8443
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /health/ready
               port: https
+              scheme: HTTPS
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
-            tcpSocket:
+            httpGet:
+              path: /health/live
               port: https
+              scheme: HTTPS
             initialDelaySeconds: 15
             periodSeconds: 20
+          startupProbe:
+            httpGet:
+              path: /health/ready
+              port: https
+              scheme: HTTPS
+            failureThreshold: 12
+            periodSeconds: 5
           resources:
             requests:
               cpu: 100m

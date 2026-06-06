@@ -1,6 +1,10 @@
 name: hardening
 
 on:
+  push:
+    branches:
+      - main
+      - master
   workflow_dispatch:
     inputs:
       run_lab:
@@ -13,6 +17,20 @@ on:
 jobs:
   migration-validation:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: proxmox_mcp_test
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: proxmox_mcp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U proxmox_mcp -d proxmox_mcp_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -22,6 +40,10 @@ jobs:
         run: python -m pip install --upgrade pip '.[dev]'
       - name: Validate Alembic upgrade and model parity
         run: python -m pytest tests/release/test_migration_gate.py -q
+      - name: Validate PostgreSQL Alembic upgrade and model parity
+        env:
+          PROXMOX_MCP_TEST_POSTGRES_URL: postgresql+asyncpg://proxmox_mcp:postgres@localhost:5432/proxmox_mcp_test
+        run: python -m pytest tests/release/test_migration_gate.py::test_alembic_upgrade_creates_schema_matching_postgresql -q
 
   docker-build:
     runs-on: ubuntu-latest

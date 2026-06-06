@@ -213,6 +213,8 @@ Pull requests should run:
 - Unit tests.
 - Contract tests.
 - Migration tests.
+- Kubernetes manifest validation for HTTPS health probes.
+- Release workflow contract tests.
 - Dependency vulnerability scan.
 - Secret scan.
 - Docker build.
@@ -223,7 +225,13 @@ Nightly or manual workflows should run:
 - SSH sandbox tests.
 - Chaos tests.
 - Load tests.
+- PostgreSQL-backed migration validation.
 - Container image scanning.
+- SBOM generation.
+
+Release-candidate workflows should fail closed unless the configured evidence
+directory contains valid artifacts for CI, distribution, hardening, migration
+validation, SBOM, image scanning, compatibility, and lab evidence.
 
 Compatibility evidence is tracked in `docs/proxmox-compatibility.md`. Release candidates must update that matrix when a new Proxmox version, Ceph/HA topology, backup backend, or storage backend is validated.
 

@@ -55,6 +55,14 @@ jobs:
       - name: Type check
         run: pyright
 
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Manifest and release gate validation
+        run: python -m pytest tests/deploy/test_kubernetes_manifest.py tests/release/test_workflow_contracts.py -q
+
       - name: Test
         run: python -m pytest
 

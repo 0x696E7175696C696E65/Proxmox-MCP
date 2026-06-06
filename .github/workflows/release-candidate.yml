@@ -1,0 +1,28 @@
+name: Release Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      evidence_dir:
+        description: Directory containing release evidence artifacts
+        required: false
+        default: release-evidence
+
+permissions:
+  contents: read
+
+jobs:
+  validate-release-evidence:
+    name: Validate Release Evidence
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Validate release evidence artifacts
+        run: python scripts/validate_release_evidence.py --evidence-dir "${{ inputs.evidence_dir }}"
