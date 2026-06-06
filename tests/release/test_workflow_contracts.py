@@ -72,3 +72,18 @@ def test_hardening_uses_resolvable_pinned_trivy_action() -> None:
     }
 
     assert action_refs == {"aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25"}
+
+
+def test_hardening_image_scan_fails_on_actionable_fixed_vulnerabilities() -> None:
+    workflow = _workflow(".github/workflows/hardening.yml")
+    scan_steps = [
+        step
+        for step in _steps(workflow, "docker-build")
+        if cast(str, step.get("name", "")) == "Scan image"
+    ]
+
+    assert len(scan_steps) == 1
+    scan_config = cast(dict[str, str], scan_steps[0]["with"])
+    assert scan_config["severity"] == "CRITICAL,HIGH"
+    assert scan_config["exit-code"] == "1"
+    assert scan_config["ignore-unfixed"] == "true"
