@@ -44,7 +44,8 @@ Validation at merge time:
 - `python -m pyright`
 - `python -m pytest`
 - Distribution readiness workflow: builds and validates Python sdist/wheel artifacts, smoke-installs the wheel, audits dependencies, and builds the Docker image.
-- Current offline suite: `217 passed, 6 skipped`
+- Dedicated security invariant suite covering fail-closed guard behavior, approval replay protection, audit evidence, redaction boundaries, and encrypted transport enforcement.
+- Current offline suite: `230 passed, 6 skipped`
 - Live disposable Proxmox lab: `5 passed, 1 skipped` using node `test`; Ceph skipped because it is not installed.
 - MCP communication audit: local runtime test negotiated `TLSv1.3` with `TLS_AES_256_GCM_SHA384`, FastMCP client access succeeded over HTTPS, and plaintext HTTP to the MCP port returned no response bytes.
 - Network transport policy: MCP ingress is HTTPS-only, Proxmox API endpoints require `https://`, PostgreSQL must request TLS, Redis must use `rediss://`, and SSH remains encrypted by protocol.

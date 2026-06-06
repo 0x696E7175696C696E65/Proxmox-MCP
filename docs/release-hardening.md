@@ -7,16 +7,18 @@ Before tagging a preview release, run:
 1. Formatting, linting, type checking, and unit tests.
 2. Tool catalog contract tests against `docs/tool-specification.md`.
 3. Alembic migration upgrade tests against a disposable PostgreSQL database.
-4. Docker image build.
-5. Dependency vulnerability audit and SBOM generation.
-6. Lab-only SSH, chaos, and performance gates when Proxmox lab credentials are configured.
+4. Security invariant regression suite for auth, RBAC, policy, approvals, audit evidence, redaction, and transport enforcement.
+5. Docker image build.
+6. Dependency vulnerability audit and SBOM generation.
+7. Lab-only SSH, chaos, and performance gates when Proxmox lab credentials are configured.
 
 Current lab-rollout evidence:
 
 - `python -m ruff format .`: clean
 - `python -m ruff check .`: clean
 - `python -m pyright`: `0 errors, 0 warnings`
-- `python -m pytest`: `202 passed, 5 skipped`
+- Security invariant suite: `54 passed`
+- `python -m pytest`: `230 passed, 6 skipped`
 - Lab skips were expected because `PROXMOX_MCP_LAB_ENABLED=true` was not configured in the local environment.
 - Domain-pack contract tests cover VM/LXC, storage/ZFS/LVM/disk, network/firewall, backup, Ceph/HA, SSH/console, and observability runtime wiring.
 

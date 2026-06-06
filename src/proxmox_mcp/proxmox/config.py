@@ -24,13 +24,12 @@ class ProxmoxClusterConfig(BaseModel):
     status: ClusterStatus = "active"
 
     @model_validator(mode="after")
-    def _validate_production_transport(self) -> Self:
-        if self.environment == "production":
-            if not self.api_endpoint.startswith("https://"):
-                raise ValueError("Production Proxmox clusters require https:// API endpoints")
+    def _validate_transport(self) -> Self:
+        if not self.api_endpoint.startswith("https://"):
+            raise ValueError("Proxmox clusters require https:// API endpoints")
 
-            if not self.tls_verify:
-                raise ValueError("Production Proxmox clusters require TLS verification")
+        if self.environment == "production" and not self.tls_verify:
+            raise ValueError("Production Proxmox clusters require TLS verification")
 
         return self
 

@@ -9,6 +9,19 @@
 - Produce audit evidence before and after every execution attempt.
 - Separate human identity, AI agent identity, Proxmox credential identity, and runtime session identity.
 
+## CI-Enforced Security Invariants
+
+The security regression harness under `tests/security/` runs without live Proxmox credentials and proves these control-plane invariants:
+
+- Non-internal tools fail closed when authentication, actor binding, RBAC, policy, dangerous-operation settings, or approval validation fails.
+- Denied calls do not execute handlers and still emit audit evidence.
+- Successful approval-gated calls emit `started` then `success` audit transitions.
+- Approval tokens are scoped to actor, tenant, target, payload, operation, and risk, and are consumed once.
+- Secret-like values and TLS private key paths are sanitized before MCP error responses and audit metadata are recorded.
+- MCP, Proxmox, PostgreSQL, and Redis transport settings reject plaintext configurations.
+
+These tests are not a substitute for lab validation, but they prevent regressions in the security control plane before any tool reaches live infrastructure.
+
 ## Authentication Methods
 
 ### MCP Caller Authentication

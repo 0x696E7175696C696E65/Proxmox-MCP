@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from time import perf_counter
-from typing import Literal, Protocol
+from typing import Literal, Protocol, cast
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -26,6 +26,7 @@ from proxmox_mcp.schemas.envelope import (
     ToolRequest,
     ToolResponse,
 )
+from proxmox_mcp.security.redaction import sanitize_for_security_boundary
 from proxmox_mcp.tools.context import ToolExecutionContext
 
 ConnectorType = Literal["internal", "proxmox_api", "ssh", "hybrid"]
@@ -294,7 +295,7 @@ class ToolRegistry:
                 error=ToolError(
                     code=error_code,
                     message=guard_decision.message or "Tool execution denied",
-                    details=guard_decision.details,
+                    details=self._sanitize_details(guard_decision.details),
                     retryable=False,
                 ),
                 audit=AuditRef(event_id=denied_event.event_id, recorded=True),
@@ -327,7 +328,7 @@ class ToolRegistry:
                 error=ToolError(
                     code=exc.error_code,
                     message=str(exc),
-                    details=exc.details,
+                    details=self._sanitize_details(exc.details),
                     retryable=exc.retryable,
                 ),
                 audit=AuditRef(event_id=error_event.event_id, recorded=True),
@@ -566,11 +567,23 @@ class ToolRegistry:
                 "connector": definition.connector,
                 "risk": definition.risk,
                 "dry_run": request.options.dry_run,
-                **context.audit_metadata,
+                **self._sanitize_metadata(context.audit_metadata),
             },
         )
         await context.audit_writer.write(event)
         return event
+
+    def _sanitize_details(self, details: dict[str, object]) -> dict[str, object]:
+        sanitized = sanitize_for_security_boundary(details)
+        if not isinstance(sanitized, dict):
+            return {}
+        return cast(dict[str, object], sanitized)
+
+    def _sanitize_metadata(self, metadata: dict[str, object]) -> dict[str, object]:
+        sanitized = sanitize_for_security_boundary(metadata)
+        if not isinstance(sanitized, dict):
+            return {}
+        return cast(dict[str, object], sanitized)
 
     def _audit_identity(
         self,

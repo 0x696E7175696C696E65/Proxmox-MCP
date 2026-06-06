@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from proxmox_mcp.approvals import ApprovalValidationResult
 from proxmox_mcp.auth import ActorIdentity
@@ -20,7 +20,9 @@ from proxmox_mcp.schemas.envelope import (
     ToolRequest,
 )
 from proxmox_mcp.tools.context import ToolExecutionContext
-from proxmox_mcp.tools.registry import ToolDefinition, ToolGuardDecision
+
+if TYPE_CHECKING:
+    from proxmox_mcp.tools.registry import ToolDefinition, ToolGuardDecision
 
 
 class ApprovalConsumer(Protocol):
@@ -57,6 +59,8 @@ class SecurityPlaneGuard:
         request: ToolRequest,
         context: ToolExecutionContext,
     ) -> ToolGuardDecision:
+        from proxmox_mcp.tools.registry import ToolGuardDecision
+
         risk = RiskScorer(
             registry=DangerousOperationRegistry.default(
                 settings=context.settings.dangerous_operations
