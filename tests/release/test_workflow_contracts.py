@@ -60,3 +60,15 @@ def test_release_candidate_workflow_requires_evidence_artifacts() -> None:
 
     assert "scripts/validate_release_evidence.py" in run_commands
     assert "--evidence-dir" in run_commands
+
+
+def test_hardening_uses_resolvable_pinned_trivy_action() -> None:
+    workflow = _workflow(".github/workflows/hardening.yml")
+    steps = _steps(workflow, "docker-build")
+    action_refs = {
+        cast(str, step.get("uses", ""))
+        for step in steps
+        if str(step.get("uses", "")).startswith("aquasecurity/trivy-action@")
+    }
+
+    assert action_refs == {"aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25"}
