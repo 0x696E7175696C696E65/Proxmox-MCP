@@ -2,8 +2,13 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.pyright/
 .venv/
 venv/
+build/
+dist/
+*.egg-info/
 
 # Local environment and credential files.
 .env

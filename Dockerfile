@@ -7,7 +7,7 @@ WORKDIR /app
 
 RUN addgroup --system proxmox-mcp && adduser --system --ingroup proxmox-mcp proxmox-mcp
 
-COPY pyproject.toml README.md /app/
+COPY pyproject.toml README.md LICENSE /app/
 COPY src /app/src
 
 RUN pip install --no-cache-dir .
