@@ -4,6 +4,7 @@
 ![Python](https://img.shields.io/badge/python-3.13%2B-blue)
 ![MCP](https://img.shields.io/badge/MCP-FastMCP-green)
 ![Status](https://img.shields.io/badge/status-foundation_runtime-orange)
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
 Enterprise Proxmox MCP is a security-first Model Context Protocol server for AI-assisted Proxmox VE administration. It is designed to let AI agents manage Proxmox infrastructure through controlled API and SSH access while preserving authentication, RBAC, policy enforcement, approval workflows, audit trails, and operational safeguards.
 
