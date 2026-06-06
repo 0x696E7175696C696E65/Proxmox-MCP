@@ -2,7 +2,7 @@
 
 Enterprise Proxmox MCP is a production-oriented Model Context Protocol server design for secure AI-assisted Proxmox VE administration. The project goal is to expose Proxmox API and controlled SSH capabilities to AI agents while preserving strong authorization, policy enforcement, approval workflows, auditability, and operational guardrails.
 
-This repository is intentionally not a thin wrapper around Proxmox. It is designed as an infrastructure automation platform suitable for homelabs, MSPs, datacenters, research labs, and advanced automation environments.
+At its core, this is an MCP tool and skill surface for AI systems to securely manage Proxmox servers. This repository is intentionally not a thin wrapper around Proxmox. It is designed as an infrastructure automation platform suitable for homelabs, MSPs, datacenters, research labs, and advanced automation environments.
 
 ## Current Status
 
