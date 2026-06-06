@@ -56,7 +56,7 @@ jobs:
         run: pyright
 
       - name: Test
-        run: pytest
+        run: python -m pytest
 
       - name: Security scan
         run: pip-audit
