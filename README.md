@@ -3,12 +3,12 @@
 [![CI](https://github.com/0x696E7175696C696E65/Proxmox-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/0x696E7175696C696E65/Proxmox-MCP/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.13%2B-blue)
 ![MCP](https://img.shields.io/badge/MCP-FastMCP-green)
-![Status](https://img.shields.io/badge/status-foundation_runtime-orange)
+![Status](https://img.shields.io/badge/status-preview_ready-yellow)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
 Enterprise Proxmox MCP is a security-first Model Context Protocol server for AI-assisted Proxmox VE administration. It is designed to let AI agents manage Proxmox infrastructure through controlled API and SSH access while preserving authentication, RBAC, policy enforcement, approval workflows, audit trails, and operational safeguards.
 
-This project is not a thin Proxmox wrapper. It is intended to become an enterprise-grade infrastructure automation platform for homelabs, MSPs, datacenters, research environments, and advanced AI operations.
+This project is not a thin Proxmox wrapper. It is an enterprise-grade infrastructure automation platform for homelabs, MSPs, datacenters, research environments, and advanced AI operations.
 
 ## What This Project Enables
 
@@ -20,18 +20,32 @@ This project is not a thin Proxmox wrapper. It is intended to become an enterpri
 
 ## Current Status
 
-The repository currently contains the architecture package plus the first executable runtime foundation:
+The planned implementation backlog for the preview milestone is complete and merged to `main`.
 
-- Python package scaffold with `pyproject.toml`
-- FastMCP server factory
-- Audited `health_check` tool
-- Typed Pydantic settings with secret redaction
-- Audit event models and in-memory audit writer
-- SQLAlchemy async engine and Redis client factories
-- Unit tests for package, config, audit, persistence, and server behavior
-- CI for formatting, linting, type checking, testing, dependency audit, and docs checks
+Implemented:
 
-Production Proxmox API, SSH, RBAC, policy, approval, and secret-provider modules are planned in staged milestones. See [`docs/roadmap.md`](docs/roadmap.md).
+- FastMCP server factory with registry-driven tool registration.
+- Standard MCP request, response, error, dry-run, impact, approval, and audit envelopes.
+- Authentication models, service-token authentication, RBAC evaluation, policy decisions, risk scoring, and approval validation.
+- Durable audit persistence with SQLAlchemy models and Alembic migration.
+- Secret-provider abstraction with development and Vault-style providers.
+- Proxmox cluster credential resolution and in-memory Proxmox API test client.
+- Read-only Proxmox tools, safe mutations, dangerous operations, domain-completion tools, and SSH tools.
+- Controlled SSH execution, command policy, session tracking, SFTP/SCP operations, and output redaction.
+- Observability primitives for Prometheus-style metrics, structured JSON logs, trace context, and SIEM/Loki payloads.
+- Reliability primitives for retries and circuit breakers.
+- Docker, Docker Compose, Kubernetes, Grafana dashboard, hardening workflow, and release hardening runbook.
+- Contract tests that verify the registered tool catalog against [`docs/tool-specification.md`](docs/tool-specification.md).
+
+Validation at merge time:
+
+- `python -m ruff format .`
+- `python -m ruff check .`
+- `python -m pyright`
+- `python -m pytest`
+- Current suite: `159 passed`
+
+Important caveat: the codebase is preview-ready for development and lab validation, not yet certified for unattended production control of real Proxmox clusters. Some documented domain tools are registered with correct metadata and schemas but intentionally return `NOT_IMPLEMENTED` for live execution until a real operation-specific implementation is added. This prevents placeholder commands from reporting false success.
 
 ## Architecture
 
@@ -113,9 +127,9 @@ The security model is built around these invariants:
 - Destructive actions can be enabled, denied, or approval-gated by environment.
 - Dry-run and impact-analysis paths are first-class behavior, not UI-only features.
 
-## Tool Coverage Plan
+## Tool Coverage
 
-The planned MCP surface includes more than 170 tools across these domains:
+The MCP catalog in [`docs/tool-specification.md`](docs/tool-specification.md) is registered and contract-tested across these domains:
 
 - Cluster status, membership, quorum, replication, and tasks
 - Node services, packages, hardware, logs, power, and networking
@@ -131,11 +145,17 @@ The planned MCP surface includes more than 170 tools across these domains:
 - Monitoring, diagnostics, support bundles, SMART, ZFS, and Ceph metrics
 - Controlled SSH command execution, interactive sessions, SFTP, SCP, upload, and download
 
-See [`docs/tool-specification.md`](docs/tool-specification.md) for the full catalog.
+Tool implementation tiers:
 
-## Runtime Foundation
+- **Implemented read paths:** inventory, configuration, status, metrics, logs, Ceph, HA, users, permissions, storage, networking, firewall, and backup discovery tools backed by Proxmox API paths.
+- **Implemented safe mutation paths:** VM/LXC lifecycle operations, snapshots, backups, and non-destructive config updates with dry-run behavior and impact metadata.
+- **Implemented dangerous paths:** destructive VM/LXC/storage/Ceph/user/networking operations with critical/high risk metadata, approval defaults, target revalidation where applicable, and audit metadata.
+- **Implemented SSH paths:** command execution, policy denial, session open/close, interactive execution contract, SFTP/SCP file flows, recording references, and redaction.
+- **Domain-completion placeholders:** tools whose safe live behavior is not yet backed by a concrete Proxmox API or SSH operation fail visibly with `NOT_IMPLEMENTED` instead of returning placeholder success.
 
-The current codebase implements the foundation needed for later Proxmox modules:
+## Runtime Modules
+
+The runtime is organized around a shared tool registry and execution context:
 
 ```mermaid
 flowchart TD
@@ -144,8 +164,11 @@ flowchart TD
   auditWriter --> server
   settings --> database["proxmox_mcp.persistence.database"]
   settings --> redisClient["proxmox_mcp.persistence.redis"]
-  server --> fastmcp["FastMCP App"]
-  fastmcp --> healthTool["health_check Tool"]
+  server --> registry["Tool Registry"]
+  registry --> proxmoxTools["Proxmox API Tools"]
+  registry --> sshTools["Controlled SSH Tools"]
+  registry --> internalTools["Internal Tools"]
+  registry --> fastmcp["FastMCP App"]
 ```
 
 ## Quick Start
@@ -198,14 +221,16 @@ Secret-like settings are modeled with Pydantic `SecretStr` and are redacted by s
 - Pydantic v2 and pydantic-settings
 - SQLAlchemy async and asyncpg
 - Redis asyncio client
+- AsyncSSH
 - structlog
+- Alembic
 - pytest and pytest-asyncio
 - Ruff
 - Pyright
 
-Planned integration modules add AsyncSSH, Proxmoxer, OpenTelemetry, Prometheus, PostgreSQL migrations, secret-provider adapters, and production deployment assets.
+The current Proxmox and SSH clients include in-memory implementations for deterministic tests. Production adapters should be configured and validated against lab infrastructure before use.
 
-## Roadmap
+## Roadmap Status
 
 ```mermaid
 flowchart LR
@@ -221,18 +246,19 @@ flowchart LR
   m9 --> m10["Milestone 10 Hardening"]
 ```
 
-The detailed implementation roadmap lives in [`docs/roadmap.md`](docs/roadmap.md).
+The detailed implementation roadmap lives in [`docs/roadmap.md`](docs/roadmap.md). The preview implementation now covers the planned runtime, security, Proxmox tool, SSH, dangerous-operation, observability, deployment, and hardening milestones at code and test level. The next phase is lab validation, API-semantic tightening against real Proxmox clusters, and release qualification.
 
 ## Documentation
 
 - [`docs/architecture.md`](docs/architecture.md): system architecture, module boundaries, and runtime flows.
 - [`docs/security-model.md`](docs/security-model.md): authentication, authorization, policy, approvals, and dangerous operations.
 - [`docs/threat-model.md`](docs/threat-model.md): assets, trust boundaries, abuse cases, and mitigations.
-- [`docs/tool-specification.md`](docs/tool-specification.md): 100+ MCP tool catalog.
+- [`docs/tool-specification.md`](docs/tool-specification.md): 189-tool MCP catalog.
 - [`docs/mcp-schema.md`](docs/mcp-schema.md): request, response, error, dry-run, impact, and audit schemas.
 - [`docs/database-schema.md`](docs/database-schema.md): persistence model for sessions, policy, audit, approvals, credentials, resources, and SSH recordings.
 - [`docs/testing-strategy.md`](docs/testing-strategy.md): unit, integration, security, lab, SSH sandbox, chaos, and acceptance testing.
 - [`docs/deployment.md`](docs/deployment.md): Docker, Kubernetes, HA, observability, and operations guidance.
+- [`docs/release-hardening.md`](docs/release-hardening.md): preview release gates, chaos scenarios, rollback, and known limitations.
 
 ## License
 
@@ -240,6 +266,15 @@ This project is open source under the Apache License 2.0. You can use, modify, a
 
 ## Production Posture
 
-This project is under active development. The current runtime foundation is tested, but full Proxmox management, RBAC enforcement, SSH execution, approval workflows, secret-provider integrations, and production deployment assets are still being built through the roadmap.
+This project is under active development. The preview implementation is tested locally and includes the enterprise control-plane pieces, but production use still requires environment-specific validation.
 
-Do not connect this server to production Proxmox infrastructure until the relevant security, policy, audit, and approval milestones are implemented and verified in your environment.
+Before connecting to production Proxmox infrastructure:
+
+- Run the full test suite and hardening workflow.
+- Validate every enabled mutating or destructive tool against a lab Proxmox cluster.
+- Configure real PostgreSQL, Redis, Vault or another secret backend, and audit retention.
+- Review RBAC, policy, approval, and dangerous-operation settings for your tenant model.
+- Pin SSH known hosts and validate Proxmox API TLS certificates.
+- Confirm backup, rollback, and audit recovery procedures.
+
+Do not enable unattended live mutation or destructive operations until the relevant tools have been verified in your own environment.
