@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  docs:
+    name: Documentation Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check markdown files are present
+        run: |
+          test -f README.md
+          test -f docs/architecture.md
+          test -f docs/security-model.md
+          test -f docs/threat-model.md
+          test -f docs/tool-specification.md
+          test -f docs/mcp-schema.md
+          test -f docs/database-schema.md
+          test -f docs/roadmap.md
+          test -f docs/testing-strategy.md
+          test -f docs/deployment.md
+
+  planned-runtime-checks:
+    name: Planned Runtime Checks
+    runs-on: ubuntu-latest
+    if: false
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Format
+        run: ruff format --check .
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Type check
+        run: pyright
+
+      - name: Test
+        run: pytest
+
+      - name: Security scan
+        run: pip-audit
+
+      - name: Build Docker image
+        run: docker build -t proxmox-mcp:ci .
