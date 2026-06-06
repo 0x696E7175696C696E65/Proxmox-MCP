@@ -29,7 +29,7 @@ Implemented:
 - Authentication models, service-token authentication, RBAC evaluation, policy decisions, risk scoring, and approval validation.
 - Durable audit persistence with SQLAlchemy models and Alembic migration.
 - Secret-provider abstraction with development and Vault-style providers.
-- Proxmox cluster credential resolution, in-memory Proxmox API test client, and read-only Proxmox lab HTTP adapter.
+- Proxmox cluster credential resolution, in-memory Proxmox API test client, and token/password-auth Proxmox lab HTTP adapter.
 - Read-only Proxmox tools, safe mutations, dangerous operations, promoted domain-pack tools, and SSH tools.
 - Controlled SSH execution, command policy, session tracking, SFTP/SCP operations, and output redaction.
 - Runtime observability wiring for Prometheus-style metrics, structured JSON logs, trace context, audit correlation, and SIEM/Loki payloads.
@@ -43,7 +43,10 @@ Validation at merge time:
 - `python -m ruff check .`
 - `python -m pyright`
 - `python -m pytest`
-- Current suite: `202 passed, 5 skipped`
+- Current offline suite: `216 passed, 6 skipped`
+- Live disposable Proxmox lab: `5 passed, 1 skipped` using node `test`; Ceph skipped because it is not installed.
+- MCP communication audit: local runtime test negotiated `TLSv1.3` with `TLS_AES_256_GCM_SHA384`, FastMCP client access succeeded over HTTPS, and plaintext HTTP to the MCP port returned no response bytes.
+- Network transport policy: MCP ingress is HTTPS-only, Proxmox API endpoints require `https://`, PostgreSQL must request TLS, Redis must use `rediss://`, and SSH remains encrypted by protocol.
 
 Important caveat: the codebase is preview-ready for development and lab validation, not yet certified for unattended production control of real Proxmox clusters. Ambiguous or backend-specific operations, such as generic storage expansion and benchmark execution, remain guarded with `NOT_IMPLEMENTED` rather than returning placeholder success.
 
@@ -215,11 +218,33 @@ Runtime settings are environment driven and use the `PROXMOX_MCP_` prefix.
 ```powershell
 $env:PROXMOX_MCP_ENVIRONMENT = "development"
 $env:PROXMOX_MCP_SERVER_HOST = "127.0.0.1"
-$env:PROXMOX_MCP_SERVER_PORT = "8080"
+$env:PROXMOX_MCP_SERVER_PORT = "8443"
+$env:PROXMOX_MCP_DATABASE_URL = "postgresql+asyncpg://user:password@postgres/proxmox_mcp?ssl=require"
+$env:PROXMOX_MCP_REDIS_URL = "rediss://redis:6379/0"
 $env:PROXMOX_MCP_DANGEROUS_OPERATIONS__REQUIRE_APPROVAL = "true"
 ```
 
 Secret-like settings are modeled with Pydantic `SecretStr` and are redacted by safe serialization helpers.
+Database and Redis settings are TLS-enforced: PostgreSQL must request TLS and Redis must use `rediss://`.
+
+The MCP server is HTTPS-only. Provide a certificate and key for managed environments:
+
+```powershell
+$env:PROXMOX_MCP_TLS__CERT_FILE = "C:\certs\proxmox-mcp\tls.crt"
+$env:PROXMOX_MCP_TLS__KEY_FILE = "C:\certs\proxmox-mcp\tls.key"
+$env:PROXMOX_MCP_TLS__GENERATE_SELF_SIGNED = "false"
+```
+
+For disposable development or lab runs, self-signed certificates can be generated automatically:
+
+```powershell
+$env:PROXMOX_MCP_TLS__GENERATE_SELF_SIGNED = "true"
+$env:PROXMOX_MCP_TLS__GENERATED_CERT_DIR = "$env:TEMP\proxmox-mcp\certs"
+$env:PROXMOX_MCP_TLS__COMMON_NAME = "localhost"
+$env:PROXMOX_MCP_TLS__SUBJECT_ALT_NAMES = '["localhost","127.0.0.1"]'
+```
+
+Clients must trust the configured certificate or the generated self-signed certificate before connecting.
 
 ## Technology Stack
 
@@ -229,6 +254,7 @@ Secret-like settings are modeled with Pydantic `SecretStr` and are redacted by s
 - SQLAlchemy async and asyncpg
 - Redis asyncio client
 - AsyncSSH
+- cryptography
 - structlog
 - Alembic
 - pytest and pytest-asyncio

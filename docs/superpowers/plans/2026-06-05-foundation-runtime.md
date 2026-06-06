@@ -203,12 +203,12 @@ def test_settings_have_safe_defaults() -> None:
 
     assert settings.environment == "development"
     assert settings.server_host == "127.0.0.1"
-    assert settings.server_port == 8080
+    assert settings.server_port == 8443
     assert settings.dangerous_operations.require_approval is True
 
 
 def test_secret_values_are_redacted() -> None:
-    settings = Settings(database_url=SecretStr("postgresql+asyncpg://user:pass@db/app"))
+    settings = Settings(database_url=SecretStr("postgresql+asyncpg://user:pass@db/app?ssl=require"))
 
     dumped = settings.safe_dump()
 
@@ -261,9 +261,9 @@ class Settings(BaseSettings):
 
     environment: Literal["development", "test", "staging", "production"] = "development"
     server_host: str = "127.0.0.1"
-    server_port: int = Field(default=8080, ge=1, le=65535)
-    database_url: SecretStr = SecretStr("postgresql+asyncpg://proxmox_mcp:proxmox_mcp@localhost/proxmox_mcp")
-    redis_url: SecretStr = SecretStr("redis://localhost:6379/0")
+    server_port: int = Field(default=8443, ge=1, le=65535)
+    database_url: SecretStr = SecretStr("postgresql+asyncpg://proxmox_mcp:proxmox_mcp@localhost/proxmox_mcp?ssl=require")
+    redis_url: SecretStr = SecretStr("rediss://localhost:6379/0")
     log_level: Literal["debug", "info", "warning", "error"] = "info"
     dangerous_operations: DangerousOperationSettings = Field(default_factory=DangerousOperationSettings)
 
@@ -374,15 +374,16 @@ from proxmox_mcp.persistence.redis import build_redis_client
 
 
 def test_database_engine_uses_configured_url() -> None:
-    settings = Settings(database_url=SecretStr("postgresql+asyncpg://user:pass@example/app"))
+    settings = Settings(database_url=SecretStr("postgresql+asyncpg://user:pass@example/app?ssl=require"))
 
     engine = build_async_engine(settings)
 
     assert str(engine.url).startswith("postgresql+asyncpg://user:***@example/app")
+    assert engine.url.query["ssl"] == "require"
 
 
 def test_session_factory_is_bound_to_engine() -> None:
-    settings = Settings(database_url=SecretStr("postgresql+asyncpg://user:pass@example/app"))
+    settings = Settings(database_url=SecretStr("postgresql+asyncpg://user:pass@example/app?ssl=require"))
     engine = build_async_engine(settings)
 
     session_factory = build_session_factory(engine)
@@ -391,7 +392,7 @@ def test_session_factory_is_bound_to_engine() -> None:
 
 
 def test_redis_client_uses_configured_url() -> None:
-    settings = Settings(redis_url=SecretStr("redis://redis.example:6379/5"))
+    settings = Settings(redis_url=SecretStr("rediss://redis.example:6379/5"))
 
     client = build_redis_client(settings)
 

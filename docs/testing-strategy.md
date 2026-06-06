@@ -56,12 +56,32 @@ Lab tests run against a dedicated Proxmox VE environment:
 
 Lab tests must never target production clusters.
 
+The MCP server runtime itself is HTTPS-only. For local or disposable lab runs that
+start the MCP app directly, either point the app at user-provided certificate
+paths or enable generated self-signed certificates:
+
+```shell
+PROXMOX_MCP_SERVER_PORT=8443
+PROXMOX_MCP_TLS__GENERATE_SELF_SIGNED=true
+PROXMOX_MCP_TLS__GENERATED_CERT_DIR=/tmp/proxmox-mcp/certs
+PROXMOX_MCP_TLS__COMMON_NAME=localhost
+PROXMOX_MCP_TLS__SUBJECT_ALT_NAMES='["localhost","127.0.0.1"]'
+```
+
+Clients and test harnesses must trust the configured or generated certificate
+when connecting to the MCP endpoint.
+
+Application dependencies must also use encrypted transports. `Settings` rejects
+PostgreSQL URLs that do not require TLS and Redis URLs that do not use
+`rediss://`.
+
 Phase 1 lab tests are read-only and skip unless explicitly enabled. Configure:
 
 - `PROXMOX_MCP_LAB_ENABLED=true`
 - `PROXMOX_MCP_LAB_API_ENDPOINT=https://pve.example.test:8006`
-- `PROXMOX_MCP_LAB_TOKEN_ID=user@realm!token`
-- `PROXMOX_MCP_LAB_TOKEN_SECRET=...`
+- `PROXMOX_MCP_LAB_TOKEN_ID=user@realm!token` and `PROXMOX_MCP_LAB_TOKEN_SECRET=...`
+  for token auth, or `PROXMOX_MCP_LAB_USERNAME=user@realm` and
+  `PROXMOX_MCP_LAB_PASSWORD=...` for disposable lab ticket auth.
 - `PROXMOX_MCP_LAB_TLS_VERIFY=true` or `false` for disposable labs with self-signed TLS
 - `PROXMOX_MCP_LAB_ALLOW_INSECURE_TRANSPORT=true` if TLS verification is disabled in a disposable lab
 - `PROXMOX_MCP_LAB_NODE=pve-node-1` for node-scoped discovery
@@ -73,7 +93,15 @@ Run read-only lab smoke tests with:
 python -m pytest tests/lab -m lab
 ```
 
-If the enable flag or required credentials are missing, the suite reports skipped tests rather than failures. Phase 1 smoke coverage exercises cluster status, nodes, VM/LXC inventory, node storage, storage content, access users/roles/ACLs, HA status, cluster firewall options, and Ceph status. Later domain packs may add mutation lab tests, but those must require separate opt-in flags for mutations and destructive actions.
+If the enable flag or required credentials are missing, the suite reports skipped tests rather than failures. Phase 1 smoke coverage exercises cluster status, nodes, VM/LXC inventory, node storage, storage content, access users/roles/ACLs, HA status, cluster firewall options, and Ceph status when Ceph is installed.
+
+Mutation and destructive lab tests require separate explicit opt-in:
+
+- `PROXMOX_MCP_LAB_MUTATIONS_ENABLED=true`
+- `PROXMOX_MCP_LAB_DESTRUCTIVE_ENABLED=true`
+- `PROXMOX_MCP_LAB_TEST_VMID=9000` or another disposable VMID
+
+The destructive VM lifecycle smoke test creates, updates, verifies, and deletes the disposable VMID. It must only run on throwaway lab clusters.
 
 ### SSH Sandbox Tests
 

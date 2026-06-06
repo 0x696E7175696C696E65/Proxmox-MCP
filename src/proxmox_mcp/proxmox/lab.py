@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Literal
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 _FALSE_VALUES = {"0", "false", "no", "off"}
+LabAuthMode = Literal["api_token", "username_password"]
 
 
 class LabEnvironmentConfig(BaseModel):
@@ -14,8 +16,11 @@ class LabEnvironmentConfig(BaseModel):
 
     enabled: bool
     api_endpoint: str | None = Field(default=None, min_length=1)
+    auth_mode: LabAuthMode | None = None
     token_id: str | None = Field(default=None, min_length=1)
     token_secret: SecretStr | None = None
+    username: str | None = Field(default=None, min_length=1)
+    password: SecretStr | None = None
     tls_verify: bool = True
     allow_insecure_transport: bool = False
     node: str | None = Field(default=None, min_length=1)
@@ -32,19 +37,25 @@ class LabEnvironmentConfig(BaseModel):
                 skip_reason="Set PROXMOX_MCP_LAB_ENABLED=true to run lab tests",
             )
 
-        missing = [
-            name
-            for name in (
-                "PROXMOX_MCP_LAB_API_ENDPOINT",
-                "PROXMOX_MCP_LAB_TOKEN_ID",
-                "PROXMOX_MCP_LAB_TOKEN_SECRET",
-            )
-            if not env.get(name)
-        ]
+        missing = [name for name in ("PROXMOX_MCP_LAB_API_ENDPOINT",) if not env.get(name)]
         if missing:
             return cls(
                 enabled=False,
                 skip_reason="Missing lab environment variables: " + ", ".join(missing),
+            )
+
+        has_token_credentials = bool(
+            env.get("PROXMOX_MCP_LAB_TOKEN_ID") and env.get("PROXMOX_MCP_LAB_TOKEN_SECRET")
+        )
+        has_password_credentials = bool(
+            env.get("PROXMOX_MCP_LAB_USERNAME") and env.get("PROXMOX_MCP_LAB_PASSWORD")
+        )
+        if has_token_credentials == has_password_credentials:
+            return cls(
+                enabled=False,
+                skip_reason=(
+                    "Configure exactly one token or username/password lab credentials set"
+                ),
             )
 
         endpoint = str(env["PROXMOX_MCP_LAB_API_ENDPOINT"]).rstrip("/")
@@ -72,8 +83,15 @@ class LabEnvironmentConfig(BaseModel):
         return cls(
             enabled=True,
             api_endpoint=endpoint,
-            token_id=env["PROXMOX_MCP_LAB_TOKEN_ID"],
-            token_secret=SecretStr(env["PROXMOX_MCP_LAB_TOKEN_SECRET"]),
+            auth_mode="api_token" if has_token_credentials else "username_password",
+            token_id=env.get("PROXMOX_MCP_LAB_TOKEN_ID"),
+            token_secret=None
+            if env.get("PROXMOX_MCP_LAB_TOKEN_SECRET") is None
+            else SecretStr(env["PROXMOX_MCP_LAB_TOKEN_SECRET"]),
+            username=env.get("PROXMOX_MCP_LAB_USERNAME"),
+            password=None
+            if env.get("PROXMOX_MCP_LAB_PASSWORD") is None
+            else SecretStr(env["PROXMOX_MCP_LAB_PASSWORD"]),
             tls_verify=tls_verify,
             allow_insecure_transport=allow_insecure_transport,
             node=env.get("PROXMOX_MCP_LAB_NODE"),

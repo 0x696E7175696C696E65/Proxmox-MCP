@@ -1,5 +1,9 @@
+from pathlib import Path
+
+import pytest
+
 from proxmox_mcp.audit.writer import InMemoryAuditWriter
-from proxmox_mcp.config import Settings
+from proxmox_mcp.config import Settings, TlsSettings
 from proxmox_mcp.proxmox import (
     DANGEROUS_TOOL_SPECS,
     DOMAIN_COMPLETION_TOOL_SPECS,
@@ -7,6 +11,7 @@ from proxmox_mcp.proxmox import (
     SAFE_MUTATION_TOOL_SPECS,
 )
 from proxmox_mcp.schemas.envelope import Actor, RequestOptions, Target, ToolRequest, ToolResponse
+from proxmox_mcp.server import app as app_module
 from proxmox_mcp.server.app import build_health_payload, build_server, health_check
 from proxmox_mcp.ssh.tools import SSH_TOOL_SPECS
 from proxmox_mcp.tools.context import ToolExecutionContext
@@ -20,13 +25,49 @@ def test_health_payload_reports_runtime_status() -> None:
     assert payload["status"] == "ok"
     assert payload["service"] == "enterprise-proxmox-mcp"
     assert payload["environment"] == "test"
-    assert payload["port"] == 8080
+    assert payload["port"] == 8443
 
 
 def test_build_server_returns_named_app() -> None:
     app = build_server(Settings(environment="test"), InMemoryAuditWriter())
 
     assert app.name == "Enterprise Proxmox MCP"
+
+
+def test_run_starts_fastmcp_with_https_transport(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class RecordingApp:
+        def run(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    def fake_build_server(settings: Settings) -> RecordingApp:
+        _ = settings
+        return RecordingApp()
+
+    monkeypatch.setattr(app_module, "build_server", fake_build_server)
+
+    app_module.run(
+        Settings(
+            environment="test",
+            tls=TlsSettings(
+                generate_self_signed=True,
+                generated_cert_dir=str(tmp_path),
+            ),
+        )
+    )
+
+    assert captured["transport"] == "http"
+    assert captured["host"] == "127.0.0.1"
+    assert captured["port"] == 8443
+    assert captured["log_level"] == "info"
+    assert captured["uvicorn_config"] == {
+        "ssl_certfile": str(tmp_path / "proxmox-mcp.crt"),
+        "ssl_keyfile": str(tmp_path / "proxmox-mcp.key"),
+    }
 
 
 async def test_build_server_registers_health_and_read_only_tools() -> None:

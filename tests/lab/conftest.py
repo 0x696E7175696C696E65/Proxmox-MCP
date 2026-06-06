@@ -21,13 +21,24 @@ def lab_config() -> LabEnvironmentConfig:
 def lab_client(lab_config: LabEnvironmentConfig) -> ProxmoxHttpApiClient:
     if lab_config.api_endpoint is None:
         pytest.skip("Missing Proxmox lab API endpoint")
-    if lab_config.token_id is None or lab_config.token_secret is None:
-        pytest.skip("Missing Proxmox lab API token")
+    if lab_config.auth_mode == "api_token":
+        if lab_config.token_id is None or lab_config.token_secret is None:
+            pytest.skip("Missing Proxmox lab API token")
+
+        return ProxmoxHttpApiClient(
+            api_endpoint=lab_config.api_endpoint,
+            token_id=lab_config.token_id,
+            token_secret=lab_config.token_secret,
+            tls_verify=lab_config.tls_verify,
+        )
+
+    if lab_config.username is None or lab_config.password is None:
+        pytest.skip("Missing Proxmox lab username/password credentials")
 
     return ProxmoxHttpApiClient(
         api_endpoint=lab_config.api_endpoint,
-        token_id=lab_config.token_id,
-        token_secret=lab_config.token_secret,
+        username=lab_config.username,
+        password=lab_config.password,
         tls_verify=lab_config.tls_verify,
     )
 
@@ -60,3 +71,13 @@ def lab_destructive_enabled(lab_mutations_enabled: bool) -> bool:
     if os.environ.get("PROXMOX_MCP_LAB_DESTRUCTIVE_ENABLED", "").strip().lower() != "true":
         pytest.skip("Set PROXMOX_MCP_LAB_DESTRUCTIVE_ENABLED=true to run destructive lab tests")
     return True
+
+
+@pytest.fixture
+def disposable_lab_vmid(lab_destructive_enabled: bool) -> int:
+    _ = lab_destructive_enabled
+    raw_vmid = os.environ.get("PROXMOX_MCP_LAB_TEST_VMID", "9000")
+    try:
+        return int(raw_vmid)
+    except ValueError:
+        pytest.skip("PROXMOX_MCP_LAB_TEST_VMID must be an integer")

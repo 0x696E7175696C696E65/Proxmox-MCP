@@ -11,8 +11,11 @@ metadata:
 data:
   PROXMOX_MCP_ENVIRONMENT: production
   PROXMOX_MCP_SERVER_HOST: 0.0.0.0
-  PROXMOX_MCP_SERVER_PORT: "8080"
+  PROXMOX_MCP_SERVER_PORT: "8443"
   PROXMOX_MCP_CREDENTIAL_PROVIDER: hashicorp_vault
+  PROXMOX_MCP_TLS__CERT_FILE: /run/proxmox-mcp/tls/tls.crt
+  PROXMOX_MCP_TLS__KEY_FILE: /run/proxmox-mcp/tls/tls.key
+  PROXMOX_MCP_TLS__GENERATE_SELF_SIGNED: "false"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -43,16 +46,16 @@ spec:
             - secretRef:
                 name: proxmox-mcp-secrets
           ports:
-            - name: http
-              containerPort: 8080
+            - name: https
+              containerPort: 8443
           readinessProbe:
             tcpSocket:
-              port: http
+              port: https
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             tcpSocket:
-              port: http
+              port: https
             initialDelaySeconds: 15
             periodSeconds: 20
           resources:
@@ -70,9 +73,15 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: tls
+              mountPath: /run/proxmox-mcp/tls
+              readOnly: true
       volumes:
         - name: tmp
           emptyDir: {}
+        - name: tls
+          secret:
+            secretName: proxmox-mcp-tls
 ---
 apiVersion: v1
 kind: Service
@@ -83,9 +92,9 @@ spec:
   selector:
     app: proxmox-mcp
   ports:
-    - name: http
-      port: 8080
-      targetPort: http
+    - name: https
+      port: 8443
+      targetPort: https
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
@@ -133,7 +142,7 @@ spec:
         - namespaceSelector: {}
       ports:
         - protocol: TCP
-          port: 8080
+          port: 8443
   egress:
     - to:
         - namespaceSelector: {}

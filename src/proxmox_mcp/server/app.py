@@ -22,6 +22,7 @@ from proxmox_mcp.schemas.envelope import (
     ToolResponse,
 )
 from proxmox_mcp.security import SecurityPlaneGuard
+from proxmox_mcp.server.tls import resolve_tls_config
 from proxmox_mcp.ssh import (
     InMemorySshRecordingStore,
     SshClient,
@@ -140,5 +141,13 @@ def build_server(
     return app
 
 
-def run() -> None:
-    build_server().run()
+def run(settings: Settings | None = None) -> None:
+    settings = Settings() if settings is None else settings
+    tls_config = resolve_tls_config(settings.tls)
+    build_server(settings).run(
+        transport="http",
+        host=settings.server_host,
+        port=settings.server_port,
+        log_level=settings.log_level,
+        uvicorn_config=tls_config.uvicorn_config,
+    )

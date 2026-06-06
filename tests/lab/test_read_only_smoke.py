@@ -4,6 +4,7 @@ from collections.abc import Iterable
 
 import pytest
 
+from proxmox_mcp.proxmox.client import ProxmoxApiError
 from proxmox_mcp.proxmox.http_client import ProxmoxHttpApiClient
 
 pytestmark = pytest.mark.lab
@@ -68,7 +69,12 @@ async def test_lab_ceph_ha_and_firewall_discovery(
     assert _is_sequence(ha_status)
     assert isinstance(firewall_options, dict)
 
-    ceph_status = await lab_client.get("/cluster/ceph/status")
+    try:
+        ceph_status = await lab_client.get("/cluster/ceph/status")
+    except ProxmoxApiError as exc:
+        if exc.status_code == 500:
+            pytest.skip("Ceph is not installed on this Proxmox lab node")
+        raise
     assert isinstance(ceph_status, dict)
 
 

@@ -8,15 +8,20 @@ from proxmox_mcp.persistence.redis import build_redis_client
 
 
 def test_database_engine_uses_configured_url() -> None:
-    settings = Settings(database_url=SecretStr("postgresql+asyncpg://user:pass@example/app"))
+    settings = Settings(
+        database_url=SecretStr("postgresql+asyncpg://user:pass@example/app?ssl=require")
+    )
 
     engine = build_async_engine(settings)
 
     assert str(engine.url).startswith("postgresql+asyncpg://user:***@example/app")
+    assert engine.url.query["ssl"] == "require"
 
 
 def test_session_factory_is_bound_to_engine() -> None:
-    settings = Settings(database_url=SecretStr("postgresql+asyncpg://user:pass@example/app"))
+    settings = Settings(
+        database_url=SecretStr("postgresql+asyncpg://user:pass@example/app?ssl=require")
+    )
     engine = build_async_engine(settings)
 
     session_factory = build_session_factory(engine)
@@ -25,7 +30,7 @@ def test_session_factory_is_bound_to_engine() -> None:
 
 
 def test_redis_client_uses_configured_url() -> None:
-    settings = Settings(redis_url=SecretStr("redis://redis.example:6379/5"))
+    settings = Settings(redis_url=SecretStr("rediss://redis.example:6379/5"))
 
     client = build_redis_client(settings)
     pool = client.connection_pool

@@ -13,6 +13,6 @@ COPY src /app/src
 RUN pip install --no-cache-dir .
 
 USER proxmox-mcp
-EXPOSE 8080
+EXPOSE 8443
 
 CMD ["proxmox-mcp"]

@@ -16,7 +16,19 @@ def test_lab_config_reports_missing_required_values() -> None:
     assert config.enabled is False
     assert config.skip_reason is not None
     assert "PROXMOX_MCP_LAB_API_ENDPOINT" in config.skip_reason
-    assert "PROXMOX_MCP_LAB_TOKEN_SECRET" in config.skip_reason
+
+
+def test_lab_config_reports_missing_credentials() -> None:
+    config = LabEnvironmentConfig.from_env(
+        {
+            "PROXMOX_MCP_LAB_ENABLED": "true",
+            "PROXMOX_MCP_LAB_API_ENDPOINT": "https://pve.example.test:8006",
+        }
+    )
+
+    assert config.enabled is False
+    assert config.skip_reason is not None
+    assert "token or username/password lab credentials" in config.skip_reason
 
 
 def test_lab_config_builds_read_only_client_settings() -> None:
@@ -42,6 +54,27 @@ def test_lab_config_builds_read_only_client_settings() -> None:
     assert config.storage_id == "local"
     assert config.tls_verify is False
     assert config.allow_insecure_transport is True
+    assert config.skip_reason is None
+
+
+def test_lab_config_builds_username_password_client_settings() -> None:
+    config = LabEnvironmentConfig.from_env(
+        {
+            "PROXMOX_MCP_LAB_ENABLED": "true",
+            "PROXMOX_MCP_LAB_API_ENDPOINT": "https://pve.example.test:8006",
+            "PROXMOX_MCP_LAB_USERNAME": "root@pam",
+            "PROXMOX_MCP_LAB_PASSWORD": "secret-value",
+            "PROXMOX_MCP_LAB_NODE": "pve-a",
+            "PROXMOX_MCP_LAB_STORAGE": "local",
+        }
+    )
+
+    assert config.enabled is True
+    assert config.username == "root@pam"
+    assert config.password is not None
+    assert config.password.get_secret_value() == "secret-value"
+    assert config.token_id is None
+    assert config.token_secret is None
     assert config.skip_reason is None
 
 

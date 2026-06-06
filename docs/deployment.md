@@ -26,14 +26,17 @@ Configuration is environment-driven:
 ```yaml
 server:
   bind_host: 0.0.0.0
-  port: 8080
+  port: 8443
   environment: production
+  tls:
+    cert_file: /run/proxmox-mcp/tls/tls.crt
+    key_file: /run/proxmox-mcp/tls/tls.key
 
 database:
-  url: postgresql+asyncpg://proxmox_mcp:REDACTED@postgres/proxmox_mcp
+  url: postgresql+asyncpg://proxmox_mcp:REDACTED@postgres/proxmox_mcp?ssl=require
 
 redis:
-  url: redis://redis:6379/0
+  url: rediss://redis:6379/0
 
 security:
   auth_mode: oidc
@@ -48,6 +51,14 @@ secrets:
 ```
 
 No secrets should be committed to the repository. Production deployments should load sensitive values from a secret manager or orchestrator secret mechanism.
+
+The MCP server is HTTPS-only. Production deployments must mount a certificate and
+private key into the application container and set `PROXMOX_MCP_TLS__CERT_FILE`
+and `PROXMOX_MCP_TLS__KEY_FILE`. PostgreSQL URLs must require TLS with
+`ssl=require` or an equivalent verification mode, and Redis URLs must use
+`rediss://`. Disposable lab and development deployments may set
+`PROXMOX_MCP_TLS__GENERATE_SELF_SIGNED=true`, but clients must explicitly trust
+the generated certificate.
 
 ## Docker Deployment
 
@@ -67,9 +78,15 @@ services:
   proxmox-mcp:
     image: ghcr.io/0x696e7175696c696e65/proxmox-mcp:latest
     environment:
-      PROXMOX_MCP_DATABASE_URL: postgresql+asyncpg://proxmox_mcp:REDACTED@postgres/proxmox_mcp
-      PROXMOX_MCP_REDIS_URL: redis://redis:6379/0
+      PROXMOX_MCP_DATABASE_URL: postgresql+asyncpg://proxmox_mcp:REDACTED@postgres/proxmox_mcp?ssl=require
+      PROXMOX_MCP_REDIS_URL: rediss://redis:6379/0
       PROXMOX_MCP_SECRET_PROVIDER: hashicorp_vault
+      PROXMOX_MCP_TLS__CERT_FILE: /run/proxmox-mcp/tls/tls.crt
+      PROXMOX_MCP_TLS__KEY_FILE: /run/proxmox-mcp/tls/tls.key
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./certs/local:/run/proxmox-mcp/tls:ro
     depends_on:
       - postgres
       - redis
@@ -86,6 +103,7 @@ Kubernetes production deployments should include:
 - NetworkPolicy.
 - ConfigMap for non-secret configuration.
 - Secret or external secret reference for bootstrap credentials.
+- TLS Secret mounted at `/run/proxmox-mcp/tls`.
 - ServiceMonitor for Prometheus.
 - OpenTelemetry collector sidecar or daemon integration.
 
@@ -119,7 +137,7 @@ Recommended network controls:
 
 - Restrict MCP server ingress to trusted agent networks or gateways.
 - Restrict egress to Proxmox API endpoints, SSH endpoints, PostgreSQL, Redis, secret backends, and observability sinks.
-- Use TLS for Proxmox API, database, secret backend, and external logs.
+- Use TLS for MCP ingress, Proxmox API, database, secret backend, and external logs.
 - Use known host verification for SSH.
 - Pin or validate Proxmox API certificates in production.
 

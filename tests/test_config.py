@@ -1,7 +1,10 @@
+from collections.abc import Mapping
+from typing import cast
+
 import pytest
 from pydantic import SecretStr
 
-from proxmox_mcp.config import DangerousOperationSettings, Settings
+from proxmox_mcp.config import DangerousOperationSettings, Settings, TlsSettings
 
 REDACTED = "**********"
 
@@ -11,13 +14,18 @@ def test_settings_have_safe_defaults() -> None:
 
     assert settings.environment == "development"
     assert settings.server_host == "127.0.0.1"
-    assert settings.server_port == 8080
+    assert settings.server_port == 8443
+    assert "ssl=require" in settings.database_url.get_secret_value()
+    assert settings.redis_url.get_secret_value().startswith("rediss://")
+    assert settings.tls.generate_self_signed is True
+    assert settings.tls.cert_file is None
+    assert settings.tls.key_file is None
     assert settings.dangerous_operations.require_approval is True
 
 
 def test_secret_values_are_redacted() -> None:
     settings = Settings(
-        database_url=SecretStr("postgresql+asyncpg://user:pass@db/app"),
+        database_url=SecretStr("postgresql+asyncpg://user:pass@db/app?ssl=require"),
         vault_token=SecretStr("vault-token-value"),
     )
 
@@ -27,6 +35,23 @@ def test_secret_values_are_redacted() -> None:
     assert dumped["vault_" + "token"] == REDACTED
     assert "pass" not in str(dumped)
     assert "vault-token-value" not in str(dumped)
+
+
+def test_tls_key_path_is_redacted_from_safe_dump() -> None:
+    settings = Settings(
+        tls=TlsSettings(
+            cert_file="C:/certs/server.crt",
+            key_file=SecretStr("C:/certs/server.key"),
+            generate_self_signed=False,
+        )
+    )
+
+    dumped = settings.safe_dump()
+    tls_dump = cast(Mapping[str, object], dumped["tls"])
+
+    assert tls_dump["cert_file"] == "C:/certs/server.crt"
+    assert tls_dump["key_file"] == REDACTED
+    assert "server.key" not in str(dumped)
 
 
 def test_dangerous_operations_can_be_disabled() -> None:
@@ -70,3 +95,32 @@ def test_credential_provider_can_be_configured_from_environment(
     assert settings.vault_url == "https://vault.example.test"
     assert settings.vault_token is not None
     assert settings.vault_token.get_secret_value() == "vault-token-value"
+
+
+def test_tls_settings_can_be_configured_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PROXMOX_MCP_TLS__CERT_FILE", "C:/certs/tls.crt")
+    monkeypatch.setenv("PROXMOX_MCP_TLS__KEY_FILE", "C:/certs/tls.key")
+    monkeypatch.setenv("PROXMOX_MCP_TLS__GENERATE_SELF_SIGNED", "false")
+    monkeypatch.setenv("PROXMOX_MCP_TLS__COMMON_NAME", "mcp.example.test")
+    monkeypatch.setenv("PROXMOX_MCP_TLS__SUBJECT_ALT_NAMES", '["mcp.example.test","127.0.0.1"]')
+
+    settings = Settings()
+
+    assert settings.tls.cert_file == "C:/certs/tls.crt"
+    assert settings.tls.key_file is not None
+    assert settings.tls.key_file.get_secret_value() == "C:/certs/tls.key"
+    assert settings.tls.generate_self_signed is False
+    assert settings.tls.common_name == "mcp.example.test"
+    assert settings.tls.subject_alt_names == ("mcp.example.test", "127.0.0.1")
+
+
+def test_database_url_requires_tls() -> None:
+    with pytest.raises(ValueError, match="PostgreSQL TLS"):
+        Settings(database_url=SecretStr("postgresql+asyncpg://user:pass@db/app"))
+
+
+def test_redis_url_requires_tls() -> None:
+    with pytest.raises(ValueError, match="Redis TLS"):
+        Settings(redis_url=SecretStr("redis://redis.example:6379/5"))

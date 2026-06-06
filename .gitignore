@@ -4,6 +4,22 @@ __pycache__/
 .ruff_cache/
 .venv/
 venv/
+
+# Local environment and credential files.
 .env
 .env.*
 !.env.example
+.proxmox-mcp-lab.env
+.proxmox-mcp-secrets.*
+lab-secrets/
+secrets.local/
+
+# Local TLS certificates and private key material.
+.certs/
+certs/local/
+certs/generated/
+*.key
+*.pem
+*.p12
+*.pfx
+*.csr
