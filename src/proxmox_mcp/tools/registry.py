@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+from time import perf_counter
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from proxmox_mcp.audit.events import AuditEvent, AuditTarget
+from proxmox_mcp.observability import MetricsSink, MetricStatus, TraceSpan, structured_log
 from proxmox_mcp.schemas.envelope import (
     Actor,
     ApprovalInfo,
@@ -32,6 +34,7 @@ FastMCPRequest = ToolRequest | dict[str, object] | None
 FastMCPTool = Callable[[FastMCPRequest], Awaitable[ToolResponse | ToolErrorResponse]]
 ContextFactory = Callable[[ToolRequest], ToolExecutionContext]
 GuardDecisionValue = Literal["allowed", "denied", "requires_approval"]
+ObservabilityLogSink = Callable[[str], None]
 
 _RISK_SCORES: dict[RiskLevel, int] = {
     "low": 10,
@@ -176,9 +179,17 @@ class ToolExecutionGuard(Protocol):
 
 
 class ToolRegistry:
-    def __init__(self, *, guard: ToolExecutionGuard | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        guard: ToolExecutionGuard | None = None,
+        metrics_sink: MetricsSink | None = None,
+        log_sink: ObservabilityLogSink | None = None,
+    ) -> None:
         self._definitions: dict[str, ToolDefinition] = {}
         self._guard = guard
+        self._metrics_sink = metrics_sink
+        self._log_sink = log_sink
 
     def register(self, definition: ToolDefinition) -> ToolDefinition:
         if definition.name in self._definitions:
@@ -214,6 +225,16 @@ class ToolRegistry:
         context: ToolExecutionContext,
     ) -> ToolResponse | ToolErrorResponse:
         definition = self.get(name)
+        started_at = perf_counter()
+        trace_span = TraceSpan.start(
+            "tool.execute",
+            tool_name=definition.name,
+            connector=definition.connector,
+            correlation_id=request.correlation_id,
+        )
+        if self._metrics_sink is not None or self._log_sink is not None:
+            context.audit_metadata.setdefault("trace_id", trace_span.trace_id)
+            context.audit_metadata.setdefault("span_id", trace_span.span_id)
         await self._write_audit_event(
             definition,
             request,
@@ -223,10 +244,28 @@ class ToolRegistry:
         )
         options_error = await self._validate_request_options(definition, request, context)
         if options_error is not None:
+            self._record_observability(
+                definition,
+                request,
+                trace_span,
+                "error",
+                started_at,
+                options_error.audit.event_id,
+                error_code=options_error.error.code,
+            )
             return options_error
 
         parameter_error = await self._validate_parameters(definition, request, context)
         if parameter_error is not None:
+            self._record_observability(
+                definition,
+                request,
+                trace_span,
+                "error",
+                started_at,
+                parameter_error.audit.event_id,
+                error_code=parameter_error.error.code,
+            )
             return parameter_error
 
         guard_decision = await self._evaluate_guard(definition, request, context)
@@ -238,6 +277,15 @@ class ToolRegistry:
                 context,
                 "tool.execution.finished",
                 "denied",
+                error_code=error_code,
+            )
+            self._record_observability(
+                definition,
+                request,
+                trace_span,
+                "denied",
+                started_at,
+                denied_event.event_id,
                 error_code=error_code,
             )
             return ToolErrorResponse(
@@ -264,6 +312,15 @@ class ToolRegistry:
                 "error",
                 error_code=exc.error_code,
             )
+            self._record_observability(
+                definition,
+                request,
+                trace_span,
+                "error",
+                started_at,
+                error_event.event_id,
+                error_code=exc.error_code,
+            )
             return ToolErrorResponse(
                 request_id=request.request_id,
                 correlation_id=request.correlation_id,
@@ -282,6 +339,15 @@ class ToolRegistry:
                 context,
                 "tool.execution.finished",
                 "error",
+                error_code="INTERNAL_ERROR",
+            )
+            self._record_observability(
+                definition,
+                request,
+                trace_span,
+                "error",
+                started_at,
+                error_event.event_id,
                 error_code="INTERNAL_ERROR",
             )
             return ToolErrorResponse(
@@ -303,6 +369,15 @@ class ToolRegistry:
                 "error",
                 error_code="INTERNAL_ERROR",
             )
+            self._record_observability(
+                definition,
+                request,
+                trace_span,
+                "error",
+                started_at,
+                error_event.event_id,
+                error_code="INTERNAL_ERROR",
+            )
             return ToolErrorResponse(
                 request_id=request.request_id,
                 correlation_id=request.correlation_id,
@@ -320,6 +395,14 @@ class ToolRegistry:
             context,
             "tool.execution.finished",
             "success",
+        )
+        self._record_observability(
+            definition,
+            request,
+            trace_span,
+            "success",
+            started_at,
+            success_event.event_id,
         )
         impact = guard_decision.impact or self._default_impact(request)
         return ToolResponse(
@@ -407,6 +490,44 @@ class ToolRegistry:
             actor=Actor(user_id="system", agent_id="system"),
             target=Target(resource_type="internal", resource_id="validation"),
         )
+
+    def _record_observability(
+        self,
+        definition: ToolDefinition,
+        request: ToolRequest,
+        trace_span: TraceSpan,
+        status: MetricStatus,
+        started_at: float,
+        audit_event_id: str,
+        *,
+        error_code: str | None = None,
+    ) -> None:
+        duration_ms = max(0, int((perf_counter() - started_at) * 1000))
+        if self._metrics_sink is not None:
+            self._metrics_sink.record_tool_invocation(
+                tool_name=definition.name,
+                connector=definition.connector,
+                status=status,
+                duration_ms=duration_ms,
+            )
+
+        if self._log_sink is not None:
+            self._log_sink(
+                structured_log(
+                    event="tool.execution.finished",
+                    level="error" if status == "error" else "info",
+                    tool_name=definition.name,
+                    connector=definition.connector,
+                    status=status,
+                    duration_ms=duration_ms,
+                    request_id=request.request_id,
+                    correlation_id=request.correlation_id,
+                    audit_event_id=audit_event_id,
+                    trace_id=trace_span.trace_id,
+                    span_id=trace_span.span_id,
+                    error_code=error_code,
+                )
+            )
 
     async def _write_audit_event(
         self,

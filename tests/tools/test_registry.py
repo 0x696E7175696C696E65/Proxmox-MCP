@@ -1,3 +1,4 @@
+import json
 from collections.abc import Awaitable, Callable
 from typing import cast
 
@@ -6,6 +7,7 @@ from pydantic import BaseModel, ConfigDict
 
 from proxmox_mcp.audit.writer import InMemoryAuditWriter
 from proxmox_mcp.config import Settings
+from proxmox_mcp.observability import InMemoryMetricsRegistry
 from proxmox_mcp.schemas.envelope import (
     Actor,
     RequestOptions,
@@ -150,6 +152,34 @@ async def test_registry_executes_async_handlers_and_wraps_success_envelope() -> 
     assert writer.events[0].target.resource_type == "vm"
     assert [event.tenant_id for event in writer.events] == ["tenant_1", "tenant_1"]
     assert writer.events[0].metadata["tenant_id"] == "tenant_1"
+
+
+async def test_registry_records_metrics_logs_and_trace_correlation() -> None:
+    metrics = InMemoryMetricsRegistry()
+    logs: list[str] = []
+    registry = ToolRegistry(metrics_sink=metrics, log_sink=logs.append)
+    registry.register(make_definition())
+    request = make_request()
+    writer = InMemoryAuditWriter()
+
+    response = await registry.execute("example.echo", request, make_context(request, writer))
+
+    assert isinstance(response, ToolResponse)
+    assert len(metrics.invocations) == 1
+    invocation = metrics.invocations[0]
+    assert invocation.tool_name == "example.echo"
+    assert invocation.connector == "internal"
+    assert invocation.status == "success"
+
+    assert len(logs) == 1
+    log_payload = cast(dict[str, object], json.loads(logs[0]))
+    assert log_payload["tool_name"] == "example.echo"
+    assert log_payload["status"] == "success"
+    assert log_payload["correlation_id"] == request.correlation_id
+    assert log_payload["audit_event_id"] == response.audit.event_id
+
+    assert writer.events[-1].metadata["trace_id"] == log_payload["trace_id"]
+    assert writer.events[-1].metadata["span_id"] == log_payload["span_id"]
 
 
 async def test_registry_wraps_handler_errors_in_error_envelope() -> None:

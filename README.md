@@ -20,7 +20,7 @@ This project is not a thin Proxmox wrapper. It is an enterprise-grade infrastruc
 
 ## Current Status
 
-The planned implementation backlog for the preview milestone is complete and merged to `main`.
+The planned implementation backlog for the preview milestone is complete. The lab-validated rollout adds a skip-safe Proxmox lab harness, explicit domain promotion rules, live domain-pack coverage, and runtime observability wiring.
 
 Implemented:
 
@@ -29,10 +29,10 @@ Implemented:
 - Authentication models, service-token authentication, RBAC evaluation, policy decisions, risk scoring, and approval validation.
 - Durable audit persistence with SQLAlchemy models and Alembic migration.
 - Secret-provider abstraction with development and Vault-style providers.
-- Proxmox cluster credential resolution and in-memory Proxmox API test client.
-- Read-only Proxmox tools, safe mutations, dangerous operations, domain-completion tools, and SSH tools.
+- Proxmox cluster credential resolution, in-memory Proxmox API test client, and read-only Proxmox lab HTTP adapter.
+- Read-only Proxmox tools, safe mutations, dangerous operations, promoted domain-pack tools, and SSH tools.
 - Controlled SSH execution, command policy, session tracking, SFTP/SCP operations, and output redaction.
-- Observability primitives for Prometheus-style metrics, structured JSON logs, trace context, and SIEM/Loki payloads.
+- Runtime observability wiring for Prometheus-style metrics, structured JSON logs, trace context, audit correlation, and SIEM/Loki payloads.
 - Reliability primitives for retries and circuit breakers.
 - Docker, Docker Compose, Kubernetes, Grafana dashboard, hardening workflow, and release hardening runbook.
 - Contract tests that verify the registered tool catalog against [`docs/tool-specification.md`](docs/tool-specification.md).
@@ -43,9 +43,9 @@ Validation at merge time:
 - `python -m ruff check .`
 - `python -m pyright`
 - `python -m pytest`
-- Current suite: `159 passed`
+- Current suite: `202 passed, 5 skipped`
 
-Important caveat: the codebase is preview-ready for development and lab validation, not yet certified for unattended production control of real Proxmox clusters. Some documented domain tools are registered with correct metadata and schemas but intentionally return `NOT_IMPLEMENTED` for live execution until a real operation-specific implementation is added. This prevents placeholder commands from reporting false success.
+Important caveat: the codebase is preview-ready for development and lab validation, not yet certified for unattended production control of real Proxmox clusters. Ambiguous or backend-specific operations, such as generic storage expansion and benchmark execution, remain guarded with `NOT_IMPLEMENTED` rather than returning placeholder success.
 
 ## Architecture
 
@@ -148,10 +148,17 @@ The MCP catalog in [`docs/tool-specification.md`](docs/tool-specification.md) is
 Tool implementation tiers:
 
 - **Implemented read paths:** inventory, configuration, status, metrics, logs, Ceph, HA, users, permissions, storage, networking, firewall, and backup discovery tools backed by Proxmox API paths.
+- **Implemented domain pack paths:** VM/LXC lifecycle and restore, storage/ZFS/LVM/disk, network/firewall, backup/retention, Ceph/HA, SSH console/diagnostics, and support bundle operations with pack-specific contract tests.
 - **Implemented safe mutation paths:** VM/LXC lifecycle operations, snapshots, backups, and non-destructive config updates with dry-run behavior and impact metadata.
 - **Implemented dangerous paths:** destructive VM/LXC/storage/Ceph/user/networking operations with critical/high risk metadata, approval defaults, target revalidation where applicable, and audit metadata.
 - **Implemented SSH paths:** command execution, policy denial, session open/close, interactive execution contract, SFTP/SCP file flows, recording references, and redaction.
-- **Domain-completion placeholders:** tools whose safe live behavior is not yet backed by a concrete Proxmox API or SSH operation fail visibly with `NOT_IMPLEMENTED` instead of returning placeholder success.
+- **Guarded placeholders:** tools whose safe live behavior is backend-specific or not yet backed by a concrete operation fail visibly with `NOT_IMPLEMENTED` instead of returning placeholder success.
+
+Operational references:
+
+- [`docs/testing-strategy.md`](docs/testing-strategy.md) describes the skip-safe Proxmox lab harness.
+- [`docs/tool-promotion-framework.md`](docs/tool-promotion-framework.md) defines promotion criteria for guarded tools.
+- [`docs/domain-pack-status.md`](docs/domain-pack-status.md) records domain-pack support, validation, and safety notes.
 
 ## Runtime Modules
 

@@ -16,6 +16,9 @@ from proxmox_mcp.proxmox.dangerous_tools import (
 )
 from proxmox_mcp.proxmox.domain_tools import (
     DOMAIN_COMPLETION_TOOL_SPECS,
+    DomainToolPromotionRecord,
+    domain_tool_pack_records,
+    domain_tool_promotion_records,
     register_domain_completion_tools,
 )
 from proxmox_mcp.proxmox.mutation_tools import (
@@ -28,6 +31,7 @@ __all__ = [
     "ClusterCredentialResolver",
     "DANGEROUS_TOOL_SPECS",
     "DOMAIN_COMPLETION_TOOL_SPECS",
+    "DomainToolPromotionRecord",
     "InMemoryProxmoxApiClient",
     "ProxmoxApiCredential",
     "ProxmoxApiClient",
@@ -41,4 +45,6 @@ __all__ = [
     "register_dangerous_tools",
     "register_domain_completion_tools",
     "register_safe_mutation_tools",
+    "domain_tool_pack_records",
+    "domain_tool_promotion_records",
 ]

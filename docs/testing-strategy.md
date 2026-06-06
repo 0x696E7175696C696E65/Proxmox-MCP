@@ -56,6 +56,25 @@ Lab tests run against a dedicated Proxmox VE environment:
 
 Lab tests must never target production clusters.
 
+Phase 1 lab tests are read-only and skip unless explicitly enabled. Configure:
+
+- `PROXMOX_MCP_LAB_ENABLED=true`
+- `PROXMOX_MCP_LAB_API_ENDPOINT=https://pve.example.test:8006`
+- `PROXMOX_MCP_LAB_TOKEN_ID=user@realm!token`
+- `PROXMOX_MCP_LAB_TOKEN_SECRET=...`
+- `PROXMOX_MCP_LAB_TLS_VERIFY=true` or `false` for disposable labs with self-signed TLS
+- `PROXMOX_MCP_LAB_ALLOW_INSECURE_TRANSPORT=true` if TLS verification is disabled in a disposable lab
+- `PROXMOX_MCP_LAB_NODE=pve-node-1` for node-scoped discovery
+- `PROXMOX_MCP_LAB_STORAGE=local` for storage-content discovery
+
+Run read-only lab smoke tests with:
+
+```shell
+python -m pytest tests/lab -m lab
+```
+
+If the enable flag or required credentials are missing, the suite reports skipped tests rather than failures. Phase 1 smoke coverage exercises cluster status, nodes, VM/LXC inventory, node storage, storage content, access users/roles/ACLs, HA status, cluster firewall options, and Ceph status. Later domain packs may add mutation lab tests, but those must require separate opt-in flags for mutations and destructive actions.
+
 ### SSH Sandbox Tests
 
 SSH tests run against disposable Linux containers or lab nodes:

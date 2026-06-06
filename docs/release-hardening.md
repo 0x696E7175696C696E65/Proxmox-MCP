@@ -11,6 +11,15 @@ Before tagging a preview release, run:
 5. Dependency vulnerability audit and SBOM generation.
 6. Lab-only SSH, chaos, and performance gates when Proxmox lab credentials are configured.
 
+Current lab-rollout evidence:
+
+- `python -m ruff format .`: clean
+- `python -m ruff check .`: clean
+- `python -m pyright`: `0 errors, 0 warnings`
+- `python -m pytest`: `202 passed, 5 skipped`
+- Lab skips were expected because `PROXMOX_MCP_LAB_ENABLED=true` was not configured in the local environment.
+- Domain-pack contract tests cover VM/LXC, storage/ZFS/LVM/disk, network/firewall, backup, Ceph/HA, SSH/console, and observability runtime wiring.
+
 ## Chaos Scenarios
 
 Run these only against an isolated lab cluster:
@@ -37,3 +46,4 @@ Security-critical dependencies must fail closed. Optional observability exporter
 - SSH interactive sessions should remain sticky to a single replica until a session broker is introduced.
 - Lab chaos gates require operator-provided Proxmox credentials and are not enabled by default.
 - SIEM exporters format payloads locally; production delivery retries should be backed by a durable queue.
+- Backend-specific operations without universal safe semantics remain guarded with `NOT_IMPLEMENTED` until lab evidence exists.

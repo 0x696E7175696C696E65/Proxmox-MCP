@@ -42,6 +42,9 @@ packages = ["src/proxmox_mcp"]
 addopts = "-ra"
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+  "lab: tests that require an explicitly configured Proxmox lab environment",
+]
 
 [tool.ruff]
 line-length = 100

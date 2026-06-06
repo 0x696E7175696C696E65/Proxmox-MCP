@@ -60,6 +60,8 @@ jobs:
           python-version: "3.13"
       - name: Install package
         run: python -m pip install --upgrade pip '.[dev]'
+      - name: Read-only Proxmox lab smoke tests
+        run: python -m pytest tests/lab -m lab
       - name: SSH sandbox tests
         run: python -m pytest tests/ssh
       - name: Contract and mutation safety tests

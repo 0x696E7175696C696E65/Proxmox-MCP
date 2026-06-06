@@ -102,7 +102,7 @@ Mutating tools must support idempotency where Proxmox behavior allows it. Danger
 | `rollback_lxc_snapshot` | `lxc.snapshot.rollback` | high | true | proxmox_api |
 | `restore_lxc` | `lxc.backup.restore` | high | true | proxmox_api |
 | `update_lxc_resources` | `lxc.resources.write` | medium | true | proxmox_api |
-| `enter_lxc_console` | `lxc.console.open` | high | false | hybrid |
+| `enter_lxc_console` | `lxc.console.open` | high | true | hybrid |
 
 ## Storage Tools
 
@@ -197,7 +197,7 @@ Mutating tools must support idempotency where Proxmox behavior allows it. Danger
 | `list_ceph_osds` | `ceph.osd.read` | low | false | proxmox_api |
 | `create_ceph_osd` | `ceph.osd.create` | high | true | proxmox_api |
 | `remove_ceph_osd` | `ceph.osd.remove` | critical | true | proxmox_api |
-| `reweight_ceph_osd` | `ceph.osd.reweight` | high | true | proxmox_api |
+| `reweight_ceph_osd` | `ceph.osd.reweight` | high | true | hybrid |
 | `list_ceph_mons` | `ceph.mon.read` | low | false | proxmox_api |
 | `create_ceph_mon` | `ceph.mon.create` | high | true | proxmox_api |
 | `delete_ceph_mon` | `ceph.mon.delete` | critical | true | proxmox_api |

@@ -4,7 +4,11 @@ from typing import cast
 
 from proxmox_mcp.audit.writer import InMemoryAuditWriter
 from proxmox_mcp.config import Settings
-from proxmox_mcp.proxmox import InMemoryProxmoxApiClient, register_domain_completion_tools
+from proxmox_mcp.proxmox import (
+    InMemoryProxmoxApiClient,
+    domain_tool_promotion_records,
+    register_domain_completion_tools,
+)
 from proxmox_mcp.schemas.envelope import (
     Actor,
     RequestOptions,
@@ -100,6 +104,13 @@ async def test_domain_tool_dry_run_returns_endpoint_and_payload_without_calling_
     result = cast(dict[str, object], response.result)
     assert result["endpoint"] == "/nodes/pve-1/qemu"
     assert result["payload"] == {"name": "vm-100"}
+    assert result["risk"] == "high"
+    assert result["live_supported"] is True
+    assert result["promotion_status"] == "live_supported"
+    assert isinstance(result["impact"], dict)
+    assert (
+        result["rollback_guidance"] == "Verify target state and rollback path before live execution"
+    )
 
 
 async def test_domain_tool_live_run_calls_proxmox_api() -> None:
@@ -148,7 +159,7 @@ async def test_live_placeholder_mutation_returns_not_implemented() -> None:
     client = InMemorySshClient()
 
     response = await registry.execute(
-        "create_zfs_pool",
+        "expand_storage",
         request,
         make_context(request, ssh_client=client),
     )
@@ -158,9 +169,27 @@ async def test_live_placeholder_mutation_returns_not_implemented() -> None:
     assert client.executions == []
 
 
-async def test_enter_lxc_console_returns_not_implemented_until_console_is_backed() -> None:
+async def test_enter_lxc_console_dry_run_previews_console_command() -> None:
     registry = make_registry()
-    request = make_request(dry_run=False)
+    request = make_request()
+    client = InMemorySshClient()
+
+    response = await registry.execute(
+        "enter_lxc_console",
+        request,
+        make_context(request, ssh_client=client),
+    )
+
+    assert isinstance(response, ToolResponse)
+    result = cast(dict[str, object], response.result)
+    assert result["command"] == "pct enter 100"
+    assert result["promotion_status"] == "guarded_not_implemented"
+    assert client.executions == []
+
+
+async def test_target_backed_parameters_must_match_authorized_target() -> None:
+    registry = make_registry()
+    request = make_request(parameters={"vmid": 200}, dry_run=False)
     client = InMemorySshClient()
 
     response = await registry.execute(
@@ -170,8 +199,25 @@ async def test_enter_lxc_console_returns_not_implemented_until_console_is_backed
     )
 
     assert isinstance(response, ToolErrorResponse)
-    assert response.error.code == "NOT_IMPLEMENTED"
+    assert response.error.code == "INVALID_REQUEST"
     assert client.executions == []
+
+
+async def test_target_metadata_must_match_resource_id() -> None:
+    registry = make_registry()
+    request = make_request(dry_run=False)
+    request.target.vmid = 200
+    client = InMemoryProxmoxApiClient()
+
+    response = await registry.execute(
+        "reset_vm",
+        request,
+        make_context(request, proxmox_client=client),
+    )
+
+    assert isinstance(response, ToolErrorResponse)
+    assert response.error.code == "INVALID_REQUEST"
+    assert client.requests == []
 
 
 async def test_unsupported_dry_run_does_not_advertise_placeholder_command() -> None:
@@ -179,7 +225,7 @@ async def test_unsupported_dry_run_does_not_advertise_placeholder_command() -> N
     request = make_request()
 
     response = await registry.execute(
-        "create_zfs_pool",
+        "expand_storage",
         request,
         make_context(request),
     )
@@ -250,6 +296,33 @@ def test_domain_tool_schema_uses_concrete_union_for_vmid() -> None:
     variants = cast(list[dict[str, object]], vmid_schema["anyOf"])
     assert {"type": "integer"} in variants
     assert {"type": "string"} in variants
+
+
+def test_domain_promotion_records_define_replacement_criteria() -> None:
+    records = {record.name: record for record in domain_tool_promotion_records()}
+
+    assert set(records) >= {"create_vm", "create_zfs_pool", "expand_storage", "get_audit_events"}
+    create_vm = records["create_vm"]
+    assert create_vm.endpoint_template == "/nodes/{node}/qemu"
+    assert create_vm.method == "POST"
+    assert create_vm.path_fields == ("node",)
+    assert create_vm.payload_field == "payload"
+    assert create_vm.live_supported is True
+    assert create_vm.lab_validation_required is True
+
+    create_zfs_pool = records["create_zfs_pool"]
+    assert create_zfs_pool.live_supported is True
+    assert create_zfs_pool.promotion_status == "live_supported"
+    assert create_zfs_pool.command_template == "zpool create {pool} {device}"
+
+    expand_storage = records["expand_storage"]
+    assert expand_storage.live_supported is False
+    assert expand_storage.promotion_status == "guarded_not_implemented"
+    assert "NOT_IMPLEMENTED" in expand_storage.failure_semantics
+
+    get_audit_events = records["get_audit_events"]
+    assert get_audit_events.promotion_status == "live_supported"
+    assert get_audit_events.lab_validation_required is False
 
 
 async def test_get_audit_events_requires_queryable_repository() -> None:

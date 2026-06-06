@@ -21,6 +21,7 @@ _DEFAULT_ALLOWED_EXECUTABLES = frozenset(
         "journalctl",
         "lsblk",
         "pct",
+        "pveversion",
         "pvecm",
         "pvesh",
         "qm",
