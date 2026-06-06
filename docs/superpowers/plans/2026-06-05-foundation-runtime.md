@@ -1,5 +1,7 @@
 # Foundation Runtime Implementation Plan
 
+> **Status:** Completed and superseded by the current preview-ready implementation. This document is retained as historical implementation context only; do not treat the unchecked task body below as the active roadmap.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the first executable Python/FastMCP foundation for Enterprise Proxmox MCP with typed configuration, audit primitives, persistence wiring, health checks, and a no-op audited MCP tool.

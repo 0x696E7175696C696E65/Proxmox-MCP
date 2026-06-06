@@ -20,6 +20,9 @@ target_metadata = Base.metadata
 
 
 def _database_url() -> str:
+    configured_url = config.get_main_option("sqlalchemy.url")
+    if configured_url:
+        return configured_url
     return Settings().database_url.get_secret_value()
 
 

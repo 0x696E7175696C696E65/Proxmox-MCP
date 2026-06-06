@@ -114,6 +114,13 @@ Safety notes:
 
 Status: implemented in `ToolRegistry`. Every terminal tool execution outcome can now record metrics, emit structured JSON logs, and attach trace IDs to audit metadata when a metrics sink or log sink is configured.
 
+Internal observability tool status:
+
+- `get_audit_events`: live-supported when a queryable audit repository is configured; otherwise fails closed with `NOT_IMPLEMENTED`.
+- `get_prometheus_metrics`: live-supported when the in-process metrics registry is configured and also exposed through `/metrics`.
+- `get_recent_alerts`: remains `external_source_required` until an alert backend is configured.
+- `get_resource_trends`: remains `external_source_required` until a durable metrics or time-series backend is configured.
+
 Validation:
 
 - Unit tests: `python -m pytest tests/tools/test_registry.py tests/observability/test_metrics.py`
@@ -129,3 +136,12 @@ Correlation fields:
 - `tool_name`
 - `connector`
 - `status`
+
+## Remaining Guarded Promotion Order
+
+1. Promote queryable internal observability sources that can be validated without touching Proxmox state.
+2. Promote `verify_backup` only after the exact PVE or PBS verification contract and lab evidence exist.
+3. Promote `benchmark_storage` only with bounded workload, timeout, cleanup, and result schema guarantees.
+4. Promote `enter_lxc_console` only after it uses the SSH open/record/close session contract instead of one-shot command semantics.
+5. Promote `expand_storage` backend-by-backend after each storage type has implementation and lab proof.
+6. Promote `apply_node_updates` last because node update, reboot, rollback, and task-polling semantics have the highest operational blast radius.

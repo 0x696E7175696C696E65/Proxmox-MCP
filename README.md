@@ -16,7 +16,7 @@ This project is not a thin Proxmox wrapper. It is an enterprise-grade infrastruc
 - Controlled SSH operations for diagnostics, file transfer, interactive sessions, and shell workflows that are not fully covered by the Proxmox API.
 - Configurable dangerous-operation support with dry runs, risk scoring, impact analysis, approvals, target revalidation, and audit evidence.
 - Enterprise observability through structured logs, audit events, Prometheus metrics, OpenTelemetry traces, and SIEM-ready event streams.
-- Secret-provider integration for Hashicorp Vault, Bitwarden Secrets Manager, 1Password Connect, AWS Secrets Manager, and Azure Key Vault.
+- Secret-provider integration through development and Vault-style providers today, with Bitwarden Secrets Manager, 1Password Connect, AWS Secrets Manager, and Azure Key Vault tracked as planned enterprise integrations.
 
 ## Current Status
 
@@ -50,7 +50,7 @@ Validation at merge time:
 - MCP communication audit: local runtime test negotiated `TLSv1.3` with `TLS_AES_256_GCM_SHA384`, FastMCP client access succeeded over HTTPS, and plaintext HTTP to the MCP port returned no response bytes.
 - Network transport policy: MCP ingress is HTTPS-only, Proxmox API endpoints require `https://`, PostgreSQL must request TLS, Redis must use `rediss://`, and SSH remains encrypted by protocol.
 
-Important caveat: the codebase is preview-ready for development and lab validation, not yet certified for unattended production control of real Proxmox clusters. Ambiguous or backend-specific operations, such as generic storage expansion and benchmark execution, remain guarded with `NOT_IMPLEMENTED` rather than returning placeholder success.
+Important caveat: the codebase is preview-ready for development and lab validation, not yet certified for unattended production control of real Proxmox clusters. Ambiguous or backend-specific operations, such as generic storage expansion, benchmark execution, backup verification, and node update orchestration, remain guarded with `NOT_IMPLEMENTED` or `external_source_required` until they have exact contracts, lab evidence, and release gates. Multi-replica production claims are also constrained until approvals, idempotency, SSH sessions, and recording storage are proven with shared state.
 
 ## Architecture
 

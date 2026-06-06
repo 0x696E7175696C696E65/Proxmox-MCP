@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Awaitable, Sequence
 from datetime import UTC, datetime
+from inspect import isawaitable
 from typing import TYPE_CHECKING, Protocol
 
 from proxmox_mcp.approvals import ApprovalValidationResult
@@ -36,7 +37,7 @@ class ApprovalConsumer(Protocol):
         input_payload: object,
         risk_level: RiskLevel,
         risk_score: int,
-    ) -> ApprovalValidationResult: ...
+    ) -> ApprovalValidationResult | Awaitable[ApprovalValidationResult]: ...
 
 
 class SecurityPlaneGuard:
@@ -170,6 +171,8 @@ class SecurityPlaneGuard:
             risk_level=risk.level,
             risk_score=risk.score,
         )
+        if isawaitable(approval):
+            approval = await approval
         if not approval.valid:
             return ToolGuardDecision.denied(
                 error_code=approval.error_code or "APPROVAL_SCOPE_MISMATCH",

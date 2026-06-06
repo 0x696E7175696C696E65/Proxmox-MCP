@@ -4,6 +4,7 @@ from typing import cast
 
 from proxmox_mcp.audit.writer import InMemoryAuditWriter
 from proxmox_mcp.config import Settings
+from proxmox_mcp.observability import InMemoryMetricsRegistry
 from proxmox_mcp.proxmox import (
     InMemoryProxmoxApiClient,
     domain_tool_promotion_records,
@@ -25,6 +26,21 @@ from proxmox_mcp.tools.registry import ToolDefinition, ToolGuardDecision, ToolRe
 class WriteOnlyAuditWriter:
     async def write(self, event: object) -> None:
         _ = event
+
+
+class FakeAuditEventRepository:
+    def __init__(self, events: list[dict[str, object]]) -> None:
+        self.events = events
+        self.calls: list[dict[str, object]] = []
+
+    async def list_events(
+        self,
+        *,
+        limit: int = 100,
+        tenant_id: str | None = None,
+    ) -> list[dict[str, object]]:
+        self.calls.append({"limit": limit, "tenant_id": tenant_id})
+        return self.events[:limit]
 
 
 class AllowGuard:
@@ -85,6 +101,21 @@ def make_write_only_audit_context(request: ToolRequest) -> ToolExecutionContext:
         request=request,
         settings=Settings(environment="test"),
         audit_writer=WriteOnlyAuditWriter(),
+    )
+
+
+def make_internal_context(
+    request: ToolRequest,
+    *,
+    audit_repository: FakeAuditEventRepository | None = None,
+    metrics_registry: InMemoryMetricsRegistry | None = None,
+) -> ToolExecutionContext:
+    return ToolExecutionContext(
+        request=request,
+        settings=Settings(environment="test"),
+        audit_writer=InMemoryAuditWriter(),
+        audit_repository=audit_repository,
+        metrics_registry=metrics_registry,
     )
 
 
@@ -324,6 +355,30 @@ def test_domain_promotion_records_define_replacement_criteria() -> None:
     assert get_audit_events.promotion_status == "live_supported"
     assert get_audit_events.lab_validation_required is False
 
+    get_prometheus_metrics = records["get_prometheus_metrics"]
+    assert get_prometheus_metrics.promotion_status == "live_supported"
+    assert get_prometheus_metrics.lab_validation_required is False
+
+    get_recent_alerts = records["get_recent_alerts"]
+    assert get_recent_alerts.promotion_status == "external_source_required"
+    assert get_recent_alerts.lab_validation_required is False
+
+
+def test_high_blast_radius_tools_remain_guarded_until_contracts_exist() -> None:
+    records = {record.name: record for record in domain_tool_promotion_records()}
+
+    for tool_name in (
+        "verify_backup",
+        "benchmark_storage",
+        "enter_lxc_console",
+        "expand_storage",
+        "apply_node_updates",
+    ):
+        record = records[tool_name]
+        assert record.live_supported is False
+        assert record.promotion_status == "guarded_not_implemented"
+        assert "NOT_IMPLEMENTED" in record.failure_semantics
+
 
 async def test_get_audit_events_requires_queryable_repository() -> None:
     registry = make_registry()
@@ -337,3 +392,66 @@ async def test_get_audit_events_requires_queryable_repository() -> None:
 
     assert isinstance(response, ToolErrorResponse)
     assert response.error.code == "NOT_IMPLEMENTED"
+
+
+async def test_get_audit_events_uses_queryable_repository() -> None:
+    registry = make_registry()
+    request = make_request(
+        parameters={"payload": {"limit": 1}},
+        dry_run=False,
+    )
+    repository = FakeAuditEventRepository(
+        [
+            {"event_id": "evt_1", "tenant_id": "tenant_1"},
+            {"event_id": "evt_2", "tenant_id": "tenant_1"},
+        ]
+    )
+
+    response = await registry.execute(
+        "get_audit_events",
+        request,
+        make_internal_context(request, audit_repository=repository),
+    )
+
+    assert isinstance(response, ToolResponse)
+    result = cast(dict[str, object], response.result)
+    assert result["result"] == [{"event_id": "evt_1", "tenant_id": "tenant_1"}]
+    assert repository.calls == [{"limit": 1, "tenant_id": "tenant_1"}]
+
+
+async def test_get_prometheus_metrics_uses_configured_metrics_registry() -> None:
+    registry = make_registry()
+    request = make_request(dry_run=False)
+    metrics = InMemoryMetricsRegistry()
+    metrics.record_tool_invocation(
+        tool_name="create_vm",
+        connector="proxmox_api",
+        status="success",
+        duration_ms=42,
+    )
+
+    response = await registry.execute(
+        "get_prometheus_metrics",
+        request,
+        make_internal_context(request, metrics_registry=metrics),
+    )
+
+    assert isinstance(response, ToolResponse)
+    result = cast(dict[str, object], response.result)
+    internal_result = cast(dict[str, object], result["result"])
+    assert internal_result["content_type"] == "text/plain; version=0.0.4"
+    assert "proxmox_mcp_tool_invocations_total" in str(internal_result["metrics"])
+
+
+async def test_external_observability_tools_require_explicit_sources() -> None:
+    registry = make_registry()
+    request = make_request(dry_run=False)
+
+    response = await registry.execute(
+        "get_recent_alerts",
+        request,
+        make_internal_context(request),
+    )
+
+    assert isinstance(response, ToolErrorResponse)
+    assert response.error.code == "EXTERNAL_SOURCE_REQUIRED"

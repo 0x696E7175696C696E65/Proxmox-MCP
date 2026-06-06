@@ -6,9 +6,14 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from threading import Lock
-from typing import Literal
+from typing import Any, Literal, cast
+
+from sqlalchemy import select, update
+from sqlalchemy.engine import CursorResult
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from proxmox_mcp.auth import ActorIdentity
+from proxmox_mcp.persistence.models import ApprovalRecord
 from proxmox_mcp.schemas.envelope import ErrorCode, RiskLevel, Target
 
 ApprovalStatus = Literal["pending", "approved", "rejected", "expired"]
@@ -91,6 +96,94 @@ class InMemoryApprovalStore:
             return result
 
 
+class DatabaseApprovalStore:
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self._session_factory = session_factory
+
+    async def add(self, approval: StoredApproval) -> None:
+        record = ApprovalRecord(
+            approval_request_id=approval.approval_request_id,
+            operation=approval.operation,
+            target_hash=approval.target_hash,
+            input_hash=approval.input_hash,
+            approval_token_hash=approval.approval_token_hash,
+            actor_user_id=approval.actor_user_id,
+            actor_agent_id=approval.actor_agent_id,
+            actor_tenant_id=approval.actor_tenant_id,
+            risk_level=approval.risk_level,
+            risk_score=approval.risk_score,
+            expires_at=approval.expires_at,
+            status=approval.status,
+        )
+        async with self._session_factory() as session:
+            session.add(record)
+            await session.commit()
+
+    async def consume(
+        self,
+        approval_token: str | None,
+        *,
+        actor: ActorIdentity,
+        operation: str,
+        target: Target,
+        input_payload: object,
+        risk_level: RiskLevel,
+        risk_score: int,
+        now: datetime | None = None,
+    ) -> ApprovalValidationResult:
+        if approval_token is None:
+            return ApprovalValidationResult(valid=False, error_code="APPROVAL_REQUIRED")
+
+        token_hash = hash_approval_token(approval_token)
+        async with self._session_factory() as session:
+            record = await session.scalar(
+                select(ApprovalRecord).where(ApprovalRecord.approval_token_hash == token_hash)
+            )
+            if record is None:
+                return ApprovalValidationResult(valid=False, error_code="APPROVAL_REQUIRED")
+
+            if record.consumed_at is not None:
+                return ApprovalValidationResult(
+                    valid=False,
+                    error_code="APPROVAL_SCOPE_MISMATCH",
+                )
+
+            approval = _stored_approval_from_record(record)
+            result = ApprovalValidator().validate(
+                approval,
+                approval_token=approval_token,
+                actor=actor,
+                operation=operation,
+                target=target,
+                input_payload=input_payload,
+                risk_level=risk_level,
+                risk_score=risk_score,
+                now=now,
+            )
+            if not result.valid:
+                return result
+
+            consumed_at = datetime.now(UTC) if now is None else now
+            update_result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(ApprovalRecord)
+                    .where(ApprovalRecord.approval_request_id == approval.approval_request_id)
+                    .where(ApprovalRecord.consumed_at.is_(None))
+                    .values(consumed_at=consumed_at)
+                ),
+            )
+            if update_result.rowcount != 1:
+                await session.rollback()
+                return ApprovalValidationResult(
+                    valid=False,
+                    error_code="APPROVAL_SCOPE_MISMATCH",
+                )
+
+            await session.commit()
+            return result
+
+
 class ApprovalValidator:
     def validate(
         self,
@@ -152,3 +245,23 @@ def canonical_json_hash(payload: object) -> str:
 
 def hash_approval_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _stored_approval_from_record(record: ApprovalRecord) -> StoredApproval:
+    expires_at = record.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    return StoredApproval(
+        approval_request_id=record.approval_request_id,
+        operation=record.operation,
+        target_hash=record.target_hash,
+        input_hash=record.input_hash,
+        approval_token_hash=record.approval_token_hash,
+        actor_user_id=record.actor_user_id,
+        actor_agent_id=record.actor_agent_id,
+        actor_tenant_id=record.actor_tenant_id,
+        risk_level=cast(RiskLevel, record.risk_level),
+        risk_score=record.risk_score,
+        expires_at=expires_at,
+        status=cast(ApprovalStatus, record.status),
+    )

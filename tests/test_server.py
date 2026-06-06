@@ -1,9 +1,11 @@
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
 from proxmox_mcp.audit.writer import InMemoryAuditWriter
 from proxmox_mcp.config import Settings, TlsSettings
+from proxmox_mcp.observability import InMemoryMetricsRegistry
 from proxmox_mcp.proxmox import (
     DANGEROUS_TOOL_SPECS,
     DOMAIN_COMPLETION_TOOL_SPECS,
@@ -13,6 +15,11 @@ from proxmox_mcp.proxmox import (
 from proxmox_mcp.schemas.envelope import Actor, RequestOptions, Target, ToolRequest, ToolResponse
 from proxmox_mcp.server import app as app_module
 from proxmox_mcp.server.app import build_health_payload, build_server, health_check
+from proxmox_mcp.server.health import (
+    StaticDependencyChecker,
+    build_liveness_payload,
+    build_readiness_payload,
+)
 from proxmox_mcp.ssh.tools import SSH_TOOL_SPECS
 from proxmox_mcp.tools.context import ToolExecutionContext
 from proxmox_mcp.tools.internal import HEALTH_CHECK_DEFINITION
@@ -28,10 +35,87 @@ def test_health_payload_reports_runtime_status() -> None:
     assert payload["port"] == 8443
 
 
+def test_liveness_payload_reports_process_status_without_dependency_checks() -> None:
+    payload = build_liveness_payload(Settings(environment="test"))
+
+    assert payload.status == "ok"
+    assert payload.service == "enterprise-proxmox-mcp"
+    assert payload.environment == "test"
+    assert payload.port == 8443
+
+
+async def test_readiness_payload_fails_closed_when_required_dependency_fails() -> None:
+    payload = await build_readiness_payload(
+        Settings(environment="test"),
+        {
+            "postgresql": StaticDependencyChecker(
+                name="postgresql",
+                required=True,
+                status="unavailable",
+                detail="connection refused",
+            ),
+            "redis": StaticDependencyChecker(
+                name="redis",
+                required=True,
+                status="ok",
+                detail="ping succeeded",
+            ),
+        },
+    )
+
+    assert payload.status == "not_ready"
+    assert payload.dependencies["postgresql"].status == "unavailable"
+
+
+async def test_readiness_payload_allows_optional_dependency_degradation() -> None:
+    payload = await build_readiness_payload(
+        Settings(environment="test"),
+        {
+            "postgresql": StaticDependencyChecker(
+                name="postgresql",
+                required=True,
+                status="ok",
+                detail="query succeeded",
+            ),
+            "external_alerts": StaticDependencyChecker(
+                name="external_alerts",
+                required=False,
+                status="unavailable",
+                detail="not configured",
+            ),
+        },
+    )
+
+    assert payload.status == "ready"
+    assert payload.dependencies["external_alerts"].required is False
+
+
 def test_build_server_returns_named_app() -> None:
     app = build_server(Settings(environment="test"), InMemoryAuditWriter())
 
     assert app.name == "Enterprise Proxmox MCP"
+
+
+def test_build_server_registers_health_and_metrics_routes() -> None:
+    metrics = InMemoryMetricsRegistry()
+    app = build_server(
+        Settings(environment="test"),
+        InMemoryAuditWriter(),
+        metrics_registry=metrics,
+        dependency_checkers={
+            "postgresql": StaticDependencyChecker(
+                name="postgresql",
+                required=True,
+                status="ok",
+                detail="query succeeded",
+            )
+        },
+    )
+
+    routes = app._get_additional_http_routes()  # pyright: ignore[reportPrivateUsage]
+    paths = {cast(Any, route).path for route in routes}
+
+    assert {"/health/live", "/health/ready", "/metrics"} <= paths
 
 
 def test_run_starts_fastmcp_with_https_transport(

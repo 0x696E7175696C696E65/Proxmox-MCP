@@ -29,6 +29,7 @@ ErrorCode = Literal[
     "TIMEOUT",
     "CONFLICT",
     "NOT_FOUND",
+    "EXTERNAL_SOURCE_REQUIRED",
     "NOT_IMPLEMENTED",
     "INTERNAL_ERROR",
 ]

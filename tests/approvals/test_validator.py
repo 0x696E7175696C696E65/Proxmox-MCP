@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from proxmox_mcp.approvals import (
     ApprovalStatus,
     ApprovalValidator,
+    DatabaseApprovalStore,
     InMemoryApprovalStore,
     StoredApproval,
     canonical_json_hash,
     hash_approval_token,
 )
 from proxmox_mcp.auth import ActorIdentity
+from proxmox_mcp.persistence.database import build_session_factory
+from proxmox_mcp.persistence.models import Base
 from proxmox_mcp.schemas.envelope import Target
 
 APPROVAL_CODE = "approved-request-code"
@@ -248,6 +254,44 @@ def test_in_memory_approval_store_consumes_approval_once() -> None:
         risk_score=95,
         now=now,
     )
+
+    assert first.valid is True
+    assert second.valid is False
+    assert second.error_code == "APPROVAL_SCOPE_MISMATCH"
+
+
+async def test_database_approval_store_consumes_once_across_instances(tmp_path: Path) -> None:
+    database_path = tmp_path / "approval-store.db"
+    engine = create_async_engine(f"sqlite+aiosqlite:///{database_path.as_posix()}")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    session_factory = build_session_factory(engine)
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    actor = ActorIdentity(user_id="user_1", agent_id="agent_1", tenant_id="tenant_1")
+    target = Target(resource_type="vm", resource_id="100")
+
+    await DatabaseApprovalStore(session_factory).add(make_approval(now=now))
+    first = await DatabaseApprovalStore(session_factory).consume(
+        APPROVAL_CODE,
+        actor=actor,
+        operation="delete_vm",
+        target=target,
+        input_payload={"force": True},
+        risk_level="critical",
+        risk_score=95,
+        now=now,
+    )
+    second = await DatabaseApprovalStore(session_factory).consume(
+        APPROVAL_CODE,
+        actor=actor,
+        operation="delete_vm",
+        target=target,
+        input_payload={"force": True},
+        risk_level="critical",
+        risk_score=95,
+        now=now,
+    )
+    await engine.dispose()
 
     assert first.valid is True
     assert second.valid is False

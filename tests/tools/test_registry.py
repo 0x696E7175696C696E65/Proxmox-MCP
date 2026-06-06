@@ -39,6 +39,46 @@ class RecordingFastMCP:
         return decorate
 
 
+class FakeIdempotencyStore:
+    def __init__(self) -> None:
+        self.claimed: set[str] = set()
+        self.completed: list[dict[str, object]] = []
+
+    async def begin(
+        self,
+        *,
+        idempotency_key: str,
+        request_fingerprint: str,
+        ttl_seconds: int = 3600,
+    ):
+        _ = request_fingerprint, ttl_seconds
+        if idempotency_key in self.claimed:
+            from proxmox_mcp.reliability import IdempotencyClaim
+
+            return IdempotencyClaim(acquired=False, reason="completed")
+        self.claimed.add(idempotency_key)
+        from proxmox_mcp.reliability import IdempotencyClaim
+
+        return IdempotencyClaim(acquired=True)
+
+    async def complete(
+        self,
+        *,
+        idempotency_key: str,
+        request_fingerprint: str,
+        result_status: str,
+        error_code: str | None = None,
+    ) -> None:
+        self.completed.append(
+            {
+                "idempotency_key": idempotency_key,
+                "request_fingerprint": request_fingerprint,
+                "result_status": result_status,
+                "error_code": error_code,
+            }
+        )
+
+
 def make_context(
     request: ToolRequest | None = None,
     writer: InMemoryAuditWriter | None = None,
@@ -152,6 +192,54 @@ async def test_registry_executes_async_handlers_and_wraps_success_envelope() -> 
     assert writer.events[0].target.resource_type == "vm"
     assert [event.tenant_id for event in writer.events] == ["tenant_1", "tenant_1"]
     assert writer.events[0].metadata["tenant_id"] == "tenant_1"
+
+
+async def test_registry_blocks_duplicate_live_idempotency_key() -> None:
+    store = FakeIdempotencyStore()
+    handler_calls = 0
+
+    async def live_handler(
+        request: ToolRequest,
+        context: ToolExecutionContext,
+    ) -> dict[str, object]:
+        nonlocal handler_calls
+        _ = request, context
+        handler_calls += 1
+        return {"ok": True}
+
+    registry = ToolRegistry()
+    registry.register(
+        ToolDefinition(
+            name="example.live",
+            category="example",
+            permission="example.live",
+            risk="medium",
+            dry_run=True,
+            approval_default=False,
+            connector="internal",
+            handler=live_handler,
+        )
+    )
+    request = make_request()
+    request.options.dry_run = False
+    request.options.idempotency_key = "idem-1"
+    writer = InMemoryAuditWriter()
+    context = make_context(request, writer)
+    context = ToolExecutionContext(
+        request=request,
+        settings=context.settings,
+        audit_writer=context.audit_writer,
+        idempotency_store=store,
+    )
+
+    first = await registry.execute("example.live", request, context)
+    second = await registry.execute("example.live", request, context)
+
+    assert isinstance(first, ToolResponse)
+    assert isinstance(second, ToolErrorResponse)
+    assert second.error.code == "CONFLICT"
+    assert handler_calls == 1
+    assert store.completed[0]["result_status"] == "success"
 
 
 async def test_registry_records_metrics_logs_and_trace_correlation() -> None:

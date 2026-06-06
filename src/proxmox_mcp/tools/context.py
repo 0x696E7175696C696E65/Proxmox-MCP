@@ -9,7 +9,10 @@ from proxmox_mcp.config import Settings
 from proxmox_mcp.schemas.envelope import Actor, Target, ToolRequest
 
 if TYPE_CHECKING:
+    from proxmox_mcp.audit.repository import AuditEventRepository
+    from proxmox_mcp.observability import InMemoryMetricsRegistry
     from proxmox_mcp.proxmox.client import ProxmoxApiClient
+    from proxmox_mcp.reliability import IdempotencyStore
     from proxmox_mcp.ssh.client import SshClient
     from proxmox_mcp.ssh.policy import SshCommandPolicy
     from proxmox_mcp.ssh.recording import SshRecordingStore
@@ -31,6 +34,9 @@ class ToolExecutionContext:
     ssh_command_policy: SshCommandPolicy | None = None
     ssh_session_manager: SshSessionManager | None = None
     ssh_recording_store: SshRecordingStore | None = None
+    audit_repository: AuditEventRepository | None = None
+    metrics_registry: InMemoryMetricsRegistry | None = None
+    idempotency_store: IdempotencyStore | None = None
     audit_metadata: dict[str, object] = field(default_factory=_empty_audit_metadata)
 
     @property

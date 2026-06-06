@@ -176,6 +176,51 @@ async def test_open_ssh_session_enforces_per_actor_node_limit() -> None:
     assert second_response.error.code == "RATE_LIMITED"
 
 
+async def test_ssh_sessions_are_sticky_to_session_manager_until_broker_exists() -> None:
+    registry = make_registry()
+    writer = InMemoryAuditWriter()
+    client = InMemorySshClient()
+    open_request = make_request(
+        tool="open_ssh_session",
+        parameters={"reason": "diagnose"},
+        dry_run=False,
+    )
+
+    open_response = await registry.execute(
+        "open_ssh_session",
+        open_request,
+        make_context(
+            open_request,
+            client,
+            writer,
+            session_manager=SshSessionManager(max_sessions_per_actor_node=1),
+        ),
+    )
+
+    assert isinstance(open_response, ToolResponse)
+    result = cast(dict[str, object], open_response.result)
+    interactive_request = make_request(
+        tool="execute_ssh_interactive",
+        parameters={"command": "uptime", "session_id": result["session_id"]},
+        dry_run=False,
+    )
+    second_replica_manager = SshSessionManager(max_sessions_per_actor_node=1)
+
+    interactive_response = await registry.execute(
+        "execute_ssh_interactive",
+        interactive_request,
+        make_context(
+            interactive_request,
+            client,
+            writer,
+            session_manager=second_replica_manager,
+        ),
+    )
+
+    assert isinstance(interactive_response, ToolErrorResponse)
+    assert interactive_response.error.code == "NOT_FOUND"
+
+
 async def test_interactive_execute_requires_active_session() -> None:
     registry = make_registry()
     request = make_request(

@@ -26,6 +26,7 @@ jobs:
           test -f docs/database-schema.md
           test -f docs/roadmap.md
           test -f docs/testing-strategy.md
+          test -f docs/proxmox-compatibility.md
           test -f docs/deployment.md
 
   runtime-checks:

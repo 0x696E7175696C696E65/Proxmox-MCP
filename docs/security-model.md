@@ -26,10 +26,13 @@ These tests are not a substitute for lab validation, but they prevent regression
 
 ### MCP Caller Authentication
 
-The MCP server authenticates callers before exposing tool execution. Supported caller identity modes:
+The MCP server authenticates callers before exposing tool execution. Implemented caller identity modes:
 
 - Static service token for single-tenant deployments.
-- OAuth or OIDC bearer tokens for enterprise deployments.
+
+Planned enterprise caller identity integrations:
+
+- OAuth or OIDC bearer tokens.
 - mTLS for trusted internal automation networks.
 - Signed workload identity tokens for agent platforms.
 
@@ -68,14 +71,17 @@ credential_ref:
   rotation_required_after: 2026-09-01T00:00:00Z
 ```
 
-Supported backends:
+Implemented backends:
 
 - Hashicorp Vault.
+- Local encrypted development provider for non-production use.
+
+Planned backends:
+
 - Bitwarden Secrets Manager.
 - 1Password Connect.
 - AWS Secrets Manager.
 - Azure Key Vault.
-- Local encrypted development provider for non-production use.
 
 Secret rotation is modeled as metadata plus backend-specific adapters. The runtime must support overlapping old and new credential versions during rotation windows.
 

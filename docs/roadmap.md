@@ -1,8 +1,15 @@
 # Implementation Roadmap
 
+## Status Model
+
+- `implemented`: code and deterministic tests exist in the repository.
+- `lab_validated`: implementation has been exercised against a disposable Proxmox lab.
+- `production_qualified`: implementation has HA, compatibility, migration, rollback, chaos, and release evidence for production use.
+- `guarded`: cataloged behavior exists but live execution is intentionally blocked until the promotion checklist is complete.
+
 ## Milestone 0: Architecture Package
 
-Status: in progress.
+Status: implemented.
 
 Deliverables:
 
@@ -24,6 +31,8 @@ Exit criteria:
 - User approves moving into runtime implementation.
 
 ## Milestone 1: Foundation Runtime
+
+Status: implemented.
 
 Deliverables:
 
@@ -47,6 +56,8 @@ Exit criteria:
 
 ## Milestone 2: Auth, RBAC, Policy, And Secrets
 
+Status: implemented for service-token auth, RBAC, policy, approvals, development secrets, and Vault-style secrets. OIDC, mTLS caller auth, workload identity, and additional secret backends remain planned integrations.
+
 Deliverables:
 
 - Caller authentication abstraction.
@@ -67,6 +78,8 @@ Exit criteria:
 - Unit tests cover decision ordering.
 
 ## Milestone 3: Read-Only Proxmox Coverage
+
+Status: implemented and partially lab_validated.
 
 Deliverables:
 
@@ -89,6 +102,8 @@ Exit criteria:
 
 ## Milestone 4: Safe Mutations And AI Safety
 
+Status: implemented with dry-run, risk, approval, audit, and selected disposable lab validation.
+
 Deliverables:
 
 - Dry-run support.
@@ -107,6 +122,8 @@ Exit criteria:
 
 ## Milestone 5: Dangerous Operations And Approvals
 
+Status: implemented with policy, approval, target revalidation, and audit controls. Destructive production use remains guarded by environment-specific lab validation.
+
 Deliverables:
 
 - Configurable dangerous operation registry.
@@ -123,6 +140,8 @@ Exit criteria:
 - Destructive operations produce pre-execution and post-execution audit events.
 
 ## Milestone 6: Controlled SSH Subsystem
+
+Status: implemented for command execution, policy, sessions, file transfer, recording references, and redaction. Production multi-replica interactive session behavior remains constrained until sticky-session or broker strategy is validated.
 
 Deliverables:
 
@@ -145,6 +164,8 @@ Exit criteria:
 
 ## Milestone 7: Full Proxmox Domain Coverage
 
+Status: implemented for most read, mutation, dangerous, and domain-pack paths. Backend-specific or source-dependent tools remain guarded until lab evidence and exact contracts exist.
+
 Deliverables:
 
 - Complete VM and LXC hardware management.
@@ -162,6 +183,8 @@ Exit criteria:
 
 ## Milestone 8: Observability And Integrations
 
+Status: implemented for in-process metrics, structured logs, trace context, audit correlation, and dashboard examples. Queryable audit, alerts, trends, and durable SIEM delivery remain production-readiness work.
+
 Deliverables:
 
 - Prometheus metrics endpoint.
@@ -177,6 +200,8 @@ Exit criteria:
 - Metrics expose tool latency, policy outcomes, connector health, SSH sessions, and Proxmox task failures.
 
 ## Milestone 9: Production Deployment And HA
+
+Status: partially implemented at deployment-manifest level. Runtime shared-state correctness, dependency-aware readiness, distributed idempotency, and multi-replica approval/session behavior remain active work.
 
 Deliverables:
 
@@ -197,6 +222,8 @@ Exit criteria:
 - Deployment docs include hardening and recovery guidance.
 
 ## Milestone 10: Hardening And Compatibility
+
+Status: in progress. CI, distribution, SBOM, security invariants, and hardening scaffolds exist; migration gates, image scanning, compatibility matrix, chaos/load evidence, and release enforcement remain active work.
 
 Deliverables:
 

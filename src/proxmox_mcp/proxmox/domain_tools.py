@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import shlex
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from string import Formatter
@@ -158,7 +158,7 @@ def _method_for(name: str, permission: str, dry_run: bool) -> DomainMethod | Non
 
 def _live_supported_for(name: str, dry_run: bool, connector: ConnectorType) -> bool:
     if connector == "internal":
-        return name == "get_audit_events"
+        return name in {"get_audit_events", "get_prometheus_metrics"}
     if name in {"enter_lxc_console", "verify_backup"}:
         return False
     if name in _LIVE_COMMAND_TOOLS:
@@ -630,6 +630,16 @@ def _build_domain_handler(
         if request.options.dry_run:
             return _result(spec, request, endpoint=endpoint, command=command, payload=payload)
 
+        if not spec.live_supported and spec.connector == "internal":
+            return _result(
+                spec,
+                request,
+                endpoint=endpoint,
+                command=command,
+                payload=payload,
+                result=await _internal_result_for(spec, request, context),
+            )
+
         if not spec.live_supported:
             raise ToolExecutionError(
                 error_code="NOT_IMPLEMENTED",
@@ -644,7 +654,7 @@ def _build_domain_handler(
                 endpoint=endpoint,
                 command=command,
                 payload=payload,
-                result=_internal_result_for(spec, context),
+                result=await _internal_result_for(spec, request, context),
             )
 
         if command is not None and spec.connector in {"ssh", "hybrid"}:
@@ -1026,27 +1036,76 @@ def _ssh_failure_details_for(
     return details
 
 
-def _internal_result_for(spec: DomainToolSpec, context: ToolExecutionContext) -> object:
+async def _internal_result_for(
+    spec: DomainToolSpec,
+    request: ToolRequest,
+    context: ToolExecutionContext,
+) -> object:
     if spec.name == "get_audit_events":
-        events = getattr(context.audit_writer, "events", None)
-        if not isinstance(events, Iterable):
+        if context.audit_repository is None:
             raise ToolExecutionError(
                 error_code="NOT_IMPLEMENTED",
                 message="Audit event querying requires a configured audit repository",
             )
+        limit = _positive_int_from_payload(request.parameters, "limit", default=100, maximum=500)
+        return await context.audit_repository.list_events(
+            limit=limit,
+            tenant_id=request.actor.tenant_id,
+        )
 
-        serialized: list[object] = []
-        for event in cast(Iterable[object], events):
-            if isinstance(event, BaseModel):
-                serialized.append(event.model_dump(mode="json"))
-            else:
-                serialized.append(str(event))
-        return serialized
+    if spec.name == "get_prometheus_metrics":
+        if context.metrics_registry is None:
+            raise ToolExecutionError(
+                error_code="NOT_IMPLEMENTED",
+                message="Prometheus metrics querying requires a configured metrics registry",
+            )
+        return {
+            "content_type": "text/plain; version=0.0.4",
+            "metrics": context.metrics_registry.render_prometheus(),
+        }
+
+    if spec.name in {"get_recent_alerts", "get_resource_trends"}:
+        raise ToolExecutionError(
+            error_code="EXTERNAL_SOURCE_REQUIRED",
+            message="Internal telemetry source requires a configured external backend",
+            details={
+                "tool_name": spec.name,
+                "promotion_status": "external_source_required",
+            },
+        )
+
     raise ToolExecutionError(
         error_code="NOT_IMPLEMENTED",
         message="Internal domain telemetry source is not configured",
         details={"tool_name": spec.name},
     )
+
+
+def _positive_int_from_payload(
+    parameters: dict[str, object],
+    key: str,
+    *,
+    default: int,
+    maximum: int,
+) -> int:
+    payload = parameters.get("payload", {})
+    value: object = default
+    if isinstance(payload, dict):
+        payload_mapping = cast(dict[str, object], payload)
+        value = payload_mapping.get(key, default)
+    try:
+        parsed = int(str(value))
+    except ValueError as exc:
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message=f"Domain tool payload {key} must be an integer",
+        ) from exc
+    if parsed < 1 or parsed > maximum:
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message=f"Domain tool payload {key} must be between 1 and {maximum}",
+        )
+    return parsed
 
 
 def _result(

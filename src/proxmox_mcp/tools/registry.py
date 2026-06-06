@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from proxmox_mcp.audit.events import AuditEvent, AuditTarget
 from proxmox_mcp.observability import MetricsSink, MetricStatus, TraceSpan, structured_log
+from proxmox_mcp.reliability import request_fingerprint
 from proxmox_mcp.schemas.envelope import (
     Actor,
     ApprovalInfo,
@@ -301,6 +302,55 @@ class ToolRegistry:
                 audit=AuditRef(event_id=denied_event.event_id, recorded=True),
             )
 
+        idempotency_key = request.options.idempotency_key
+        idempotency_fingerprint: str | None = None
+        if (
+            context.idempotency_store is not None
+            and idempotency_key is not None
+            and not request.options.dry_run
+        ):
+            idempotency_fingerprint = request_fingerprint(
+                {
+                    "tool": definition.name,
+                    "actor": request.actor.model_dump(mode="json"),
+                    "target": request.target.model_dump(mode="json"),
+                    "parameters": request.parameters,
+                }
+            )
+            claim = await context.idempotency_store.begin(
+                idempotency_key=idempotency_key,
+                request_fingerprint=idempotency_fingerprint,
+            )
+            if not claim.acquired:
+                error_event = await self._write_audit_event(
+                    definition,
+                    request,
+                    context,
+                    "tool.execution.finished",
+                    "error",
+                    error_code="CONFLICT",
+                )
+                self._record_observability(
+                    definition,
+                    request,
+                    trace_span,
+                    "error",
+                    started_at,
+                    error_event.event_id,
+                    error_code="CONFLICT",
+                )
+                return ToolErrorResponse(
+                    request_id=request.request_id,
+                    correlation_id=request.correlation_id,
+                    error=ToolError(
+                        code="CONFLICT",
+                        message="Idempotency key is already in use",
+                        details={"reason": claim.reason or "duplicate"},
+                        retryable=False,
+                    ),
+                    audit=AuditRef(event_id=error_event.event_id, recorded=True),
+                )
+
         try:
             data = await definition.handler(request, context)
             data = self._validate_result(definition, data)
@@ -320,6 +370,13 @@ class ToolRegistry:
                 "error",
                 started_at,
                 error_event.event_id,
+                error_code=exc.error_code,
+            )
+            await self._complete_idempotency(
+                context,
+                idempotency_key=idempotency_key,
+                request_fingerprint=idempotency_fingerprint,
+                result_status="error",
                 error_code=exc.error_code,
             )
             return ToolErrorResponse(
@@ -351,6 +408,13 @@ class ToolRegistry:
                 error_event.event_id,
                 error_code="INTERNAL_ERROR",
             )
+            await self._complete_idempotency(
+                context,
+                idempotency_key=idempotency_key,
+                request_fingerprint=idempotency_fingerprint,
+                result_status="error",
+                error_code="INTERNAL_ERROR",
+            )
             return ToolErrorResponse(
                 request_id=request.request_id,
                 correlation_id=request.correlation_id,
@@ -379,6 +443,13 @@ class ToolRegistry:
                 error_event.event_id,
                 error_code="INTERNAL_ERROR",
             )
+            await self._complete_idempotency(
+                context,
+                idempotency_key=idempotency_key,
+                request_fingerprint=idempotency_fingerprint,
+                result_status="error",
+                error_code="INTERNAL_ERROR",
+            )
             return ToolErrorResponse(
                 request_id=request.request_id,
                 correlation_id=request.correlation_id,
@@ -405,6 +476,12 @@ class ToolRegistry:
             started_at,
             success_event.event_id,
         )
+        await self._complete_idempotency(
+            context,
+            idempotency_key=idempotency_key,
+            request_fingerprint=idempotency_fingerprint,
+            result_status="success",
+        )
         impact = guard_decision.impact or self._default_impact(request)
         return ToolResponse(
             request_id=request.request_id,
@@ -426,6 +503,28 @@ class ToolRegistry:
     ) -> None:
         for definition in self.definitions():
             app.tool(name=definition.name)(self._build_fastmcp_handler(definition, context_factory))
+
+    async def _complete_idempotency(
+        self,
+        context: ToolExecutionContext,
+        *,
+        idempotency_key: str | None,
+        request_fingerprint: str | None,
+        result_status: str,
+        error_code: str | None = None,
+    ) -> None:
+        if (
+            context.idempotency_store is None
+            or idempotency_key is None
+            or request_fingerprint is None
+        ):
+            return
+        await context.idempotency_store.complete(
+            idempotency_key=idempotency_key,
+            request_fingerprint=request_fingerprint,
+            result_status=result_status,
+            error_code=error_code,
+        )
 
     def _build_fastmcp_handler(
         self,

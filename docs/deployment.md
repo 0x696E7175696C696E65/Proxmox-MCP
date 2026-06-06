@@ -126,9 +126,10 @@ The MCP server is stateless except for PostgreSQL and Redis. Multiple replicas c
 
 HA-sensitive workflows:
 
-- Approval validation must be database-backed.
-- Idempotency must use Redis locks plus durable records.
-- SSH interactive sessions should be sticky to a single replica unless a session broker is introduced.
+- Approval validation has database-backed storage available and should use it for multi-replica deployments.
+- Idempotency has durable records available and should be paired with Redis locks for live mutating requests.
+- SSH interactive sessions are currently sticky to a single replica; use load balancer affinity for SSH session tools unless a session broker is introduced.
+- SSH recordings should use a shared recording store before interactive SSH is advertised as replica-safe.
 - Long-running Proxmox task polling should be resumable through stored tool invocation state.
 
 ## Network Security

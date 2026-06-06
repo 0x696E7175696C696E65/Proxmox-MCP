@@ -1,10 +1,22 @@
 from __future__ import annotations
 
+from typing import Protocol
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from proxmox_mcp.audit.events import AuditEvent
 from proxmox_mcp.audit.writer import AuditWriter
 from proxmox_mcp.persistence.models import AuditEventRecord
+
+
+class AuditEventRepository(Protocol):
+    async def list_events(
+        self,
+        *,
+        limit: int = 100,
+        tenant_id: str | None = None,
+    ) -> list[dict[str, object]]: ...
 
 
 class DatabaseAuditWriter(AuditWriter):
@@ -39,3 +51,25 @@ class DatabaseAuditWriter(AuditWriter):
         async with self._session_factory() as session:
             session.add(record)
             await session.commit()
+
+
+class DatabaseAuditEventRepository(AuditEventRepository):
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self._session_factory = session_factory
+
+    async def list_events(
+        self,
+        *,
+        limit: int = 100,
+        tenant_id: str | None = None,
+    ) -> list[dict[str, object]]:
+        statement = (
+            select(AuditEventRecord).order_by(AuditEventRecord.timestamp.desc()).limit(limit)
+        )
+        if tenant_id is not None:
+            statement = statement.where(AuditEventRecord.tenant_id == tenant_id)
+
+        async with self._session_factory() as session:
+            records = (await session.scalars(statement)).all()
+
+        return [record.event_json for record in records]

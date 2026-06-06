@@ -11,6 +11,18 @@ on:
     - cron: "17 3 * * *"
 
 jobs:
+  migration-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install package
+        run: python -m pip install --upgrade pip '.[dev]'
+      - name: Validate Alembic upgrade and model parity
+        run: python -m pytest tests/release/test_migration_gate.py -q
+
   docker-build:
     runs-on: ubuntu-latest
     steps:
@@ -21,7 +33,21 @@ jobs:
         with:
           context: .
           push: false
+          load: true
           tags: enterprise-proxmox-mcp:ci
+      - name: Scan image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: enterprise-proxmox-mcp:ci
+          format: sarif
+          output: trivy-image-results.sarif
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: image-scan
+          path: trivy-image-results.sarif
 
   vulnerability-audit:
     runs-on: ubuntu-latest
@@ -53,6 +79,17 @@ jobs:
   lab-gates:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' || inputs.run_lab == 'true'
+    env:
+      PROXMOX_MCP_LAB_ENABLED: ${{ secrets.PROXMOX_MCP_LAB_ENABLED }}
+      PROXMOX_MCP_LAB_API_ENDPOINT: ${{ secrets.PROXMOX_MCP_LAB_API_ENDPOINT }}
+      PROXMOX_MCP_LAB_TOKEN_ID: ${{ secrets.PROXMOX_MCP_LAB_TOKEN_ID }}
+      PROXMOX_MCP_LAB_TOKEN_SECRET: ${{ secrets.PROXMOX_MCP_LAB_TOKEN_SECRET }}
+      PROXMOX_MCP_LAB_USERNAME: ${{ secrets.PROXMOX_MCP_LAB_USERNAME }}
+      PROXMOX_MCP_LAB_PASSWORD: ${{ secrets.PROXMOX_MCP_LAB_PASSWORD }}
+      PROXMOX_MCP_LAB_TLS_VERIFY: ${{ secrets.PROXMOX_MCP_LAB_TLS_VERIFY }}
+      PROXMOX_MCP_LAB_ALLOW_INSECURE_TRANSPORT: ${{ secrets.PROXMOX_MCP_LAB_ALLOW_INSECURE_TRANSPORT }}
+      PROXMOX_MCP_LAB_NODE: ${{ secrets.PROXMOX_MCP_LAB_NODE }}
+      PROXMOX_MCP_LAB_STORAGE: ${{ secrets.PROXMOX_MCP_LAB_STORAGE }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -60,17 +97,35 @@ jobs:
           python-version: "3.13"
       - name: Install package
         run: python -m pip install --upgrade pip '.[dev]'
+      - name: Validate lab configuration
+        run: |
+          python - <<'PY'
+          import os
+          from proxmox_mcp.proxmox.lab import LabEnvironmentConfig
+
+          config = LabEnvironmentConfig.from_env(os.environ)
+          if not config.enabled:
+              raise SystemExit(config.skip_reason or "Lab gates are enabled but lab config is invalid")
+          PY
       - name: Read-only Proxmox lab smoke tests
         run: python -m pytest tests/lab -m lab
       - name: SSH sandbox tests
         run: python -m pytest tests/ssh
       - name: Contract and mutation safety tests
         run: python -m pytest tests/tools/test_tool_coverage_contract.py tests/proxmox
-      - name: Chaos gate placeholder
-        run: |
-          echo "Run controlled Proxmox lab chaos scenarios when lab credentials are configured."
-          test -n "${PROXMOX_MCP_LAB_ENABLED:-}" || exit 0
-      - name: Performance gate placeholder
-        run: |
-          echo "Run load tests for tool latency, audit throughput, and SSH concurrency when lab is enabled."
-          test -n "${PROXMOX_MCP_LAB_ENABLED:-}" || exit 0
+      - name: Chaos gates
+        run: python -m pytest tests/chaos -q
+      - name: Lightweight performance gates
+        run: python -m pytest tests/performance -q
+
+  release-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install package
+        run: python -m pip install --upgrade pip '.[dev]'
+      - name: Run non-lab chaos and load gates
+        run: python -m pytest tests/chaos tests/performance -q

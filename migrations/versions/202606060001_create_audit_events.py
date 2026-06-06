@@ -19,6 +19,27 @@ depends_on: str | tuple[str, ...] | None = None
 
 def upgrade() -> None:
     op.create_table(
+        "approval_requests",
+        sa.Column("approval_request_id", sa.String(length=128), nullable=False),
+        sa.Column("operation", sa.String(length=256), nullable=False),
+        sa.Column("target_hash", sa.String(length=64), nullable=False),
+        sa.Column("input_hash", sa.String(length=64), nullable=False),
+        sa.Column("approval_token_hash", sa.String(length=64), nullable=False),
+        sa.Column("actor_user_id", sa.String(length=128), nullable=False),
+        sa.Column("actor_agent_id", sa.String(length=128), nullable=False),
+        sa.Column("actor_tenant_id", sa.String(length=128), nullable=True),
+        sa.Column("risk_level", sa.String(length=32), nullable=False),
+        sa.Column("risk_score", sa.Integer(), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("status", sa.String(length=32), nullable=False),
+        sa.Column("consumed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.PrimaryKeyConstraint("approval_request_id", name=op.f("pk_approval_requests")),
+        sa.UniqueConstraint(
+            "approval_token_hash",
+            name=op.f("uq_approval_requests_approval_token_hash"),
+        ),
+    )
+    op.create_table(
         "audit_events",
         sa.Column("event_id", sa.String(length=128), nullable=False),
         sa.Column("timestamp", sa.DateTime(timezone=True), nullable=False),
@@ -42,7 +63,21 @@ def upgrade() -> None:
         sa.Column("event_json", sa.JSON(), nullable=False),
         sa.PrimaryKeyConstraint("event_id", name=op.f("pk_audit_events")),
     )
+    op.create_table(
+        "idempotency_records",
+        sa.Column("idempotency_key", sa.String(length=256), nullable=False),
+        sa.Column("request_fingerprint", sa.String(length=64), nullable=False),
+        sa.Column("status", sa.String(length=32), nullable=False),
+        sa.Column("result_status", sa.String(length=32), nullable=True),
+        sa.Column("error_code", sa.String(length=128), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.PrimaryKeyConstraint("idempotency_key", name=op.f("pk_idempotency_records")),
+    )
 
 
 def downgrade() -> None:
+    op.drop_table("idempotency_records")
     op.drop_table("audit_events")
+    op.drop_table("approval_requests")

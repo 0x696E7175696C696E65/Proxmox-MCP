@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import cast
 
 from fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import JSONResponse, PlainTextResponse, Response
 
+from proxmox_mcp.audit.repository import AuditEventRepository
 from proxmox_mcp.audit.writer import AuditWriter, InMemoryAuditWriter
 from proxmox_mcp.config import Settings
+from proxmox_mcp.observability import InMemoryMetricsRegistry
 from proxmox_mcp.proxmox import (
     ProxmoxApiClient,
     register_dangerous_tools,
@@ -13,6 +18,7 @@ from proxmox_mcp.proxmox import (
     register_read_only_tools,
     register_safe_mutation_tools,
 )
+from proxmox_mcp.reliability import IdempotencyStore
 from proxmox_mcp.schemas.envelope import (
     Actor,
     RequestOptions,
@@ -22,6 +28,11 @@ from proxmox_mcp.schemas.envelope import (
     ToolResponse,
 )
 from proxmox_mcp.security import SecurityPlaneGuard
+from proxmox_mcp.server.health import (
+    DependencyChecker,
+    build_liveness_payload,
+    build_readiness_payload,
+)
 from proxmox_mcp.server.tls import resolve_tls_config
 from proxmox_mcp.ssh import (
     InMemorySshRecordingStore,
@@ -105,6 +116,10 @@ def build_server(
     ssh_command_policy: SshCommandPolicy | None = None,
     ssh_session_manager: SshSessionManager | None = None,
     ssh_recording_store: SshRecordingStore | None = None,
+    metrics_registry: InMemoryMetricsRegistry | None = None,
+    dependency_checkers: Mapping[str, DependencyChecker] | None = None,
+    audit_repository: AuditEventRepository | None = None,
+    idempotency_store: IdempotencyStore | None = None,
 ) -> FastMCP:
     settings = Settings() if settings is None else settings
     audit_writer = InMemoryAuditWriter() if audit_writer is None else audit_writer
@@ -115,9 +130,10 @@ def build_server(
     ssh_recording_store = (
         InMemorySshRecordingStore() if ssh_recording_store is None else ssh_recording_store
     )
+    metrics_registry = InMemoryMetricsRegistry() if metrics_registry is None else metrics_registry
 
     app = FastMCP("Enterprise Proxmox MCP")
-    registry = ToolRegistry(guard=SecurityPlaneGuard())
+    registry = ToolRegistry(guard=SecurityPlaneGuard(), metrics_sink=metrics_registry)
     register_internal_tools(registry)
     register_read_only_tools(registry)
     register_safe_mutation_tools(registry)
@@ -135,10 +151,49 @@ def build_server(
             ssh_command_policy=ssh_command_policy,
             ssh_session_manager=ssh_session_manager,
             ssh_recording_store=ssh_recording_store,
+            audit_repository=audit_repository,
+            metrics_registry=metrics_registry,
+            idempotency_store=idempotency_store,
         )
 
     registry.register_with_fastmcp(app, context_factory)
+    _register_http_routes(
+        app,
+        settings=settings,
+        metrics_registry=metrics_registry,
+        dependency_checkers=dependency_checkers,
+    )
     return app
+
+
+def _register_http_routes(
+    app: FastMCP,
+    *,
+    settings: Settings,
+    metrics_registry: InMemoryMetricsRegistry,
+    dependency_checkers: Mapping[str, DependencyChecker] | None,
+) -> None:
+    @app.custom_route("/health/live", methods=["GET"], include_in_schema=False)
+    async def live(request: Request) -> Response:
+        _ = request
+        return JSONResponse(build_liveness_payload(settings).model_dump(mode="json"))
+
+    @app.custom_route("/health/ready", methods=["GET"], include_in_schema=False)
+    async def ready(request: Request) -> Response:
+        _ = request
+        payload = await build_readiness_payload(settings, dependency_checkers)
+        status_code = 200 if payload.status == "ready" else 503
+        return JSONResponse(payload.model_dump(mode="json"), status_code=status_code)
+
+    @app.custom_route("/metrics", methods=["GET"], include_in_schema=False)
+    async def metrics(request: Request) -> Response:
+        _ = request
+        return PlainTextResponse(
+            metrics_registry.render_prometheus(),
+            media_type="text/plain; version=0.0.4",
+        )
+
+    _ = live, ready, metrics
 
 
 def run(settings: Settings | None = None) -> None:

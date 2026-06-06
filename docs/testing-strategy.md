@@ -150,7 +150,13 @@ Expected behavior must be explicit: fail closed for security-critical dependenci
 
 ### Chaos Tests
 
-Chaos tests run in controlled lab environments:
+Deterministic chaos gates run in CI with simulated dependency failures:
+
+```shell
+python -m pytest tests/chaos -q
+```
+
+Live chaos tests run only in controlled lab environments:
 
 - Kill Proxmox node during read-only discovery.
 - Restart Proxmox API while tool calls are active.
@@ -161,7 +167,13 @@ Chaos tests run in controlled lab environments:
 
 ### Performance Tests
 
-Performance tests measure:
+Lightweight load gates run in CI:
+
+```shell
+python -m pytest tests/performance -q
+```
+
+Broader performance tests measure:
 
 - Tool routing overhead.
 - Policy evaluation latency.
@@ -212,6 +224,8 @@ Nightly or manual workflows should run:
 - Chaos tests.
 - Load tests.
 - Container image scanning.
+
+Compatibility evidence is tracked in `docs/proxmox-compatibility.md`. Release candidates must update that matrix when a new Proxmox version, Ceph/HA topology, backup backend, or storage backend is validated.
 
 ## Required Test Invariants
 
