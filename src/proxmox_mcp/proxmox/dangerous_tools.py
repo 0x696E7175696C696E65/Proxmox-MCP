@@ -10,7 +10,7 @@ from typing import Any, Literal, cast
 from pydantic import BaseModel, ConfigDict, create_model
 
 from proxmox_mcp.proxmox.client import ProxmoxApiError
-from proxmox_mcp.schemas.envelope import ToolRequest
+from proxmox_mcp.schemas.envelope import Impact, ResourceRef, ToolRequest
 from proxmox_mcp.tools.context import ToolExecutionContext
 from proxmox_mcp.tools.registry import ToolDefinition, ToolExecutionError, ToolRegistry
 
@@ -26,7 +26,7 @@ class DangerousMutationResult(BaseModel):
     method: DangerousMutationMethod
     endpoint: str
     payload: dict[str, object]
-    impact: dict[str, object]
+    impact: Impact
     target_revalidated: bool = False
     revalidation_endpoint: str | None = None
     result: object | None = None
@@ -49,9 +49,11 @@ class DangerousToolSpec:
     name: str
     category: str
     permission: str
+    risk: Literal["low", "medium", "high", "critical"]
     method: DangerousMutationMethod
     endpoint_template: str
     revalidation_endpoint_template: str
+    path_parameter_fields: frozenset[str] = dataclass_field(default_factory=_empty_payload_fields)
     payload_fields: frozenset[str] = dataclass_field(default_factory=_empty_payload_fields)
     required_payload_fields: frozenset[str] = dataclass_field(default_factory=_empty_payload_fields)
     payload_defaults: dict[str, object] = dataclass_field(default_factory=_empty_payload_defaults)
@@ -70,6 +72,8 @@ def _spec(
     endpoint_template: str,
     revalidation_endpoint_template: str,
     *,
+    risk: Literal["low", "medium", "high", "critical"] = "critical",
+    path_parameter_fields: frozenset[str] | None = None,
     payload_fields: frozenset[str] | None = None,
     required_payload_fields: frozenset[str] | None = None,
     payload_defaults: dict[str, object] | None = None,
@@ -83,9 +87,13 @@ def _spec(
         name=name,
         category=category,
         permission=permission,
+        risk=risk,
         method=method,
         endpoint_template=endpoint_template,
         revalidation_endpoint_template=revalidation_endpoint_template,
+        path_parameter_fields=_empty_payload_fields()
+        if path_parameter_fields is None
+        else path_parameter_fields,
         payload_fields=_empty_payload_fields() if payload_fields is None else payload_fields,
         required_payload_fields=_empty_payload_fields()
         if required_payload_fields is None
@@ -127,8 +135,8 @@ DANGEROUS_TOOL_SPECS: tuple[DangerousToolSpec, ...] = (
         "DELETE",
         "/nodes/{node}/qemu/{vmid}/snapshot/{snapname}",
         "/nodes/{node}/qemu/{vmid}/snapshot",
-        payload_fields=frozenset({"snapname"}),
-        required_payload_fields=frozenset({"snapname"}),
+        risk="high",
+        path_parameter_fields=frozenset({"snapname"}),
         rollback_suggestions=("Snapshot deletion cannot be rolled back directly.",),
     ),
     _spec(
@@ -138,8 +146,8 @@ DANGEROUS_TOOL_SPECS: tuple[DangerousToolSpec, ...] = (
         "DELETE",
         "/nodes/{node}/lxc/{vmid}/snapshot/{snapname}",
         "/nodes/{node}/lxc/{vmid}/snapshot",
-        payload_fields=frozenset({"snapname"}),
-        required_payload_fields=frozenset({"snapname"}),
+        risk="high",
+        path_parameter_fields=frozenset({"snapname"}),
         rollback_suggestions=("Snapshot deletion cannot be rolled back directly.",),
     ),
     _spec(
@@ -149,8 +157,8 @@ DANGEROUS_TOOL_SPECS: tuple[DangerousToolSpec, ...] = (
         "POST",
         "/nodes/{node}/qemu/{vmid}/snapshot/{snapname}/rollback",
         "/nodes/{node}/qemu/{vmid}/snapshot",
-        payload_fields=frozenset({"snapname"}),
-        required_payload_fields=frozenset({"snapname"}),
+        risk="high",
+        path_parameter_fields=frozenset({"snapname"}),
         rollback_available=True,
         rollback_suggestions=(
             "Take a fresh backup before rollback; rollback changes active VM state.",
@@ -163,8 +171,8 @@ DANGEROUS_TOOL_SPECS: tuple[DangerousToolSpec, ...] = (
         "POST",
         "/nodes/{node}/lxc/{vmid}/snapshot/{snapname}/rollback",
         "/nodes/{node}/lxc/{vmid}/snapshot",
-        payload_fields=frozenset({"snapname"}),
-        required_payload_fields=frozenset({"snapname"}),
+        risk="high",
+        path_parameter_fields=frozenset({"snapname"}),
         rollback_available=True,
         rollback_suggestions=(
             "Take a fresh backup before rollback; rollback changes active LXC state.",
@@ -214,8 +222,7 @@ DANGEROUS_TOOL_SPECS: tuple[DangerousToolSpec, ...] = (
         "DELETE",
         "/nodes/{node}/storage/{storage_id}/content/{volume}",
         "/nodes/{node}/storage/{storage_id}/content/{volume}",
-        payload_fields=frozenset({"volume"}),
-        required_payload_fields=frozenset({"volume"}),
+        path_parameter_fields=frozenset({"volume"}),
         rollback_suggestions=("Restore the deleted volume from backup if available.",),
     ),
     _spec(
@@ -252,8 +259,7 @@ DANGEROUS_TOOL_SPECS: tuple[DangerousToolSpec, ...] = (
         "DELETE",
         "/nodes/{node}/ceph/pools/{pool}",
         "/nodes/{node}/ceph/pools",
-        payload_fields=frozenset({"pool"}),
-        required_payload_fields=frozenset({"pool"}),
+        path_parameter_fields=frozenset({"pool"}),
         rollback_suggestions=(
             "Restore affected data from backup or replicas outside the deleted pool.",
         ),
@@ -265,8 +271,7 @@ DANGEROUS_TOOL_SPECS: tuple[DangerousToolSpec, ...] = (
         "DELETE",
         "/nodes/{node}/ceph/osd/{osd_id}",
         "/nodes/{node}/ceph/osd",
-        payload_fields=frozenset({"osd_id"}),
-        required_payload_fields=frozenset({"osd_id"}),
+        path_parameter_fields=frozenset({"osd_id"}),
         quorum_risk=True,
         rollback_suggestions=(
             "Recreate the OSD only after confirming cluster health and data safety.",
@@ -279,8 +284,7 @@ DANGEROUS_TOOL_SPECS: tuple[DangerousToolSpec, ...] = (
         "DELETE",
         "/access/users/{userid}",
         "/access/users",
-        payload_fields=frozenset({"userid"}),
-        required_payload_fields=frozenset({"userid"}),
+        path_parameter_fields=frozenset({"userid"}),
         data_loss_possible=False,
         rollback_available=True,
         rollback_suggestions=("Recreate the user and restore group/ACL assignments if needed.",),
@@ -295,7 +299,7 @@ def register_dangerous_tools(registry: ToolRegistry) -> None:
                 name=spec.name,
                 category=spec.category,
                 permission=spec.permission,
-                risk="critical",
+                risk=spec.risk,
                 dry_run=True,
                 approval_default=True,
                 connector="proxmox_api",
@@ -383,7 +387,7 @@ def _build_dangerous_handler(
 
 def _payload_for(spec: DangerousToolSpec, request: ToolRequest) -> dict[str, object]:
     payload = dict(spec.payload_defaults)
-    unsupported = set(request.parameters) - spec.payload_fields
+    unsupported = set(request.parameters) - spec.payload_fields - _path_parameter_fields_for(spec)
     if unsupported:
         raise ToolExecutionError(
             error_code="INVALID_REQUEST",
@@ -395,6 +399,13 @@ def _payload_for(spec: DangerousToolSpec, request: ToolRequest) -> dict[str, obj
             raise ToolExecutionError(
                 error_code="INVALID_REQUEST",
                 message=f"Missing required dangerous operation parameter: {field}",
+            )
+
+    for field in spec.path_parameter_fields:
+        if field not in request.parameters:
+            raise ToolExecutionError(
+                error_code="INVALID_REQUEST",
+                message=f"Missing required dangerous operation path parameter: {field}",
             )
 
     for field in spec.payload_fields:
@@ -479,29 +490,28 @@ def _template_fields(template: str) -> tuple[str, ...]:
 
 
 def _validate_path_segment(field: str, value: str) -> None:
-    if not _SAFE_SEGMENT.fullmatch(value):
+    if not _SAFE_SEGMENT.fullmatch(value) or ".." in value:
         raise ToolExecutionError(
             error_code="INVALID_REQUEST",
             message=f"Unsafe Proxmox path value for {field}",
         )
 
 
-def _impact_for(spec: DangerousToolSpec, request: ToolRequest) -> dict[str, object]:
-    return {
-        "affected_resources": [
-            {
-                "type": request.target.resource_type,
-                "id": request.target.resource_id,
-                "node": request.target.node,
-            }
+def _impact_for(spec: DangerousToolSpec, request: ToolRequest) -> Impact:
+    return Impact(
+        affected_resources=[
+            ResourceRef(
+                type=request.target.resource_type,
+                id=request.target.resource_id,
+                node=request.target.node,
+            )
         ],
-        "estimated_downtime_seconds": None,
-        "data_loss_possible": spec.data_loss_possible,
-        "network_disruption_possible": spec.network_disruption_possible,
-        "quorum_risk": spec.quorum_risk,
-        "rollback_available": spec.rollback_available,
-        "rollback_suggestions": list(spec.rollback_suggestions),
-    }
+        data_loss_possible=spec.data_loss_possible,
+        network_disruption_possible=spec.network_disruption_possible,
+        quorum_risk=spec.quorum_risk,
+        rollback_available=spec.rollback_available,
+        rollback_suggestions=list(spec.rollback_suggestions),
+    )
 
 
 def _result(
@@ -509,7 +519,7 @@ def _result(
     request: ToolRequest,
     endpoint: str,
     payload: dict[str, object],
-    impact: dict[str, object],
+    impact: Impact,
     *,
     target_revalidated: bool,
     revalidation_endpoint: str,
@@ -531,8 +541,16 @@ def _result(
 
 def _parameters_model_for(spec: DangerousToolSpec) -> type[BaseModel]:
     fields: dict[str, tuple[type[object], object]] = {}
-    for field in sorted(spec.payload_fields | frozenset(_template_fields(spec.endpoint_template))):
-        default: object = ... if field in spec.required_payload_fields else None
+    for field in sorted(
+        spec.payload_fields
+        | _path_parameter_fields_for(spec)
+        | frozenset(_template_fields(spec.endpoint_template))
+    ):
+        default: object = (
+            ...
+            if field in spec.required_payload_fields or field in spec.path_parameter_fields
+            else None
+        )
         fields[field] = (object, default)
 
     model_name = "".join(part.capitalize() for part in spec.name.split("_")) + "Parameters"
@@ -540,4 +558,12 @@ def _parameters_model_for(spec: DangerousToolSpec) -> type[BaseModel]:
         model_name,
         __config__=ConfigDict(extra="forbid"),
         **cast(dict[str, Any], fields),
+    )
+
+
+def _path_parameter_fields_for(spec: DangerousToolSpec) -> frozenset[str]:
+    return spec.path_parameter_fields | frozenset(
+        field
+        for field in _template_fields(spec.endpoint_template)
+        if field not in {"node", "vmid", "storage_id"}
     )

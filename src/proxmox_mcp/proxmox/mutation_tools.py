@@ -49,6 +49,7 @@ class MutationToolSpec:
     permission: str
     method: MutationMethod
     endpoint_template: str
+    risk: Literal["low", "medium", "high", "critical"] = "medium"
     payload_fields: frozenset[str] = dataclass_field(default_factory=_empty_payload_fields)
     required_payload_fields: frozenset[str] = dataclass_field(default_factory=_empty_payload_fields)
     include_target_vmid: bool = False
@@ -64,6 +65,7 @@ def _spec(
     method: MutationMethod,
     endpoint_template: str,
     *,
+    risk: Literal["low", "medium", "high", "critical"] = "medium",
     payload_fields: frozenset[str] | None = None,
     required_payload_fields: frozenset[str] | None = None,
     include_target_vmid: bool = False,
@@ -77,6 +79,7 @@ def _spec(
         permission=permission,
         method=method,
         endpoint_template=endpoint_template,
+        risk=risk,
         payload_fields=_empty_payload_fields() if payload_fields is None else payload_fields,
         required_payload_fields=_empty_payload_fields()
         if required_payload_fields is None
@@ -112,6 +115,7 @@ SAFE_MUTATION_TOOL_SPECS: tuple[MutationToolSpec, ...] = (
         "vm.lifecycle.stop",
         "POST",
         "/nodes/{node}/qemu/{vmid}/status/stop",
+        risk="high",
         downtime_seconds=60,
     ),
     _spec(
@@ -139,6 +143,7 @@ SAFE_MUTATION_TOOL_SPECS: tuple[MutationToolSpec, ...] = (
         "lxc.lifecycle.stop",
         "POST",
         "/nodes/{node}/lxc/{vmid}/status/stop",
+        risk="high",
         downtime_seconds=60,
     ),
     _spec(
@@ -213,7 +218,7 @@ def register_safe_mutation_tools(registry: ToolRegistry) -> None:
                 name=spec.name,
                 category=spec.category,
                 permission=spec.permission,
-                risk="high" if spec.downtime_seconds else "medium",
+                risk=spec.risk,
                 dry_run=True,
                 approval_default=spec.downtime_seconds is not None,
                 connector="proxmox_api",

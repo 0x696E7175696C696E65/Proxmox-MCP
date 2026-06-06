@@ -196,6 +196,59 @@ async def test_interactive_execute_requires_active_session() -> None:
     assert response.error.code == "NOT_FOUND"
 
 
+async def test_interactive_execute_schema_requires_session_id() -> None:
+    registry = make_registry()
+    schema = next(item for item in registry.schemas() if item.name == "execute_ssh_interactive")
+
+    parameters_schema = schema.parameters_schema
+    assert parameters_schema is not None
+    required = parameters_schema["required"]
+    assert isinstance(required, list)
+    assert "session_id" in required
+
+
+async def test_interactive_execute_rejects_missing_session_id_before_handler() -> None:
+    registry = make_registry()
+    request = make_request(
+        tool="execute_ssh_interactive",
+        parameters={"command": "uptime"},
+        dry_run=False,
+    )
+    writer = InMemoryAuditWriter()
+    client = InMemorySshClient()
+
+    response = await registry.execute(
+        "execute_ssh_interactive",
+        request,
+        make_context(request, client, writer),
+    )
+
+    assert isinstance(response, ToolErrorResponse)
+    assert response.error.code == "INVALID_REQUEST"
+    assert client.executions == []
+
+
+async def test_non_dry_run_ssh_tools_reject_dry_run_true() -> None:
+    registry = make_registry()
+    writer = InMemoryAuditWriter()
+    client = InMemorySshClient()
+    request = make_request(
+        tool="open_ssh_session",
+        parameters={"reason": "diagnose"},
+        dry_run=True,
+    )
+
+    response = await registry.execute(
+        "open_ssh_session",
+        request,
+        make_context(request, client, writer),
+    )
+
+    assert isinstance(response, ToolErrorResponse)
+    assert response.error.code == "INVALID_REQUEST"
+    assert response.error.message == "Tool does not support dry-run requests"
+
+
 async def test_upload_file_defaults_to_dry_run_without_mutating_client() -> None:
     registry = make_registry()
     request = make_request(

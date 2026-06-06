@@ -221,6 +221,10 @@ class ToolRegistry:
             "tool.execution.started",
             "started",
         )
+        options_error = await self._validate_request_options(definition, request, context)
+        if options_error is not None:
+            return options_error
+
         parameter_error = await self._validate_parameters(definition, request, context)
         if parameter_error is not None:
             return parameter_error
@@ -499,6 +503,34 @@ class ToolRegistry:
 
         request.parameters = validated.model_dump(mode="json", exclude_none=True)
         return None
+
+    async def _validate_request_options(
+        self,
+        definition: ToolDefinition,
+        request: ToolRequest,
+        context: ToolExecutionContext,
+    ) -> ToolErrorResponse | None:
+        if definition.connector == "internal" or definition.dry_run or not request.options.dry_run:
+            return None
+
+        error_event = await self._write_audit_event(
+            definition,
+            request,
+            context,
+            "tool.execution.finished",
+            "error",
+            error_code="INVALID_REQUEST",
+        )
+        return ToolErrorResponse(
+            request_id=request.request_id,
+            correlation_id=request.correlation_id,
+            error=ToolError(
+                code="INVALID_REQUEST",
+                message="Tool does not support dry-run requests",
+                retryable=False,
+            ),
+            audit=AuditRef(event_id=error_event.event_id, recorded=True),
+        )
 
     def _validate_result(self, definition: ToolDefinition, data: object) -> object:
         if definition.result_model is None:

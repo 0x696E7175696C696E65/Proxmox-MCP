@@ -29,6 +29,7 @@ ErrorCode = Literal[
     "TIMEOUT",
     "CONFLICT",
     "NOT_FOUND",
+    "NOT_IMPLEMENTED",
     "INTERNAL_ERROR",
 ]
 PolicyDecisionValue = Literal["allow", "deny", "requires_approval"]

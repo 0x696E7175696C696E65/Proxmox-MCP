@@ -1,6 +1,11 @@
 from proxmox_mcp.audit.writer import InMemoryAuditWriter
 from proxmox_mcp.config import Settings
-from proxmox_mcp.proxmox import DANGEROUS_TOOL_SPECS, READ_ONLY_TOOL_SPECS, SAFE_MUTATION_TOOL_SPECS
+from proxmox_mcp.proxmox import (
+    DANGEROUS_TOOL_SPECS,
+    DOMAIN_COMPLETION_TOOL_SPECS,
+    READ_ONLY_TOOL_SPECS,
+    SAFE_MUTATION_TOOL_SPECS,
+)
 from proxmox_mcp.schemas.envelope import Actor, RequestOptions, Target, ToolRequest, ToolResponse
 from proxmox_mcp.server.app import build_health_payload, build_server, health_check
 from proxmox_mcp.ssh.tools import SSH_TOOL_SPECS
@@ -33,7 +38,9 @@ async def test_build_server_registers_health_and_read_only_tools() -> None:
     assert tool_names[0] == "health_check"
     assert set(tool_names[1:]) == {spec.name for spec in READ_ONLY_TOOL_SPECS} | {
         spec.name for spec in SAFE_MUTATION_TOOL_SPECS
-    } | {spec.name for spec in DANGEROUS_TOOL_SPECS} | {spec.name for spec in SSH_TOOL_SPECS}
+    } | {spec.name for spec in DANGEROUS_TOOL_SPECS} | {
+        spec.name for spec in DOMAIN_COMPLETION_TOOL_SPECS
+    } | {spec.name for spec in SSH_TOOL_SPECS}
 
 
 async def test_health_check_writes_audit_event() -> None:

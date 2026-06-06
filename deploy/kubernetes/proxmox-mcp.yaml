@@ -1,0 +1,150 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: proxmox-mcp
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: proxmox-mcp-config
+  namespace: proxmox-mcp
+data:
+  PROXMOX_MCP_ENVIRONMENT: production
+  PROXMOX_MCP_SERVER_HOST: 0.0.0.0
+  PROXMOX_MCP_SERVER_PORT: "8080"
+  PROXMOX_MCP_CREDENTIAL_PROVIDER: hashicorp_vault
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: proxmox-mcp
+  namespace: proxmox-mcp
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: proxmox-mcp
+  template:
+    metadata:
+      labels:
+        app: proxmox-mcp
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: proxmox-mcp
+          image: ghcr.io/0x696e7175696c696e65/proxmox-mcp:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: proxmox-mcp-config
+            - secretRef:
+                name: proxmox-mcp-secrets
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: proxmox-mcp
+  namespace: proxmox-mcp
+spec:
+  selector:
+    app: proxmox-mcp
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: proxmox-mcp
+  namespace: proxmox-mcp
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: proxmox-mcp
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: proxmox-mcp
+  namespace: proxmox-mcp
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: proxmox-mcp
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: proxmox-mcp-restricted-egress
+  namespace: proxmox-mcp
+spec:
+  podSelector:
+    matchLabels:
+      app: proxmox-mcp
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 8006
+        - protocol: TCP
+          port: 22
+        - protocol: TCP
+          port: 8200

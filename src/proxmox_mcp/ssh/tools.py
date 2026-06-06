@@ -15,7 +15,11 @@ from proxmox_mcp.ssh.client import (
     SshCommandResult,
     SshTarget,
 )
-from proxmox_mcp.ssh.policy import ExecuteSshParameters, command_from_parameters
+from proxmox_mcp.ssh.policy import (
+    ExecuteSshInteractiveParameters,
+    ExecuteSshParameters,
+    command_from_parameters,
+)
 from proxmox_mcp.ssh.sessions import SshSessionLimitError, SshSessionNotFoundError
 from proxmox_mcp.tools.context import ToolExecutionContext
 from proxmox_mcp.tools.registry import ToolDefinition, ToolExecutionError, ToolRegistry
@@ -156,7 +160,7 @@ SSH_TOOL_SPECS: tuple[SshToolSpec, ...] = (
         False,
         True,
         "execute_interactive",
-        ExecuteSshParameters,
+        ExecuteSshInteractiveParameters,
         SshCommandExecutionResult,
     ),
     SshToolSpec(

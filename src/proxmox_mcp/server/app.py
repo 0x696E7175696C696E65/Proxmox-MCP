@@ -9,6 +9,7 @@ from proxmox_mcp.config import Settings
 from proxmox_mcp.proxmox import (
     ProxmoxApiClient,
     register_dangerous_tools,
+    register_domain_completion_tools,
     register_read_only_tools,
     register_safe_mutation_tools,
 )
@@ -120,6 +121,7 @@ def build_server(
     register_read_only_tools(registry)
     register_safe_mutation_tools(registry)
     register_dangerous_tools(registry)
+    register_domain_completion_tools(registry)
     register_ssh_tools(registry)
 
     def context_factory(request: ToolRequest) -> ToolExecutionContext:

@@ -135,7 +135,7 @@ def test_dangerous_tool_metadata_requires_dry_run_and_approval() -> None:
 
     assert len(definitions) == len(DANGEROUS_TOOL_SPECS)
     assert all(definition.connector == "proxmox_api" for definition in definitions)
-    assert all(definition.risk == "critical" for definition in definitions)
+    assert {definition.risk for definition in definitions} <= {"high", "critical"}
     assert all(definition.dry_run for definition in definitions)
     assert all(definition.approval_default for definition in definitions)
 
@@ -230,6 +230,47 @@ async def test_snapshot_delete_requires_snapshot_name() -> None:
 
     assert isinstance(response, ToolErrorResponse)
     assert response.error.code == "INVALID_REQUEST"
+
+
+async def test_snapshot_delete_rejects_unsafe_path_parameter() -> None:
+    registry = make_registry()
+    request = make_request(parameters={"snapname": "../escape"})
+    writer = InMemoryAuditWriter()
+    client = InMemoryProxmoxApiClient()
+
+    response = await registry.execute(
+        "delete_vm_snapshot",
+        request,
+        make_context(request, client, writer),
+    )
+
+    assert isinstance(response, ToolErrorResponse)
+    assert response.error.code == "INVALID_REQUEST"
+    assert client.requests == []
+
+
+async def test_path_only_parameters_are_not_forwarded_in_payload() -> None:
+    registry = make_registry()
+    request = make_request(parameters={"snapname": "before-change"}, dry_run=False)
+    writer = InMemoryAuditWriter()
+    client = InMemoryProxmoxApiClient(
+        {
+            "/nodes/pve-1/qemu/100/snapshot": [{"name": "before-change"}],
+            "/nodes/pve-1/qemu/100/snapshot/before-change": "UPID:snapshot-delete",
+        }
+    )
+
+    response = await registry.execute(
+        "delete_vm_snapshot",
+        request,
+        make_context(request, client, writer),
+    )
+
+    assert isinstance(response, ToolResponse)
+    assert [(call.method, call.path, call.data) for call in client.requests] == [
+        ("GET", "/nodes/pve-1/qemu/100/snapshot", {}),
+        ("DELETE", "/nodes/pve-1/qemu/100/snapshot/before-change", {}),
+    ]
 
 
 async def test_disable_firewall_uses_declared_payload_and_network_impact() -> None:

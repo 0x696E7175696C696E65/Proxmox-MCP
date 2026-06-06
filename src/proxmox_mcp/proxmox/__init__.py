@@ -14,6 +14,10 @@ from proxmox_mcp.proxmox.dangerous_tools import (
     DANGEROUS_TOOL_SPECS,
     register_dangerous_tools,
 )
+from proxmox_mcp.proxmox.domain_tools import (
+    DOMAIN_COMPLETION_TOOL_SPECS,
+    register_domain_completion_tools,
+)
 from proxmox_mcp.proxmox.mutation_tools import (
     SAFE_MUTATION_TOOL_SPECS,
     register_safe_mutation_tools,
@@ -23,6 +27,7 @@ from proxmox_mcp.proxmox.read_tools import READ_ONLY_TOOL_SPECS, register_read_o
 __all__ = [
     "ClusterCredentialResolver",
     "DANGEROUS_TOOL_SPECS",
+    "DOMAIN_COMPLETION_TOOL_SPECS",
     "InMemoryProxmoxApiClient",
     "ProxmoxApiCredential",
     "ProxmoxApiClient",
@@ -34,5 +39,6 @@ __all__ = [
     "SAFE_MUTATION_TOOL_SPECS",
     "register_read_only_tools",
     "register_dangerous_tools",
+    "register_domain_completion_tools",
     "register_safe_mutation_tools",
 ]

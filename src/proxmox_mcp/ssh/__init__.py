@@ -10,6 +10,7 @@ from proxmox_mcp.ssh.client import (
     SshTarget,
 )
 from proxmox_mcp.ssh.policy import (
+    ExecuteSshInteractiveParameters,
     ExecuteSshParameters,
     SshCommandPolicy,
     SshCommandPolicyDecision,
@@ -30,6 +31,7 @@ from proxmox_mcp.ssh.sessions import (
 __all__ = [
     "AsyncSshClient",
     "ExecuteSshParameters",
+    "ExecuteSshInteractiveParameters",
     "InMemorySshClient",
     "InMemorySshRecordingStore",
     "SftpEntry",

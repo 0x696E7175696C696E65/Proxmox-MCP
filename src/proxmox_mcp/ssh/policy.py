@@ -132,7 +132,22 @@ class ExecuteSshParameters(BaseModel):
     session_id: str | None = None
 
 
-def command_from_parameters(parameters: ExecuteSshParameters) -> SshCommand:
+class ExecuteSshInteractiveParameters(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    command: str = Field(min_length=1)
+    working_directory: str | None = None
+    environment: dict[str, str] = Field(default_factory=dict)
+    timeout_seconds: int = Field(default=30, ge=1, le=3600)
+    capture_stdout: bool = True
+    capture_stderr: bool = True
+    redaction_profile: Literal["default", "none"] = "default"
+    session_id: str = Field(min_length=1)
+
+
+def command_from_parameters(
+    parameters: ExecuteSshParameters | ExecuteSshInteractiveParameters,
+) -> SshCommand:
     return SshCommand(
         command=parameters.command,
         working_directory=parameters.working_directory,
