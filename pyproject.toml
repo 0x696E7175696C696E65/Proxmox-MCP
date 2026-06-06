@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Enterprise-grade MCP server for secure Proxmox VE automation"
 readme = "README.md"
 requires-python = ">=3.13"
-license = { text = "MIT" }
+license = { file = "LICENSE" }
 authors = [{ name = "0x696E7175696C696E65" }]
 dependencies = [
   "asyncpg>=0.30",

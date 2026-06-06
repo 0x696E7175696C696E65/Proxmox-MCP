@@ -233,6 +233,10 @@ The detailed implementation roadmap lives in [`docs/roadmap.md`](docs/roadmap.md
 - [`docs/testing-strategy.md`](docs/testing-strategy.md): unit, integration, security, lab, SSH sandbox, chaos, and acceptance testing.
 - [`docs/deployment.md`](docs/deployment.md): Docker, Kubernetes, HA, observability, and operations guidance.
 
+## License
+
+This project is open source under the Apache License 2.0. You can use, modify, and distribute the source under the terms in [`LICENSE`](LICENSE).
+
 ## Production Posture
 
 This project is under active development. The current runtime foundation is tested, but full Proxmox management, RBAC enforcement, SSH execution, approval workflows, secret-provider integrations, and production deployment assets are still being built through the roadmap.
