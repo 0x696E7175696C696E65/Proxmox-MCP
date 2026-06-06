@@ -4,6 +4,7 @@
 ![Python](https://img.shields.io/badge/python-3.13%2B-blue)
 ![MCP](https://img.shields.io/badge/MCP-FastMCP-green)
 ![Status](https://img.shields.io/badge/status-foundation_runtime-orange)
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
 Enterprise Proxmox MCP is a security-first Model Context Protocol server for AI-assisted Proxmox VE administration. It is designed to let AI agents manage Proxmox infrastructure through controlled API and SSH access while preserving authentication, RBAC, policy enforcement, approval workflows, audit trails, and operational safeguards.
 
@@ -232,6 +233,10 @@ The detailed implementation roadmap lives in [`docs/roadmap.md`](docs/roadmap.md
 - [`docs/database-schema.md`](docs/database-schema.md): persistence model for sessions, policy, audit, approvals, credentials, resources, and SSH recordings.
 - [`docs/testing-strategy.md`](docs/testing-strategy.md): unit, integration, security, lab, SSH sandbox, chaos, and acceptance testing.
 - [`docs/deployment.md`](docs/deployment.md): Docker, Kubernetes, HA, observability, and operations guidance.
+
+## License
+
+This project is open source under the Apache License 2.0. You can use, modify, and distribute the source under the terms in [`LICENSE`](LICENSE).
 
 ## Production Posture
 
