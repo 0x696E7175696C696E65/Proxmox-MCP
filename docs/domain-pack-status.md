@@ -4,7 +4,7 @@ Domain packs are promoted through the lab-first framework in `docs/tool-promotio
 
 ## VM/LXC Lifecycle And Restore
 
-Status: implemented with Proxmox API live support for lifecycle, migration, snapshot, restore, disk resize, hardware/resource, and cloud-init operations. `enter_lxc_console` exposes a dry-run command preview but remains guarded for live execution until it uses the SSH session/recording contract.
+Status: implemented with Proxmox API live support for lifecycle, migration, snapshot, restore, disk resize, hardware/resource, and cloud-init operations. `enter_lxc_console` now uses the durable SSH session and recording contract for live execution; it opens a recorded session reference instead of returning raw console output.
 
 Validation:
 
@@ -92,11 +92,11 @@ Safety notes:
 
 ## SSH, LXC Console, Diagnostics, And Support Bundle
 
-Status: implemented with SSH command support for node diagnostics and support bundle collection. LXC console entry exposes a dry-run `pct enter {vmid}` preview but live execution remains guarded until it returns a session/recording result instead of a one-shot command response. Commands are routed through `SshCommandPolicy`, so executable allowlists and shell metacharacter restrictions still apply.
+Status: implemented with SSH command support for node diagnostics and support bundle collection. LXC console entry exposes a dry-run `pct enter {vmid}` preview and live execution opens a durable SSH session with a reserved recording reference. It does not execute `pct enter` as a one-shot command or return raw console output.
 
 Live command-backed tools:
 
-- `enter_lxc_console`: `pct enter {vmid}` dry-run preview, guarded live execution
+- `enter_lxc_console`: `pct enter {vmid}` dry-run preview, live durable session/recording reference
 - `run_diagnostics`: `pvesh get /nodes/{node}/status`
 - `collect_support_bundle`: `pveversion -v`
 
@@ -142,6 +142,5 @@ Correlation fields:
 1. Promote queryable internal observability sources that can be validated without touching Proxmox state.
 2. Promote `verify_backup` only after the exact PVE or PBS verification contract and lab evidence exist.
 3. Promote `benchmark_storage` only with bounded workload, timeout, cleanup, and result schema guarantees.
-4. Promote `enter_lxc_console` only after it uses the SSH open/record/close session contract instead of one-shot command semantics.
-5. Promote `expand_storage` backend-by-backend after each storage type has implementation and lab proof.
-6. Promote `apply_node_updates` last because node update, reboot, rollback, and task-polling semantics have the highest operational blast radius.
+4. Promote `expand_storage` backend-by-backend after each storage type has implementation and lab proof.
+5. Promote `apply_node_updates` last because node update, reboot, rollback, and task-polling semantics have the highest operational blast radius.

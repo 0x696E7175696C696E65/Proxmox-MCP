@@ -15,6 +15,7 @@ from proxmox_mcp.observability import ObservabilityBackendError
 from proxmox_mcp.proxmox.client import ProxmoxApiError
 from proxmox_mcp.schemas.envelope import RiskLevel, ToolRequest
 from proxmox_mcp.ssh.client import SshClientError, SshCommand, SshCommandResult, SshTarget
+from proxmox_mcp.ssh.sessions import SshSessionLimitError
 from proxmox_mcp.tools.context import ToolExecutionContext
 from proxmox_mcp.tools.registry import (
     ConnectorType,
@@ -160,7 +161,9 @@ def _method_for(name: str, permission: str, dry_run: bool) -> DomainMethod | Non
 def _live_supported_for(name: str, dry_run: bool, connector: ConnectorType) -> bool:
     if connector == "internal":
         return name in {"get_audit_events", "get_prometheus_metrics"}
-    if name in {"enter_lxc_console", "verify_backup"}:
+    if name == "enter_lxc_console":
+        return True
+    if name == "verify_backup":
         return False
     if name in _LIVE_COMMAND_TOOLS:
         return True
@@ -658,6 +661,17 @@ def _build_domain_handler(
                 result=await _internal_result_for(spec, request, context),
             )
 
+        if spec.name == "enter_lxc_console":
+            console_result = await _open_lxc_console_session(spec, request, context, command)
+            return _result(
+                spec,
+                request,
+                endpoint=endpoint,
+                command=command,
+                payload=payload,
+                result=console_result,
+            )
+
         if command is not None and spec.connector in {"ssh", "hybrid"}:
             result = await _execute_ssh_command(spec, command, request, context)
             result_payload = _ssh_result_payload_for(spec, command, result, context)
@@ -971,6 +985,89 @@ async def _execute_proxmox_request(
             details=exc.details,
             retryable=exc.retryable,
         ) from exc
+
+
+async def _open_lxc_console_session(
+    spec: DomainToolSpec,
+    request: ToolRequest,
+    context: ToolExecutionContext,
+    command: str | None,
+) -> dict[str, object]:
+    if command is None:
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="LXC console tool does not define a console command",
+        )
+    if context.ssh_session_store is None:
+        raise ToolExecutionError(
+            error_code="NOT_IMPLEMENTED",
+            message="Live LXC console requires a durable SSH session store",
+            details={"tool_name": spec.name, "required_backend": "ssh_session_store"},
+        )
+    if not getattr(context.ssh_session_store, "durable", False):
+        raise ToolExecutionError(
+            error_code="NOT_IMPLEMENTED",
+            message="Live LXC console requires a durable SSH session store",
+            details={"tool_name": spec.name, "required_backend": "durable_ssh_session_store"},
+        )
+    if context.ssh_recording_store is None:
+        raise ToolExecutionError(
+            error_code="NOT_IMPLEMENTED",
+            message="Live LXC console requires a durable SSH recording store",
+            details={"tool_name": spec.name, "required_backend": "ssh_recording_store"},
+        )
+    if not getattr(context.ssh_recording_store, "durable", False):
+        raise ToolExecutionError(
+            error_code="NOT_IMPLEMENTED",
+            message="Live LXC console requires a durable SSH recording store",
+            details={"tool_name": spec.name, "required_backend": "durable_ssh_recording_store"},
+        )
+
+    command_hash = sha256(command.encode()).hexdigest()
+    target = SshTarget(
+        cluster=request.target.cluster,
+        node=request.target.node or request.target.resource_id,
+    )
+    try:
+        session = await context.ssh_session_store.open_session(
+            actor=request.actor,
+            target=target,
+            interactive=True,
+            metadata={
+                "domain_tool": spec.name,
+                "container_vmid": _target_backed_value_for("vmid", request),
+                "command_hash": command_hash,
+            },
+        )
+        recording = await context.ssh_recording_store.reserve_session_recording(
+            request_id=request.request_id,
+            session_id=session.session_id,
+        )
+        session = await context.ssh_session_store.attach_recording(
+            session.session_id,
+            recording.recording_ref,
+        )
+    except SshSessionLimitError as exc:
+        raise ToolExecutionError(
+            error_code="RATE_LIMITED",
+            message="SSH session limit exceeded for LXC console",
+            retryable=True,
+        ) from exc
+
+    context.audit_metadata.update(
+        {
+            "ssh_session_id": session.session_id,
+            "ssh_recording_ref": session.recording_ref,
+            "ssh_command_hash": command_hash,
+        }
+    )
+    return {
+        "session_id": session.session_id,
+        "recording_ref": session.recording_ref,
+        "status": "open",
+        "interactive": True,
+        "command_hash": command_hash,
+    }
 
 
 async def _execute_ssh_command(

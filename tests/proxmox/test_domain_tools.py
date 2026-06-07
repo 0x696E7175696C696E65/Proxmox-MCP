@@ -270,7 +270,7 @@ async def test_enter_lxc_console_dry_run_previews_console_command() -> None:
     assert isinstance(response, ToolResponse)
     result = cast(dict[str, object], response.result)
     assert result["command"] == "pct enter 100"
-    assert result["promotion_status"] == "guarded_not_implemented"
+    assert result["promotion_status"] == "live_supported"
     assert client.executions == []
 
 
@@ -426,7 +426,6 @@ def test_high_blast_radius_tools_remain_guarded_until_contracts_exist() -> None:
     for tool_name in (
         "verify_backup",
         "benchmark_storage",
-        "enter_lxc_console",
         "expand_storage",
         "apply_node_updates",
     ):
@@ -434,6 +433,10 @@ def test_high_blast_radius_tools_remain_guarded_until_contracts_exist() -> None:
         assert record.live_supported is False
         assert record.promotion_status == "guarded_not_implemented"
         assert "NOT_IMPLEMENTED" in record.failure_semantics
+
+    enter_lxc_console = records["enter_lxc_console"]
+    assert enter_lxc_console.live_supported is True
+    assert enter_lxc_console.promotion_status == "live_supported"
 
 
 async def test_get_audit_events_requires_queryable_repository() -> None:

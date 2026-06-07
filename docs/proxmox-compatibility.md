@@ -31,6 +31,6 @@ Every preview or GA candidate should attach or update:
 
 ## Current Known Limits
 
-- Interactive SSH sessions are sticky to one application replica until a session broker exists.
-- Alert and trend tools require external telemetry backends before live support.
-- SIEM retry delivery still requires a durable queue before production delivery guarantees are claimed.
+- Multi-replica SSH sessions require the database-backed session store and recording store to be configured; in-memory development sessions are not a production HA mode.
+- Alert and trend tools require configured HTTPS Alertmanager and Prometheus-compatible backends before returning source data.
+- SIEM retry delivery has a durable queue, but vendor-specific delivery adapters and worker deployment are operator-specific.

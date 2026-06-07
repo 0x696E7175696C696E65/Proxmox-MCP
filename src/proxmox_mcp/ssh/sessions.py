@@ -66,6 +66,7 @@ def _empty_sessions() -> dict[str, SshSessionRecord]:
 
 @dataclass(slots=True)
 class SshSessionManager:
+    durable: bool = False
     max_sessions_per_actor_node: int = 2
     session_ttl_seconds: int = 900
     _sessions: dict[str, SshSessionRecord] = field(default_factory=_empty_sessions)
@@ -136,6 +137,8 @@ class SshSessionManager:
 
 
 class DatabaseSshSessionStore:
+    durable: bool = True
+
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],

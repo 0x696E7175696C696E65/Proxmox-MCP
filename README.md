@@ -157,7 +157,7 @@ Tool implementation tiers:
 - **Implemented domain pack paths:** VM/LXC lifecycle and restore, storage/ZFS/LVM/disk, network/firewall, backup/retention, Ceph/HA, SSH console/diagnostics, and support bundle operations with pack-specific contract tests.
 - **Implemented safe mutation paths:** VM/LXC lifecycle operations, snapshots, backups, and non-destructive config updates with dry-run behavior and impact metadata.
 - **Implemented dangerous paths:** destructive VM/LXC/storage/Ceph/user/networking operations with critical/high risk metadata, approval defaults, target revalidation where applicable, and audit metadata.
-- **Implemented SSH paths:** command execution, policy denial, session open/close, interactive execution contract, SFTP/SCP file flows, recording references, and redaction.
+- **Implemented SSH paths:** command execution, policy denial, session open/close, interactive execution contract, durable LXC console session references, SFTP/SCP file flows, recording references, and redaction.
 - **Guarded placeholders:** tools whose safe live behavior is backend-specific or not yet backed by a concrete operation fail visibly with `NOT_IMPLEMENTED` instead of returning placeholder success.
 
 Operational references:

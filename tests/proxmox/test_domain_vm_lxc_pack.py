@@ -85,11 +85,9 @@ def test_vm_lxc_pack_has_concrete_execution_contracts() -> None:
     assert records["clone_lxc"].endpoint_template == "/nodes/{node}/lxc/{vmid}/clone"
     assert records["restore_lxc"].endpoint_template == "/nodes/{node}/lxc"
 
-    promoted = {name: record for name, record in records.items() if name != "enter_lxc_console"}
-    assert all(record.live_supported for record in promoted.values())
-    assert all(record.promotion_status == "live_supported" for record in promoted.values())
+    assert all(record.live_supported for record in records.values())
+    assert all(record.promotion_status == "live_supported" for record in records.values())
     assert records["enter_lxc_console"].command_template == "pct enter {vmid}"
-    assert records["enter_lxc_console"].promotion_status == "guarded_not_implemented"
 
 
 async def test_vm_lxc_pack_dry_run_previews_endpoint_payload_and_impact() -> None:

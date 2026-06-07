@@ -60,6 +60,7 @@ def _empty_recordings() -> list[SshRecording]:
 
 @dataclass(slots=True)
 class InMemorySshRecordingStore:
+    durable: bool = False
     recordings: list[SshRecording] = field(default_factory=_empty_recordings)
 
     async def record_command(
@@ -107,6 +108,8 @@ class InMemorySshRecordingStore:
 
 
 class DatabaseSshRecordingStore:
+    durable: bool = True
+
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
 
