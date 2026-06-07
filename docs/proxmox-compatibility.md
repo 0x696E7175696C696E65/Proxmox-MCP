@@ -27,14 +27,20 @@ This matrix records evidence, not marketing claims. A Proxmox version or topolog
 | `pve-9-single-node-no-ceph` | Read-only discovery, registered read tool execution, disposable VM create/update/delete, backup create/list, `local` storage discovery | Ceph, HA, PBS, multi-node, LXC lifecycle when no template exists | Preview only |
 | `pve-9-storage-local-local-lvm` | `local` directory storage content reads and `local-lvm` LVM-thin metadata/status reads | Storage expansion and benchmarking | Storage discovery preview |
 | `pve-9-single-node-with-guests` | Existing guest inventory plus safe read-only VM/LXC config/status reads | HA, migration, PBS unless configured | Read-only guest management preview |
-| `pve-9-ceph-enabled` | Ceph status, pool, OSD, monitor, and manager discovery | Ceph mutations until separately proven | Ceph read-only preview |
-| `pve-9-ha-enabled` | HA resources/groups/status and controlled fail-safe reads | HA migration/failover until disposable tests exist | HA read-only preview |
-| `pve-9-multi-node` | Node inventory, quorum, migration preflight, task polling across nodes | Destructive migration unless isolated | Multi-node preview |
-| `pve-9-pbs-enabled` | Backup listing plus PBS-backed verify semantics | Backup verification before contract evidence | Backup verification candidate |
+| `pve-9-ceph-enabled` | `tests/lab/test_ceph_profile_smoke.py` reads node Ceph status | Ceph mutations until separately proven | Ceph read-only preview |
+| `pve-9-ha-enabled` | `tests/lab/test_ha_profile_smoke.py` reads HA cluster status/resources | HA migration/failover until disposable tests exist | HA read-only preview |
+| `pve-9-multi-node` | `tests/lab/test_multi_node_profile_smoke.py` validates node count and cluster status | Destructive migration unless isolated | Multi-node preview |
+| `pve-9-pbs-enabled` | `tests/lab/test_pbs_profile_smoke.py` validates a configured PBS storage backend; `tests/lab/test_backup_verify_smoke.py` records verification prerequisites | Live backup verification before artifact evidence | Backup verification candidate |
 
 Profiles not listed as preview or qualified are `Not yet claimed`. A profile can
 move from preview to qualified only when required tests pass without required
 skips and the structured evidence artifacts include the exact profile name.
+
+Profile-specific environment variables:
+
+- `pve-9-multi-node` requires `PROXMOX_MCP_LAB_EXPECTED_NODE_COUNT=2` or higher.
+- `pve-9-pbs-enabled` requires `PROXMOX_MCP_LAB_PBS_REPOSITORY=<storage-id>`.
+- LXC lifecycle promotion can use `PROXMOX_MCP_LAB_LXC_TEMPLATE_STORAGE` and `PROXMOX_MCP_LAB_LXC_TEMPLATE_VOLID` when template discovery should not rely on the default storage.
 
 ## Release Evidence Gates
 

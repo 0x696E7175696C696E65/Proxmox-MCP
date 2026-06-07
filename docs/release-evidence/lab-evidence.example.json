@@ -73,6 +73,30 @@
       "notes": "local directory content discovery and local-lvm LVM-thin status were validated without claiming expansion or benchmark support."
     },
     {
+      "name": "storage mutation smoke",
+      "status": "skipped",
+      "passed": 0,
+      "skipped": 1,
+      "failed": 0,
+      "notes": "Storage expansion and benchmark execution remain guarded until a disposable profile and cleanup evidence exist."
+    },
+    {
+      "name": "PBS verification gate",
+      "status": "skipped",
+      "passed": 0,
+      "skipped": 1,
+      "failed": 0,
+      "notes": "PBS profile was not selected and live backup verification remains unpromoted."
+    },
+    {
+      "name": "Ceph/HA/multi-node profile gates",
+      "status": "skipped",
+      "passed": 0,
+      "skipped": 3,
+      "failed": 0,
+      "notes": "Current evidence is single-node without Ceph, HA, or PBS topology claims."
+    },
+    {
       "name": "chaos gate",
       "status": "passed",
       "passed": 3,

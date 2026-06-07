@@ -25,6 +25,16 @@ def _container() -> dict[str, Any]:
     return containers[0]
 
 
+def _config_map_data() -> dict[str, str]:
+    for document in _documents():
+        if (
+            document.get("kind") == "ConfigMap"
+            and document.get("metadata", {}).get("name") == "proxmox-mcp-config"
+        ):
+            return cast(dict[str, str], document["data"])
+    raise AssertionError("proxmox-mcp ConfigMap missing")
+
+
 def test_kubernetes_probes_use_https_health_endpoints() -> None:
     container = _container()
 
@@ -54,3 +64,18 @@ def test_kubernetes_manifest_defines_https_startup_probe() -> None:
         "scheme": "HTTPS",
     }
     assert startup["failureThreshold"] >= 12
+
+
+def test_kubernetes_manifest_requires_production_auth_and_tls_config() -> None:
+    config = _config_map_data()
+    container = _container()
+    volume_mounts = {
+        cast(str, mount["name"]): mount
+        for mount in cast(list[dict[str, Any]], container["volumeMounts"])
+    }
+
+    assert config["PROXMOX_MCP_ENVIRONMENT"] == "production"
+    assert config["PROXMOX_MCP_AUTH_MODE"] in {"oidc", "mtls", "workload_identity"}
+    assert config["PROXMOX_MCP_EXTERNAL_AUTH_ENABLED"] == "true"
+    assert config["PROXMOX_MCP_TLS__GENERATE_SELF_SIGNED"] == "false"
+    assert volume_mounts["tls"]["readOnly"] is True

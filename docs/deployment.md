@@ -39,7 +39,8 @@ redis:
   url: rediss://redis:6379/0
 
 security:
-  auth_mode: oidc | mtls | workload_identity | service_token
+  auth_mode: oidc | mtls | workload_identity
+  external_auth_enabled: true
   dangerous_operations:
     enabled: true
     require_approval: true
@@ -58,7 +59,7 @@ observability:
 
 No secrets should be committed to the repository. Production deployments should load sensitive values from a secret manager or orchestrator secret mechanism.
 
-Supported authentication primitives are service tokens, OIDC JWTs verified against RS256/JWKS material, mTLS client certificates mapped to explicit identities, and signed workload identity tokens with audience, expiry, and replay checks. OIDC, mTLS, and workload identity should be wired at the deployment gateway or server integration layer through `build_server(..., authenticated_session_resolver=...)` so every non-internal MCP tool receives an authenticated session before RBAC and policy evaluation. Multi-replica workload identity deployments must use `RedisWorkloadIdentityReplayCache` with `build_sync_redis_client()` or an equivalent atomic shared replay store for token nonces.
+Supported authentication primitives are service tokens, OIDC JWTs verified against RS256/JWKS material, mTLS client certificates mapped to explicit identities, and signed workload identity tokens with audience, expiry, and replay checks. Production readiness rejects `development` auth and requires `PROXMOX_MCP_EXTERNAL_AUTH_ENABLED=true`, which means the deployment gateway or server integration has wired `build_server(..., authenticated_session_resolver=...)` so every non-internal MCP tool receives an authenticated session before RBAC and policy evaluation. Multi-replica workload identity deployments must use `RedisWorkloadIdentityReplayCache` with `build_sync_redis_client()` or an equivalent atomic shared replay store for token nonces.
 
 Supported credential providers are `development`, `hashicorp_vault`, `bitwarden`, `onepassword`, `aws_secrets_manager`, and `azure_key_vault`. The base package exposes provider contracts and adapters that accept deployment-supplied clients; operators should install and configure the vendor SDK or sidecar appropriate for their environment. Readiness fails closed when the selected provider is missing required bootstrap configuration.
 
@@ -104,6 +105,8 @@ services:
     environment:
       PROXMOX_MCP_DATABASE_URL: postgresql+asyncpg://proxmox_mcp:REDACTED@postgres/proxmox_mcp?ssl=require
       PROXMOX_MCP_REDIS_URL: rediss://redis:6379/0
+      PROXMOX_MCP_AUTH_MODE: oidc
+      PROXMOX_MCP_EXTERNAL_AUTH_ENABLED: "true"
       PROXMOX_MCP_CREDENTIAL_PROVIDER: hashicorp_vault
       PROXMOX_MCP_TLS__CERT_FILE: /run/proxmox-mcp/tls/tls.crt
       PROXMOX_MCP_TLS__KEY_FILE: /run/proxmox-mcp/tls/tls.key
@@ -115,6 +118,10 @@ services:
       - postgres
       - redis
 ```
+
+The checked-in Compose file intentionally requires `PROXMOX_MCP_DATABASE_URL`
+and `PROXMOX_MCP_POSTGRES_PASSWORD` from the operator environment instead of
+shipping reusable credential defaults.
 
 ## Kubernetes Deployment
 
@@ -250,6 +257,7 @@ Recovery runbook:
 ## Production Hardening Checklist
 
 - Authentication enabled.
+- External authenticated session resolver configured.
 - TLS configured.
 - Secret backend configured.
 - No development secret provider.

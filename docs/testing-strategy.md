@@ -92,6 +92,10 @@ Phase 1 lab tests are read-only and skip unless explicitly enabled. Configure:
 - `PROXMOX_MCP_LAB_PROFILE=pve-9-single-node-no-ceph` to record the active
   compatibility profile. Supported profile names are documented in
   `docs/proxmox-compatibility.md`.
+- `PROXMOX_MCP_LAB_LXC_TEMPLATE_STORAGE` and `PROXMOX_MCP_LAB_LXC_TEMPLATE_VOLID`
+  when disposable LXC lifecycle tests should use a known template.
+- `PROXMOX_MCP_LAB_EXPECTED_NODE_COUNT=2` or higher for `pve-9-multi-node`.
+- `PROXMOX_MCP_LAB_PBS_REPOSITORY=<storage-id>` for `pve-9-pbs-enabled`.
 
 Username/password ticket-auth labs must use realm-qualified usernames such as
 `root@pam`. Disposable Proxmox VE 9.1.1 validation currently records a
@@ -121,9 +125,10 @@ The destructive VM lifecycle smoke test creates, updates, verifies, and deletes
 the explicit disposable VMID. Cleanup refuses to delete an existing guest unless
 its `mcp-lab-*` ownership marker matches the harness.
 
-The current `pve-9-single-node-no-ceph` profile expects LXC template-dependent
-tests to skip when no `vztmpl` content exists on the configured storage. That
-skip is evidence of a prerequisite gap, not a failure.
+Topology profile smoke tests are read-only unless a separate mutation/destructive
+gate explicitly opts in. The current `pve-9-single-node-no-ceph` profile expects
+LXC template-dependent tests to skip when no `vztmpl` content exists on the
+configured storage. That skip is evidence of a prerequisite gap, not a failure.
 
 ### SSH Sandbox Tests
 

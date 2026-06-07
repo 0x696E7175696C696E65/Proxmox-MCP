@@ -27,5 +27,18 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Show required evidence artifacts
+        run: |
+          echo "Required evidence directory: ${{ inputs.evidence_dir }}"
+          echo "Expected artifacts:"
+          echo "- ci-success.json"
+          echo "- distribution-summary.json"
+          echo "- hardening-summary.json"
+          echo "- migration-validation.json"
+          echo "- sbom.spdx.json"
+          echo "- trivy-image-results.sarif"
+          echo "- compatibility-report.json"
+          echo "- lab-evidence.json"
+
       - name: Validate release evidence artifacts
         run: python scripts/validate_release_evidence.py --evidence-dir "${{ inputs.evidence_dir }}"

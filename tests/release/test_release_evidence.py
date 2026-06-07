@@ -65,6 +65,19 @@ def test_release_evidence_validation_rejects_lab_evidence_with_secrets(
     assert "lab-evidence.json" in result.invalid_artifacts
 
 
+def test_release_evidence_validation_rejects_missing_release_summary(
+    tmp_path: Path,
+) -> None:
+    compatibility_report = _compatibility_report()
+    compatibility_report.pop("release_summary")
+    _write_complete_artifacts(tmp_path, compatibility_report=compatibility_report)
+
+    result = validate_release_evidence(tmp_path)
+
+    assert not result.valid
+    assert "compatibility-report.json" in result.invalid_artifacts
+
+
 def test_release_evidence_validation_rejects_qualified_failed_lab_run(
     tmp_path: Path,
 ) -> None:
@@ -106,6 +119,70 @@ def test_release_evidence_validation_rejects_qualified_placeholder_compatibility
 
     assert not result.valid
     assert "compatibility-report.json" in result.invalid_artifacts
+
+
+def test_release_evidence_validation_rejects_unknown_profile_name(
+    tmp_path: Path,
+) -> None:
+    compatibility_report = _compatibility_report()
+    compatibility_report["matrix"] = [
+        {
+            "proxmox_version": "Proxmox VE 9.1.1",
+            "topology": "single-node",
+            "profile": "pve-10-unknown",
+            "evidence_status": "preview_lab_evidence",
+            "evidence_artifacts": ["lab-evidence.json"],
+        }
+    ]
+    _write_complete_artifacts(tmp_path, compatibility_report=compatibility_report)
+
+    result = validate_release_evidence(tmp_path)
+
+    assert not result.valid
+    assert "compatibility-report.json" in result.invalid_artifacts
+
+
+def test_release_evidence_validation_rejects_qualified_missing_required_profile_run(
+    tmp_path: Path,
+) -> None:
+    compatibility_report = _compatibility_report()
+    compatibility_report["status"] = "qualified"
+    compatibility_report["matrix"] = [
+        {
+            "proxmox_version": "Proxmox VE 9.1.1",
+            "topology": "single-node",
+            "profile": "pve-9-single-node-no-ceph",
+            "evidence_status": "qualified",
+            "evidence_artifacts": ["lab-evidence.json"],
+        }
+    ]
+    compatibility_report["profiles"] = [
+        {
+            "name": "pve-9-single-node-no-ceph",
+            "status": "qualified",
+            "required_tests": ["read-only smoke", "registered MCP read tool smoke"],
+            "optional_tests": [],
+            "expected_skips": [],
+        }
+    ]
+    lab_evidence = _lab_evidence()
+    lab_evidence["status"] = "qualified"
+    lab_evidence["lab"] = {
+        "endpoint": "https://pve.example.test:8006",
+        "node": "test",
+        "profile": "pve-9-single-node-no-ceph",
+    }
+
+    _write_complete_artifacts(
+        tmp_path,
+        compatibility_report=compatibility_report,
+        lab_evidence=lab_evidence,
+    )
+
+    result = validate_release_evidence(tmp_path)
+
+    assert not result.valid
+    assert "lab-evidence.json" in result.invalid_artifacts
 
 
 def test_release_evidence_examples_match_validator_schema(tmp_path: Path) -> None:
@@ -198,12 +275,31 @@ def _compatibility_report() -> dict[str, object]:
         "schema_version": 1,
         "status": "preview",
         "generated_at": "2026-06-06T00:00:00Z",
+        "release_summary": {
+            "ci": "success",
+            "hardening": "success",
+            "distribution": "success",
+            "sbom": "present",
+            "trivy": "success",
+            "lab": "preview",
+            "migration": "success",
+        },
         "matrix": [
             {
                 "proxmox_version": "fresh Proxmox VE lab",
                 "topology": "single-node",
+                "profile": "pve-9-single-node-no-ceph",
                 "evidence_status": "preview_lab_evidence",
                 "evidence_artifacts": ["lab-evidence.json"],
+            }
+        ],
+        "profiles": [
+            {
+                "name": "pve-9-single-node-no-ceph",
+                "status": "preview",
+                "required_tests": ["read-only smoke"],
+                "optional_tests": [],
+                "expected_skips": ["Ceph status when Ceph is not installed"],
             }
         ],
     }
@@ -217,6 +313,7 @@ def _lab_evidence() -> dict[str, object]:
         "lab": {
             "endpoint": "https://pve.example.test:8006",
             "node": "test",
+            "profile": "pve-9-single-node-no-ceph",
         },
         "test_runs": [
             {

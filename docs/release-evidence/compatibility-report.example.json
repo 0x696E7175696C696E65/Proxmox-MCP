@@ -2,6 +2,15 @@
   "schema_version": 1,
   "status": "preview",
   "generated_at": "2026-06-06T00:00:00Z",
+  "release_summary": {
+    "ci": "success",
+    "hardening": "success",
+    "distribution": "success",
+    "sbom": "present",
+    "trivy": "success",
+    "lab": "preview",
+    "migration": "success"
+  },
   "matrix": [
     {
       "proxmox_version": "Proxmox VE 9.1.1",
@@ -50,12 +59,63 @@
       ]
     },
     {
+      "name": "pve-9-storage-local-local-lvm",
+      "status": "preview",
+      "required_tests": [
+        "storage profile smoke"
+      ],
+      "optional_tests": [],
+      "expected_skips": [
+        "Storage expansion and benchmarking"
+      ]
+    },
+    {
       "name": "pve-9-ceph-enabled",
       "status": "not_yet_claimed",
       "required_tests": [
         "Ceph discovery smoke"
       ],
+      "optional_tests": [
+        "Ceph mutation smoke"
+      ],
       "expected_skips": []
+    },
+    {
+      "name": "pve-9-ha-enabled",
+      "status": "not_yet_claimed",
+      "required_tests": [
+        "HA discovery smoke"
+      ],
+      "optional_tests": [
+        "HA migration smoke"
+      ],
+      "expected_skips": []
+    },
+    {
+      "name": "pve-9-multi-node",
+      "status": "not_yet_claimed",
+      "required_tests": [
+        "multi-node inventory smoke",
+        "cluster quorum smoke"
+      ],
+      "optional_tests": [
+        "migration smoke"
+      ],
+      "expected_skips": []
+    },
+    {
+      "name": "pve-9-pbs-enabled",
+      "status": "not_yet_claimed",
+      "required_tests": [
+        "PBS availability smoke",
+        "PBS verification gate"
+      ],
+      "optional_tests": [
+        "backup verification smoke"
+      ],
+      "expected_skips": [
+        "Live PBS verification until artifact evidence is available"
+      ]
     }
   ],
   "known_limits": [

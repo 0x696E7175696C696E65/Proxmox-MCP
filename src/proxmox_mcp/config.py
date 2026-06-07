@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     )
 
     environment: Literal["development", "test", "staging", "production"] = "development"
+    auth_mode: Literal["development", "service_token", "oidc", "mtls", "workload_identity"] = (
+        "development"
+    )
+    external_auth_enabled: bool = False
     server_host: str = "127.0.0.1"
     server_port: int = Field(default=8443, ge=1, le=65535)
     database_url: SecretStr = SecretStr(

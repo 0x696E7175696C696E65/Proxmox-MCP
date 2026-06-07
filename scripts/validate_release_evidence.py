@@ -18,6 +18,28 @@ REQUIRED_ARTIFACTS: tuple[str, ...] = (
     "lab-evidence.json",
 )
 
+KNOWN_LAB_PROFILES: frozenset[str] = frozenset(
+    {
+        "pve-9-single-node-no-ceph",
+        "pve-9-storage-local-local-lvm",
+        "pve-9-single-node-with-guests",
+        "pve-9-ceph-enabled",
+        "pve-9-ha-enabled",
+        "pve-9-multi-node",
+        "pve-9-pbs-enabled",
+    }
+)
+
+REQUIRED_RELEASE_SUMMARY_FIELDS: tuple[str, ...] = (
+    "ci",
+    "hardening",
+    "distribution",
+    "sbom",
+    "trivy",
+    "lab",
+    "migration",
+)
+
 
 @dataclass(frozen=True)
 class ReleaseEvidenceValidationResult:
@@ -29,6 +51,7 @@ class ReleaseEvidenceValidationResult:
 def validate_release_evidence(evidence_dir: Path) -> ReleaseEvidenceValidationResult:
     missing: list[str] = []
     invalid: list[str] = []
+    parsed_artifacts: dict[str, object] = {}
 
     for artifact in REQUIRED_ARTIFACTS:
         artifact_path = evidence_dir / artifact
@@ -45,10 +68,23 @@ def validate_release_evidence(evidence_dir: Path) -> ReleaseEvidenceValidationRe
             except json.JSONDecodeError:
                 invalid.append(artifact)
                 continue
+            parsed_artifacts[artifact] = parsed
         if artifact == "compatibility-report.json" and not _valid_compatibility_report(parsed):
             invalid.append(artifact)
         if artifact == "lab-evidence.json" and not _valid_lab_evidence(parsed):
             invalid.append(artifact)
+
+    if (
+        "compatibility-report.json" not in invalid
+        and "lab-evidence.json" not in invalid
+        and "compatibility-report.json" in parsed_artifacts
+        and "lab-evidence.json" in parsed_artifacts
+        and not _valid_profile_evidence_alignment(
+            parsed_artifacts["compatibility-report.json"],
+            parsed_artifacts["lab-evidence.json"],
+        )
+    ):
+        invalid.append("lab-evidence.json")
 
     return ReleaseEvidenceValidationResult(
         valid=not missing and not invalid,
@@ -70,9 +106,33 @@ def _valid_compatibility_report(payload: object | None) -> bool:
     }:
         return False
 
+    release_summary = report.get("release_summary")
+    if not isinstance(release_summary, dict):
+        return False
+    typed_release_summary = cast(dict[str, object], release_summary)
+    if not all(
+        isinstance(typed_release_summary.get(field), str) and typed_release_summary.get(field)
+        for field in REQUIRED_RELEASE_SUMMARY_FIELDS
+    ):
+        return False
+
     matrix = report.get("matrix")
     if not isinstance(matrix, list) or not matrix:
         return False
+
+    profiles = report.get("profiles")
+    profile_names: set[str] = set()
+    if profiles is not None:
+        if not isinstance(profiles, list):
+            return False
+        for profile in cast(list[object], profiles):
+            if not _valid_profile(profile):
+                return False
+            typed_profile = cast(dict[str, object], profile)
+            profile_name = cast(str, typed_profile["name"])
+            if profile_name in profile_names:
+                return False
+            profile_names.add(profile_name)
 
     for row in cast(list[object], matrix):
         if not isinstance(row, dict):
@@ -98,6 +158,12 @@ def _valid_compatibility_report(payload: object | None) -> bool:
         typed_artifacts = cast(list[object], artifacts)
         if any(not isinstance(artifact, str) or not artifact for artifact in typed_artifacts):
             return False
+        profile = typed_row.get("profile")
+        if profile is not None:
+            if not isinstance(profile, str) or profile not in KNOWN_LAB_PROFILES:
+                return False
+            if profile_names and profile not in profile_names:
+                return False
         if status == "qualified":
             if evidence_status != "qualified":
                 return False
@@ -105,6 +171,29 @@ def _valid_compatibility_report(payload: object | None) -> bool:
                 return False
 
     return True
+
+
+def _valid_profile(profile: object) -> bool:
+    if not isinstance(profile, dict):
+        return False
+    typed_profile = cast(dict[str, object], profile)
+    name = typed_profile.get("name")
+    if not isinstance(name, str) or name not in KNOWN_LAB_PROFILES:
+        return False
+    if typed_profile.get("status") not in {"qualified", "preview", "blocked", "not_yet_claimed"}:
+        return False
+    for field in ("required_tests", "expected_skips"):
+        values = typed_profile.get(field)
+        if not isinstance(values, list):
+            return False
+        if any(not isinstance(value, str) or not value for value in cast(list[object], values)):
+            return False
+    optional_tests = typed_profile.get("optional_tests", [])
+    if not isinstance(optional_tests, list):
+        return False
+    return not any(
+        not isinstance(value, str) or not value for value in cast(list[object], optional_tests)
+    )
 
 
 def _valid_lab_evidence(payload: object | None) -> bool:
@@ -164,6 +253,64 @@ def _valid_lab_evidence(payload: object | None) -> bool:
             return False
 
     return True
+
+
+def _valid_profile_evidence_alignment(
+    compatibility_payload: object,
+    lab_payload: object,
+) -> bool:
+    if not isinstance(compatibility_payload, dict) or not isinstance(lab_payload, dict):
+        return False
+
+    compatibility = cast(dict[str, object], compatibility_payload)
+    lab_evidence = cast(dict[str, object], lab_payload)
+    if lab_evidence.get("status") != "qualified":
+        return True
+
+    lab = lab_evidence.get("lab")
+    if not isinstance(lab, dict):
+        return False
+    profile_name = cast(dict[str, object], lab).get("profile")
+    if not isinstance(profile_name, str):
+        return False
+
+    profiles = compatibility.get("profiles")
+    if not isinstance(profiles, list):
+        return False
+
+    profile = _profile_by_name(cast(list[object], profiles), profile_name)
+    if profile is None:
+        return False
+
+    required_tests = profile.get("required_tests")
+    if not isinstance(required_tests, list):
+        return False
+    test_runs = lab_evidence.get("test_runs")
+    if not isinstance(test_runs, list):
+        return False
+
+    passed_runs = {
+        cast(str, run["name"])
+        for run in cast(list[dict[str, object]], test_runs)
+        if isinstance(run, dict)
+        and isinstance(run.get("name"), str)
+        and run.get("status") == "passed"
+        and run.get("failed") == 0
+    }
+    return all(test_name in passed_runs for test_name in cast(list[str], required_tests))
+
+
+def _profile_by_name(
+    profiles: list[object],
+    profile_name: str,
+) -> dict[str, object] | None:
+    for profile in profiles:
+        if not isinstance(profile, dict):
+            continue
+        typed_profile = cast(dict[str, object], profile)
+        if typed_profile.get("name") == profile_name:
+            return typed_profile
+    return None
 
 
 def _contains_sensitive_key(payload: object) -> bool:

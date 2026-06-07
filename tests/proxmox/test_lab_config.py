@@ -127,6 +127,26 @@ def test_lab_config_parses_named_profile() -> None:
     assert config.profile_missing_prerequisites() == ()
 
 
+def test_lab_config_parses_lxc_template_prerequisites_without_requiring_them() -> None:
+    config = LabEnvironmentConfig.from_env(
+        {
+            "PROXMOX_MCP_LAB_ENABLED": "true",
+            "PROXMOX_MCP_LAB_API_ENDPOINT": "https://pve.example.test:8006",
+            "PROXMOX_MCP_LAB_USERNAME": "root@pam",
+            "PROXMOX_MCP_LAB_PASSWORD": "secret-value",
+            "PROXMOX_MCP_LAB_NODE": "pve-a",
+            "PROXMOX_MCP_LAB_STORAGE": "local-lvm",
+            "PROXMOX_MCP_LAB_LXC_TEMPLATE_STORAGE": "local",
+            "PROXMOX_MCP_LAB_LXC_TEMPLATE_VOLID": "local:vztmpl/debian-12-standard.tar.zst",
+        }
+    )
+
+    assert config.enabled is True
+    assert config.lxc_template_storage_id == "local"
+    assert config.lxc_template_volid == "local:vztmpl/debian-12-standard.tar.zst"
+    assert config.profile_missing_prerequisites() == ()
+
+
 def test_lab_config_reports_profile_prerequisites_without_credentials() -> None:
     config = LabEnvironmentConfig.from_env(
         {
@@ -140,9 +160,52 @@ def test_lab_config_reports_profile_prerequisites_without_credentials() -> None:
 
     assert config.enabled is True
     assert config.profile_missing_prerequisites() == (
-        "Set PROXMOX_MCP_LAB_NODE for node-scoped storage profile tests",
+        "Set PROXMOX_MCP_LAB_NODE for node-scoped lab profile tests",
         "Set PROXMOX_MCP_LAB_STORAGE for local storage profile tests",
     )
+
+
+def test_lab_config_reports_topology_profile_prerequisites() -> None:
+    config = LabEnvironmentConfig.from_env(
+        {
+            "PROXMOX_MCP_LAB_ENABLED": "true",
+            "PROXMOX_MCP_LAB_API_ENDPOINT": "https://pve.example.test:8006",
+            "PROXMOX_MCP_LAB_USERNAME": "root@pam",
+            "PROXMOX_MCP_LAB_PASSWORD": "secret-value",
+            "PROXMOX_MCP_LAB_PROFILE": "pve-9-multi-node",
+        }
+    )
+
+    assert config.enabled is True
+    assert config.profile_metadata().required_tests == (
+        "multi-node inventory smoke",
+        "cluster quorum smoke",
+    )
+    assert config.profile_missing_prerequisites() == (
+        "Set PROXMOX_MCP_LAB_EXPECTED_NODE_COUNT=2 or higher for multi-node profile tests",
+    )
+
+
+def test_lab_config_parses_pbs_profile_metadata() -> None:
+    config = LabEnvironmentConfig.from_env(
+        {
+            "PROXMOX_MCP_LAB_ENABLED": "true",
+            "PROXMOX_MCP_LAB_API_ENDPOINT": "https://pve.example.test:8006",
+            "PROXMOX_MCP_LAB_USERNAME": "root@pam",
+            "PROXMOX_MCP_LAB_PASSWORD": "secret-value",
+            "PROXMOX_MCP_LAB_PROFILE": "pve-9-pbs-enabled",
+            "PROXMOX_MCP_LAB_NODE": "pve-a",
+            "PROXMOX_MCP_LAB_PBS_REPOSITORY": "pbs-local",
+        }
+    )
+
+    assert config.enabled is True
+    assert config.pbs_repository_id == "pbs-local"
+    assert config.profile_metadata().required_tests == (
+        "PBS availability smoke",
+        "PBS verification gate",
+    )
+    assert config.profile_missing_prerequisites() == ()
 
 
 def test_lab_config_rejects_unknown_profile() -> None:

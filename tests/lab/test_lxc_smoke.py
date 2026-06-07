@@ -10,6 +10,7 @@ import pytest
 
 from proxmox_mcp.proxmox.client import ProxmoxApiError
 from proxmox_mcp.proxmox.http_client import ProxmoxHttpApiClient
+from proxmox_mcp.proxmox.lab import LabEnvironmentConfig
 
 pytestmark = pytest.mark.lab
 
@@ -24,24 +25,37 @@ async def test_lxc_inventory_lists_containers(
 
 
 async def test_lxc_template_discovery_is_skip_safe(
+    lab_config: LabEnvironmentConfig,
     lab_client: ProxmoxHttpApiClient,
     optional_lab_node: str,
     optional_lab_storage: str,
 ) -> None:
-    template = await _first_lxc_template(lab_client, optional_lab_node, optional_lab_storage)
+    template = await _configured_or_first_lxc_template(
+        lab_config,
+        lab_client,
+        optional_lab_node,
+        optional_lab_storage,
+    )
     if template is None:
         pytest.skip(f"No LXC templates found on storage {optional_lab_storage!r}")
 
-    assert template.startswith(f"{optional_lab_storage}:vztmpl/")
+    template_storage = lab_config.lxc_template_storage_id or optional_lab_storage
+    assert template.startswith(f"{template_storage}:vztmpl/")
 
 
 async def test_disposable_lxc_lifecycle_when_template_exists(
+    lab_config: LabEnvironmentConfig,
     lab_client: ProxmoxHttpApiClient,
     optional_lab_node: str,
     optional_lab_storage: str,
     disposable_lab_ctid: int,
 ) -> None:
-    template = await _first_lxc_template(lab_client, optional_lab_node, optional_lab_storage)
+    template = await _configured_or_first_lxc_template(
+        lab_config,
+        lab_client,
+        optional_lab_node,
+        optional_lab_storage,
+    )
     if template is None:
         pytest.skip(f"No LXC templates found on storage {optional_lab_storage!r}")
 
@@ -71,6 +85,21 @@ async def test_disposable_lxc_lifecycle_when_template_exists(
 
     assert isinstance(config, dict)
     assert config["hostname"] == f"mcp-lab-ct-{disposable_lab_ctid}"
+
+
+async def _configured_or_first_lxc_template(
+    lab_config: LabEnvironmentConfig,
+    lab_client: ProxmoxHttpApiClient,
+    node: str,
+    storage: str,
+) -> str | None:
+    if lab_config.lxc_template_volid is not None:
+        return lab_config.lxc_template_volid
+    return await _first_lxc_template(
+        lab_client,
+        node,
+        lab_config.lxc_template_storage_id or storage,
+    )
 
 
 async def _first_lxc_template(

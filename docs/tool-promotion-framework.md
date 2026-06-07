@@ -42,3 +42,14 @@ A guarded tool can be promoted only when:
 - Failed connector calls return structured errors and never false success.
 
 If any requirement is incomplete, keep the tool guarded and document the reason.
+
+## Backup Verification Contract
+
+`verify_backup` is intentionally guarded. A backend can be promoted only after it defines:
+
+- Backend type (`pve-local` or `pbs`) and repository/addressing fields.
+- The exact verification source or command and expected success/failure mapping.
+- Audit metadata proving which artifact was verified.
+- A profile-specific lab run with a real backup artifact and sanitized release evidence.
+
+Until then, live execution returns `NOT_IMPLEMENTED` with the backend and missing evidence requirements.

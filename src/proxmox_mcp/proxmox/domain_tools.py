@@ -645,6 +645,57 @@ def _build_domain_handler(
             )
 
         if not spec.live_supported:
+            if spec.name == "verify_backup":
+                backend = _backup_verification_backend(payload)
+                raise ToolExecutionError(
+                    error_code="NOT_IMPLEMENTED",
+                    message=(
+                        "Backup verification requires a backend-specific PVE or PBS "
+                        "verification contract and lab evidence"
+                    ),
+                    details={
+                        "tool_name": spec.name,
+                        "connector": spec.connector,
+                        "backend": backend,
+                        "required_evidence": (
+                            "backend-specific backup verification contract and lab evidence"
+                        ),
+                    },
+                )
+            if spec.name == "expand_storage":
+                backend = _storage_backend(payload)
+                raise ToolExecutionError(
+                    error_code="NOT_IMPLEMENTED",
+                    message=(
+                        "Storage expansion requires a backend-specific execution contract "
+                        "and lab evidence"
+                    ),
+                    details={
+                        "tool_name": spec.name,
+                        "connector": spec.connector,
+                        "backend": backend,
+                        "required_evidence": (
+                            "backend-specific storage expansion contract and lab evidence"
+                        ),
+                    },
+                )
+            if spec.name == "benchmark_storage":
+                backend = _storage_backend(payload)
+                raise ToolExecutionError(
+                    error_code="NOT_IMPLEMENTED",
+                    message=(
+                        "Storage benchmarking requires bounded workload, artifact cleanup, "
+                        "and backend-specific lab evidence"
+                    ),
+                    details={
+                        "tool_name": spec.name,
+                        "connector": spec.connector,
+                        "backend": backend,
+                        "required_evidence": (
+                            "bounded storage benchmark contract and cleanup lab evidence"
+                        ),
+                    },
+                )
             raise ToolExecutionError(
                 error_code="NOT_IMPLEMENTED",
                 message="Domain tool live execution is not implemented",
@@ -711,6 +762,10 @@ def _payload_for_execution(
     request: ToolRequest,
     payload: dict[str, object],
 ) -> dict[str, object]:
+    if spec.name == "expand_storage":
+        return _storage_expansion_payload_for(request, payload)
+    if spec.name == "benchmark_storage":
+        return _storage_benchmark_payload_for(payload)
     if spec.name != "prune_backups":
         return payload
 
@@ -1323,6 +1378,22 @@ def _impact_for(spec: DomainToolSpec, request: ToolRequest) -> dict[str, object]
 def _rollback_guidance_for(spec: DomainToolSpec) -> str | None:
     if not spec.dry_run:
         return None
+    if spec.name == "verify_backup":
+        return (
+            "PBS verification requires repository visibility, addressable backup artifacts, "
+            "and profile-specific lab evidence; PVE-local verification remains guarded until "
+            "a safe verification command/source is defined."
+        )
+    if spec.name == "expand_storage":
+        return (
+            "Review backend-specific expansion plan and rollback path before live execution; "
+            "current expansion support is preview-only until lab evidence exists."
+        )
+    if spec.name == "benchmark_storage":
+        return (
+            "Benchmarking requires bounded duration, disposable artifacts, and cleanup evidence "
+            "before live execution."
+        )
     if spec.risk == "critical":
         return (
             "Require a verified backup, console access, and a documented rollback "
@@ -1333,3 +1404,62 @@ def _rollback_guidance_for(spec: DomainToolSpec) -> str | None:
     if spec.risk == "medium":
         return "Confirm expected state and monitor the resulting Proxmox task"
     return "Read-only or low-risk operation; no rollback action expected"
+
+
+def _backup_verification_backend(payload: dict[str, object]) -> str:
+    backend = payload.get("backend")
+    if isinstance(backend, str) and backend:
+        return backend
+    return "pve-local"
+
+
+def _storage_expansion_payload_for(
+    request: ToolRequest,
+    payload: dict[str, object],
+) -> dict[str, object]:
+    requested_size = payload.get("requested_size")
+    if requested_size is not None and not isinstance(requested_size, str):
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="Storage expansion requested_size must be a string",
+        )
+    if request.options.dry_run:
+        preview_payload = dict(payload)
+        preview_payload.setdefault("mode", "preview")
+        preview_payload.setdefault("backend", _storage_backend(payload))
+        return preview_payload
+    return payload
+
+
+def _storage_benchmark_payload_for(payload: dict[str, object]) -> dict[str, object]:
+    target_type = payload.get("target_type")
+    if target_type not in {"storage", "volume"}:
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="Storage benchmark target_type must be storage or volume",
+        )
+    duration = payload.get("duration_seconds")
+    try:
+        duration_seconds = int(str(duration))
+    except (TypeError, ValueError) as exc:
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="Storage benchmark duration_seconds must be an integer",
+        ) from exc
+    if duration_seconds < 1 or duration_seconds > 60:
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="Storage benchmark duration_seconds must be between 1 and 60",
+        )
+    benchmark_payload = dict(payload)
+    benchmark_payload["duration_seconds"] = duration_seconds
+    benchmark_payload.setdefault("backend", _storage_backend(payload))
+    benchmark_payload.setdefault("artifact_scope", "disposable")
+    return benchmark_payload
+
+
+def _storage_backend(payload: dict[str, object]) -> str:
+    backend = payload.get("backend")
+    if isinstance(backend, str) and backend:
+        return backend
+    return "unknown"

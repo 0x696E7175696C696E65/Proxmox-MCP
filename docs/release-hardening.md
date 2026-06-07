@@ -19,12 +19,13 @@ Current lab-rollout evidence:
 - `python -m ruff check .`: clean
 - `python -m pyright`: `0 errors, 0 warnings`
 - Security invariant suite: `54 passed`
-- `python -m pytest`: latest full local suite reported `310 passed, 7 skipped`; lab and PostgreSQL migration tests require explicit operator-provided endpoints.
+- `python -m pytest`: latest full local suite reported `350 passed, 10 skipped`; lab and PostgreSQL migration tests require explicit operator-provided endpoints.
 - Auth/secret/config/server focused suite: `50 passed`.
-- Release evidence schema suite: `8 passed`.
+- Release evidence schema, public preview docs, and workflow contract suite: `19 passed`.
 - Live Proxmox VE 9.1.1 `pve-9-single-node-no-ceph` lab evidence now covers read-only smoke, registered MCP read execution, registered disposable VM config update, backup create/list, and storage profile discovery. LXC template lifecycle is skip-safe because the current lab has no LXC templates on `local`.
 - Chaos and lightweight load gates: `5 passed`; lab gates skip safely when `PROXMOX_MCP_LAB_ENABLED=true` is not configured in the local environment.
 - Domain-pack contract tests cover VM/LXC, storage/ZFS/LVM/disk, network/firewall, backup, Ceph/HA, SSH/console, and observability runtime wiring.
+- Production qualification gates reject development auth, missing external authenticated-session integration, development secret providers, plaintext dependency URLs, and incomplete TLS configuration.
 - Release hardening gates now include `tests/release/test_migration_gate.py`, `tests/deploy/test_kubernetes_manifest.py`, `tests/release/test_workflow_contracts.py`, `tests/chaos/`, and `tests/performance/`.
 - Compatibility evidence is tracked in `docs/proxmox-compatibility.md` and must be updated before tagging a release candidate.
 
@@ -40,9 +41,10 @@ Current lab-rollout evidence:
 | External observability | In-process metrics/log/trace wiring exists; Alertmanager and Prometheus adapters are available when configured | Query tests for audit events, Alertmanager alert normalization, Prometheus trend normalization, required-source readiness, and explicit external-source responses when unconfigured | Internal tools must return real source data or `external_source_required` |
 | SIEM delivery | SIEM payload formatting plus durable retry/dead-letter queue exists | Queue redaction, retry, dead-letter, and audit-writer degradation tests | Audit DB remains authoritative; SIEM delivery degrades for read-only operations and retries durably |
 | Enterprise auth and secrets | Service tokens, OIDC RS256/JWKS verification, mTLS identity mapping, workload identity replay checks, and enterprise secret-provider adapters exist | Authenticator unit tests, fail-closed verifier tests, secret-provider routing tests, HTTPS config validation, and readiness tests for missing provider bootstrap configuration | Production deployments must select a real identity path and secret backend; missing configuration blocks readiness |
+| Production deployment qualification | Docker Compose and Kubernetes examples enforce HTTPS probes, TLS mounts, non-root runtime posture, encrypted dependencies, external auth enablement, and operator-supplied secrets | `tests/deploy/test_kubernetes_manifest.py`, `tests/deploy/test_docker_compose.py`, and readiness tests in `tests/test_server.py` | Production readiness fails closed for development auth, missing external auth resolver, development secret provider, plaintext PostgreSQL/Redis URLs, and missing TLS material |
 | Guarded Proxmox tools | Guarded tools fail visibly instead of returning fake success | Contract, unit, and opt-in lab tests per promoted tool | Tool promotion checklist and evidence must be attached |
 | Compatibility | Preview evidence exists for `pve-9-single-node-no-ceph` and `pve-9-storage-local-local-lvm` only | Version/topology matrix for tested Proxmox and optional Ceph/HA/PBS features | Release notes include compatibility report; qualified reports cannot contain required skipped lab runs |
-| Release evidence | Evidence requirements are explicit and schema-checked for compatibility/lab artifacts | Release-candidate workflow fails when required evidence artifacts are missing, invalid, incomplete, or contain credential-shaped keys | `.github/workflows/release-candidate.yml` runs `scripts/validate_release_evidence.py`; examples live in `docs/release-evidence/` |
+| Release evidence | Evidence requirements are explicit and schema-checked for compatibility/lab artifacts, profile declarations, release-summary fields, and sanitized payloads | Release-candidate workflow fails when required evidence artifacts are missing, invalid, incomplete, contain credential-shaped keys, reference unknown profiles, or claim `qualified` with missing/skipped required profile tests | `.github/workflows/release-candidate.yml` runs `scripts/validate_release_evidence.py`; examples live in `docs/release-evidence/` |
 | Chaos and load | Deterministic non-lab chaos/load gates exist; live lab gates remain opt-in | `tests/chaos/`, `tests/performance/`, and lab gates when credentials are configured | Hardening workflow runs executable pytest gates and fails closed when lab gates are enabled without required lab config |
 
 ## Chaos Scenarios
@@ -56,6 +58,16 @@ Run these only against an isolated lab cluster:
 - Interrupt a long-running backup or migration task and confirm structured retryable errors.
 
 Security-critical dependencies must fail closed. Optional observability exporters may degrade without blocking read-only operations.
+
+## Public Preview Checklist
+
+Preview releases must include:
+
+1. Passing CI, distribution, hardening, migration, SBOM, and Trivy evidence artifacts.
+2. A compatibility report whose profiles match the lab evidence and do not claim `qualified` with missing, skipped, failed, or placeholder required tests.
+3. A lab evidence artifact that contains only sanitized endpoint/profile/test summaries, never usernames, tokens, passwords, private keys, or credential-shaped keys.
+4. README, compatibility, and domain-pack status updates that keep guarded operations clearly marked as guarded.
+5. Production deployment notes showing external auth, enterprise secret backend, TLS cert material, PostgreSQL TLS, Redis TLS, and operator-owned credentials.
 
 ## Rollback
 

@@ -110,6 +110,54 @@ async def test_backup_pack_dry_run_previews_verify_volume_path() -> None:
     assert result["promotion_status"] == "guarded_not_implemented"
 
 
+async def test_verify_backup_pbs_dry_run_records_backend_contract() -> None:
+    registry = make_registry()
+    request = make_request(
+        parameters={
+            "volume": "backup:backup/vzdump-qemu-100.vma.zst",
+            "payload": {
+                "backend": "pbs",
+                "repository": "pbs-local",
+            },
+        }
+    )
+
+    response = await registry.execute("verify_backup", request, make_context(request))
+
+    assert isinstance(response, ToolResponse)
+    result = cast(dict[str, object], response.result)
+    assert result["promotion_status"] == "guarded_not_implemented"
+    assert result["payload"] == {
+        "backend": "pbs",
+        "repository": "pbs-local",
+    }
+    assert "PBS verification requires" in cast(str, result["rollback_guidance"])
+
+
+async def test_verify_backup_live_returns_backend_specific_unsupported_response() -> None:
+    registry = make_registry()
+    request = make_request(
+        parameters={
+            "volume": "backup:backup/vzdump-qemu-100.vma.zst",
+            "payload": {"backend": "pve-local"},
+        },
+        dry_run=False,
+    )
+    client = InMemoryProxmoxApiClient()
+
+    response = await registry.execute("verify_backup", request, make_context(request, client))
+
+    assert isinstance(response, ToolErrorResponse)
+    assert response.error.code == "NOT_IMPLEMENTED"
+    assert response.error.details == {
+        "tool_name": "verify_backup",
+        "connector": "proxmox_api",
+        "backend": "pve-local",
+        "required_evidence": "backend-specific backup verification contract and lab evidence",
+    }
+    assert client.requests == []
+
+
 async def test_backup_pack_live_job_update_uses_expected_api_path() -> None:
     registry = make_registry()
     request = make_request(

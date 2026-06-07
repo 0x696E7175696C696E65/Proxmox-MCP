@@ -182,6 +182,37 @@ class SecretBackendDependencyChecker:
         )
 
 
+class ProductionAuthDependencyChecker:
+    async def check(self, settings: Settings) -> DependencyCheck:
+        if settings.environment != "production":
+            return DependencyCheck(
+                name="auth",
+                required=True,
+                status="ok",
+                detail=f"{settings.auth_mode} auth mode allowed outside production",
+            )
+        if settings.auth_mode == "development":
+            return DependencyCheck(
+                name="auth",
+                required=True,
+                status="unavailable",
+                detail="development auth mode is not allowed in production",
+            )
+        if not settings.external_auth_enabled:
+            return DependencyCheck(
+                name="auth",
+                required=True,
+                status="unavailable",
+                detail="production requires an external authenticated session resolver path",
+            )
+        return DependencyCheck(
+            name="auth",
+            required=True,
+            status="ok",
+            detail=f"{settings.auth_mode} external auth path configured",
+        )
+
+
 class TlsDependencyChecker:
     async def check(self, settings: Settings) -> DependencyCheck:
         tls = settings.tls
@@ -304,6 +335,7 @@ def default_dependency_checkers() -> Mapping[str, DependencyChecker]:
     return {
         "postgresql": DatabaseDependencyChecker(),
         "redis": RedisDependencyChecker(),
+        "auth": ProductionAuthDependencyChecker(),
         "secret_backend": SecretBackendDependencyChecker(),
         "tls": TlsDependencyChecker(),
         "migrations": MigrationDependencyChecker(),

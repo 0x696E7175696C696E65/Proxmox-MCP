@@ -123,6 +123,69 @@ async def test_storage_pack_live_ssh_command_executes_when_policy_allows() -> No
     assert command.command == "zpool scrub tank"
 
 
+async def test_expand_storage_local_lvm_dry_run_records_backend_preview_contract() -> None:
+    registry = make_registry()
+    request = make_request(
+        parameters={
+            "payload": {
+                "backend": "lvmthin",
+                "requested_size": "+10G",
+            }
+        }
+    )
+
+    response = await registry.execute("expand_storage", request, make_context(request))
+
+    assert isinstance(response, ToolResponse)
+    result = cast(dict[str, object], response.result)
+    assert result["promotion_status"] == "guarded_not_implemented"
+    assert result["payload"] == {
+        "backend": "lvmthin",
+        "requested_size": "+10G",
+        "mode": "preview",
+    }
+    assert "backend-specific expansion" in cast(str, result["rollback_guidance"])
+
+
+async def test_expand_storage_live_returns_backend_specific_guard() -> None:
+    registry = make_registry()
+    request = make_request(
+        parameters={"payload": {"backend": "lvmthin", "requested_size": "+10G"}},
+        dry_run=False,
+    )
+    client = InMemorySshClient()
+
+    response = await registry.execute("expand_storage", request, make_context(request, client))
+
+    assert isinstance(response, ToolErrorResponse)
+    assert response.error.code == "NOT_IMPLEMENTED"
+    assert response.error.details == {
+        "tool_name": "expand_storage",
+        "connector": "hybrid",
+        "backend": "lvmthin",
+        "required_evidence": "backend-specific storage expansion contract and lab evidence",
+    }
+    assert client.executions == []
+
+
+async def test_benchmark_storage_requires_bounded_runtime_settings() -> None:
+    registry = make_registry()
+    request = make_request(
+        parameters={
+            "payload": {
+                "target_type": "storage",
+                "duration_seconds": 600,
+            }
+        }
+    )
+
+    response = await registry.execute("benchmark_storage", request, make_context(request))
+
+    assert isinstance(response, ToolErrorResponse)
+    assert response.error.code == "INVALID_REQUEST"
+    assert "duration_seconds" in response.error.message
+
+
 async def test_storage_pack_nonzero_ssh_exit_returns_error() -> None:
     registry = make_registry()
     request = make_request(parameters={"pool": "tank", "device": "/dev/sdb"}, dry_run=False)

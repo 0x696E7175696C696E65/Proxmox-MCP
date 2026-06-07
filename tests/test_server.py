@@ -24,6 +24,7 @@ from proxmox_mcp.server.app import (
 )
 from proxmox_mcp.server.health import (
     ConfiguredUrlDependencyChecker,
+    ProductionAuthDependencyChecker,
     SecretBackendDependencyChecker,
     SiemDeliveryDependencyChecker,
     StaticDependencyChecker,
@@ -188,6 +189,38 @@ async def test_secret_backend_readiness_accepts_configured_enterprise_provider()
     assert payload.dependencies["secret_backend"].detail == (
         "aws_secrets_manager provider configured"
     )
+
+
+async def test_production_readiness_rejects_development_auth_mode() -> None:
+    payload = await build_readiness_payload(
+        Settings(environment="production", auth_mode="development"),
+        {"auth": ProductionAuthDependencyChecker()},
+    )
+
+    assert payload.status == "not_ready"
+    assert payload.dependencies["auth"].status == "unavailable"
+    assert "development auth mode" in payload.dependencies["auth"].detail
+
+
+async def test_production_readiness_requires_external_auth_resolver_path() -> None:
+    payload = await build_readiness_payload(
+        Settings(environment="production", auth_mode="oidc", external_auth_enabled=False),
+        {"auth": ProductionAuthDependencyChecker()},
+    )
+
+    assert payload.status == "not_ready"
+    assert payload.dependencies["auth"].status == "unavailable"
+    assert "external authenticated session resolver" in payload.dependencies["auth"].detail
+
+
+async def test_production_readiness_accepts_external_auth_path() -> None:
+    payload = await build_readiness_payload(
+        Settings(environment="production", auth_mode="oidc", external_auth_enabled=True),
+        {"auth": ProductionAuthDependencyChecker()},
+    )
+
+    assert payload.status == "ready"
+    assert payload.dependencies["auth"].status == "ok"
 
 
 def test_build_server_returns_named_app() -> None:
