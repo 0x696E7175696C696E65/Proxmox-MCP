@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-import asyncio
-from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Protocol, cast
-from urllib.parse import quote
 from uuid import uuid4
 
 import pytest
 
 from proxmox_mcp.audit.writer import InMemoryAuditWriter
-from proxmox_mcp.proxmox.client import ProxmoxApiError
 from proxmox_mcp.proxmox.http_client import ProxmoxHttpApiClient
+from proxmox_mcp.proxmox.lab_resources import DisposableProxmoxResources
 from proxmox_mcp.reliability import ProxmoxTask, ProxmoxTaskStore
 from proxmox_mcp.schemas.envelope import (
     Actor,
@@ -86,12 +83,13 @@ async def test_registered_vm_config_update_records_lab_contract(
     lab_mutation_tool_registry: ToolRegistry,
     lab_tool_context_factory: ContextFactory,
     lab_client: ProxmoxHttpApiClient,
+    lab_resources: DisposableProxmoxResources,
     lab_audit_writer: InMemoryAuditWriter,
     optional_lab_node: str,
     disposable_lab_vmid: int,
 ) -> None:
-    await _delete_vm_if_present(lab_client, optional_lab_node, disposable_lab_vmid)
-    await _create_disposable_vm(lab_client, optional_lab_node, disposable_lab_vmid)
+    await lab_resources.delete_vm_if_present(disposable_lab_vmid)
+    await lab_resources.create_vm(disposable_lab_vmid)
     task_store = RecordingTaskStore()
     approval_code = "lab-" + "approved"
     description = f"registered MCP lab update {disposable_lab_vmid}"
@@ -129,7 +127,7 @@ async def test_registered_vm_config_update_records_lab_contract(
             f"/nodes/{optional_lab_node}/qemu/{disposable_lab_vmid}/config"
         )
     finally:
-        await _delete_vm_if_present(lab_client, optional_lab_node, disposable_lab_vmid)
+        await lab_resources.delete_vm_if_present(disposable_lab_vmid)
 
     assert isinstance(response, ToolResponse)
     raw_result: object = response.result
@@ -141,73 +139,3 @@ async def test_registered_vm_config_update_records_lab_contract(
     assert isinstance(config, dict)
     assert config["description"] == description
     assert [event.result_status for event in lab_audit_writer.events] == ["started", "success"]
-
-
-async def _create_disposable_vm(
-    lab_client: ProxmoxHttpApiClient,
-    node: str,
-    vmid: int,
-) -> None:
-    create_result = await lab_client.post(
-        f"/nodes/{node}/qemu",
-        data={
-            "vmid": vmid,
-            "name": f"mcp-lab-{vmid}",
-            "memory": 512,
-            "cores": 1,
-            "ostype": "l26",
-        },
-    )
-    await _wait_for_task(lab_client, node, create_result)
-
-
-async def _delete_vm_if_present(
-    lab_client: ProxmoxHttpApiClient,
-    node: str,
-    vmid: int,
-) -> None:
-    try:
-        config = await lab_client.get(f"/nodes/{node}/qemu/{vmid}/config")
-    except ProxmoxApiError:
-        return
-    if not _is_harness_vm_config(config, vmid):
-        raise AssertionError(f"Refusing to delete non-harness VMID {vmid}")
-
-    delete_result = await lab_client.delete(
-        f"/nodes/{node}/qemu/{vmid}",
-        data={"purge": 1, "destroy-unreferenced-disks": 1},
-    )
-    await _wait_for_task(lab_client, node, delete_result)
-
-
-def _is_harness_vm_config(config: object, vmid: int) -> bool:
-    if not isinstance(config, dict):
-        return False
-    typed_config = cast(dict[str, object], config)
-    return typed_config.get("name") == f"mcp-lab-{vmid}"
-
-
-async def _wait_for_task(
-    lab_client: ProxmoxHttpApiClient,
-    node: str,
-    result: object,
-) -> None:
-    if not isinstance(result, str) or not result.startswith("UPID:"):
-        return
-
-    task_id = quote(result, safe="")
-    for _ in range(60):
-        status = await lab_client.get(f"/nodes/{node}/tasks/{task_id}/status")
-        if not isinstance(status, dict):
-            await asyncio.sleep(1)
-            continue
-
-        task_status = cast(Mapping[str, object], status)
-        if task_status.get("status") == "stopped":
-            exitstatus = task_status.get("exitstatus")
-            if exitstatus not in {None, "OK"}:
-                raise AssertionError(f"Proxmox task failed: {exitstatus}")
-            return
-        await asyncio.sleep(1)
-
-    raise AssertionError("Timed out waiting for Proxmox task")

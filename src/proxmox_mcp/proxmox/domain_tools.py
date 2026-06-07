@@ -165,6 +165,8 @@ def _live_supported_for(name: str, dry_run: bool, connector: ConnectorType) -> b
         return True
     if name == "verify_backup":
         return False
+    if name == "benchmark_storage":
+        return True
     if name in _LIVE_COMMAND_TOOLS:
         return True
     if connector in {"ssh", "hybrid"} and dry_run and name not in _READ_COMMAND_TOOLS:
@@ -550,6 +552,7 @@ def _resolve_execution_spec(spec: DomainToolSpec) -> DomainToolSpec:
         resolved.connector == "ssh"
         and resolved.live_supported
         and resolved.command_template is None
+        and resolved.name != "benchmark_storage"
     ):
         raise RuntimeError(f"Domain tool {resolved.name} lacks an SSH command template")
     if (
@@ -629,7 +632,7 @@ def _build_domain_handler(
         payload.update(_default_payload_for(spec))
         payload = _payload_for_execution(spec, request, payload)
         endpoint = _endpoint_for(spec, request, parameters)
-        command = _command_for(spec, request, parameters)
+        command = _command_for(spec, request, parameters, payload)
 
         if request.options.dry_run:
             return _result(
@@ -638,7 +641,7 @@ def _build_domain_handler(
                 endpoint=endpoint,
                 command=command,
                 payload=payload,
-                result=_dry_run_result_for(spec, request, parameters, payload),
+                result=await _dry_run_result_for(spec, request, parameters, payload, context),
             )
 
         if not spec.live_supported and spec.connector == "internal":
@@ -748,7 +751,11 @@ def _build_domain_handler(
 
         if command is not None and spec.connector in {"ssh", "hybrid"}:
             result = await _execute_ssh_command(spec, command, request, context)
-            result_payload = _ssh_result_payload_for(spec, command, result, context)
+            result_payload = (
+                _storage_benchmark_result_for(command, payload, result, context)
+                if spec.name == "benchmark_storage"
+                else _ssh_result_payload_for(spec, command, result, context)
+            )
             return _result(
                 spec,
                 request,
@@ -788,7 +795,7 @@ def _payload_for_execution(
     if spec.name == "expand_storage":
         return _storage_expansion_payload_for(request, payload)
     if spec.name == "benchmark_storage":
-        return _storage_benchmark_payload_for(payload)
+        return _storage_benchmark_payload_for(request, payload)
     if spec.name != "prune_backups":
         return payload
 
@@ -821,11 +828,12 @@ def _payload_for_execution(
     )
 
 
-def _dry_run_result_for(
+async def _dry_run_result_for(
     spec: DomainToolSpec,
     request: ToolRequest,
     parameters: dict[str, object],
     payload: dict[str, object],
+    context: ToolExecutionContext,
 ) -> object | None:
     if spec.name == "verify_backup":
         volume = parameters.get("volume")
@@ -847,10 +855,11 @@ def _dry_run_result_for(
         }
     if spec.name in {"restore_vm_backup", "restore_lxc_backup"}:
         return {
-            "restore_preview": _restore_preview_for(
+            "restore_preview": await _restore_preview_for(
                 spec,
                 request,
                 payload,
+                context,
             )
         }
     if spec.name == "expand_storage":
@@ -858,20 +867,21 @@ def _dry_run_result_for(
     if spec.name == "benchmark_storage":
         return _storage_benchmark_plan_for(payload)
     if spec.name == "apply_node_updates":
-        return _node_update_plan_for(request, payload)
+        return await _node_update_plan_for(request, payload, context)
     return None
 
 
-def _restore_preview_for(
+async def _restore_preview_for(
     spec: DomainToolSpec,
     request: ToolRequest,
     payload: dict[str, object],
+    context: ToolExecutionContext,
 ) -> dict[str, object]:
     artifact = payload.get("archive")
     if artifact is None:
         artifact = payload.get("volid", "")
     target_id = _target_backed_value_for("vmid", request) or request.target.resource_id
-    return {
+    preview: dict[str, object] = {
         "artifact": artifact,
         "target_type": "lxc" if spec.name == "restore_lxc_backup" else "vm",
         "target_id": target_id,
@@ -880,6 +890,59 @@ def _restore_preview_for(
         "mutation_performed": False,
         "live_mutation_required": True,
         "conflict_check": "required_before_live_restore",
+    }
+    if context.proxmox_client is not None and isinstance(artifact, str) and artifact:
+        preview.update(
+            await _restore_precondition_checks(spec, request, artifact, target_id, context)
+        )
+    return preview
+
+
+async def _restore_precondition_checks(
+    spec: DomainToolSpec,
+    request: ToolRequest,
+    artifact: str,
+    target_id: str | None,
+    context: ToolExecutionContext,
+) -> dict[str, object]:
+    if context.proxmox_client is None or request.target.node is None:
+        return {}
+    artifact_storage = artifact.split(":", maxsplit=1)[0] or request.target.storage_id
+    encoded_artifact = quote(artifact, safe="")
+    artifact_path = (
+        f"/nodes/{request.target.node}/storage/{artifact_storage}/content/{encoded_artifact}"
+    )
+    artifact_check: dict[str, object] = {
+        "status": "unknown",
+        "storage": artifact_storage,
+        "path": artifact_path,
+    }
+    try:
+        await context.proxmox_client.get(artifact_path)
+        artifact_check["status"] = "found"
+    except ProxmoxApiError as exc:
+        artifact_check["status"] = "not_found" if exc.status_code == 404 else "unknown"
+
+    guest_type = "lxc" if spec.name == "restore_lxc_backup" else "qemu"
+    conflict_check = "unknown"
+    target_conflict = "unknown"
+    if target_id:
+        try:
+            await context.proxmox_client.get(
+                f"/nodes/{request.target.node}/{guest_type}/{target_id}/config"
+            )
+            conflict_check = "target_exists"
+            target_conflict = "present"
+        except ProxmoxApiError as exc:
+            if exc.status_code == 404:
+                conflict_check = "target_absent"
+                target_conflict = "absent"
+
+    return {
+        "artifact_addressability": artifact_check["status"],
+        "artifact_check": artifact_check,
+        "conflict_check": conflict_check,
+        "target_conflict": target_conflict,
     }
 
 
@@ -916,7 +979,10 @@ def _command_for(
     spec: DomainToolSpec,
     request: ToolRequest,
     parameters: dict[str, object],
+    payload: dict[str, object],
 ) -> str | None:
+    if spec.name == "benchmark_storage":
+        return _storage_benchmark_command_for(payload)
     if spec.command_template is None:
         return None
     return _format_command_template(spec.command_template, request, parameters)
@@ -1564,7 +1630,10 @@ def _storage_expansion_preflight_checks(backend: str) -> list[str]:
     ]
 
 
-def _storage_benchmark_payload_for(payload: dict[str, object]) -> dict[str, object]:
+def _storage_benchmark_payload_for(
+    request: ToolRequest,
+    payload: dict[str, object],
+) -> dict[str, object]:
     target_type = payload.get("target_type")
     if target_type not in {"storage", "volume"}:
         raise ToolExecutionError(
@@ -1602,6 +1671,22 @@ def _storage_benchmark_payload_for(payload: dict[str, object]) -> dict[str, obje
     benchmark_payload["max_bytes"] = parsed_max_bytes
     benchmark_payload.setdefault("backend", _storage_backend(payload))
     benchmark_payload.setdefault("artifact_scope", "disposable")
+    target_label = _safe_artifact_label(request.target.storage_id or request.target.resource_id)
+    artifact_path = str(
+        benchmark_payload.get("artifact_path")
+        or f"/var/lib/vz/mcp-lab-{target_label}-benchmark.dat"
+    )
+    if not artifact_path.startswith("/var/lib/vz/mcp-lab-"):
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="Storage benchmark artifact_path must be under /var/lib/vz/mcp-lab-*",
+        )
+    if ".." in artifact_path or "\x00" in artifact_path or "\n" in artifact_path:
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="Storage benchmark artifact_path is unsafe",
+        )
+    benchmark_payload["artifact_path"] = artifact_path
     return benchmark_payload
 
 
@@ -1613,7 +1698,8 @@ def _storage_benchmark_plan_for(payload: dict[str, object]) -> dict[str, object]
         "duration_seconds": duration_seconds,
         "max_bytes": payload["max_bytes"],
         "artifact_scope": payload["artifact_scope"],
-        "execution_status": "guarded",
+        "artifact_path": payload["artifact_path"],
+        "execution_status": "bounded_live_supported",
         "cleanup_required": True,
         "timeout_seconds": duration_seconds + 5,
         "result_schema": [
@@ -1626,6 +1712,41 @@ def _storage_benchmark_plan_for(payload: dict[str, object]) -> dict[str, object]
     }
 
 
+def _storage_benchmark_command_for(payload: dict[str, object]) -> str:
+    return (
+        "fio --name=mcp-lab-storage-benchmark "
+        f"--filename={shlex.quote(str(payload['artifact_path']))} "
+        f"--size={int(str(payload['max_bytes']))} "
+        f"--runtime={int(str(payload['duration_seconds']))} "
+        "--time_based --rw=write --ioengine=sync --direct=0 --unlink=1 --output-format=json"
+    )
+
+
+def _storage_benchmark_result_for(
+    command: str,
+    payload: dict[str, object],
+    result: SshCommandResult,
+    context: ToolExecutionContext,
+) -> dict[str, object]:
+    command_hash = sha256(command.encode()).hexdigest()
+    context.audit_metadata["ssh_command_hash"] = command_hash
+    context.audit_metadata["ssh_exit_status"] = result.exit_status
+    return {
+        "duration_seconds": payload["duration_seconds"],
+        "max_bytes": payload["max_bytes"],
+        "artifact_path": payload["artifact_path"],
+        "cleanup_status": "unlink_requested",
+        "stdout": result.stdout,
+        "stderr": "",
+        "redacted": False,
+        "command_hash": command_hash,
+    }
+
+
+def _safe_artifact_label(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", value)
+
+
 def _storage_backend(payload: dict[str, object]) -> str:
     backend = payload.get("backend")
     if isinstance(backend, str) and backend:
@@ -1633,11 +1754,12 @@ def _storage_backend(payload: dict[str, object]) -> str:
     return "unknown"
 
 
-def _node_update_plan_for(
+async def _node_update_plan_for(
     request: ToolRequest,
     payload: dict[str, object],
+    context: ToolExecutionContext,
 ) -> dict[str, object]:
-    return {
+    plan: dict[str, object] = {
         "node": request.target.node or request.target.resource_id,
         "maintenance_window": payload.get("maintenance_window"),
         "preflight_status": "required",
@@ -1658,4 +1780,116 @@ def _node_update_plan_for(
             "execution_status",
             "rollback_guidance",
         ],
+        "mutation_performed": False,
+        "rollback_guidance": (
+            "Keep live updates guarded until drain, backup, reboot, reconnect, "
+            "and rollback evidence exists"
+        ),
     }
+    if context.proxmox_client is None:
+        return plan
+    details = await _node_update_preflight_details(request, context)
+    blockers = _node_update_blockers(details)
+    plan["preflight_details"] = details
+    plan["blockers"] = blockers
+    plan["preflight_status"] = "blocked" if blockers else "passed"
+    return plan
+
+
+async def _node_update_preflight_details(
+    request: ToolRequest,
+    context: ToolExecutionContext,
+) -> dict[str, object]:
+    node = request.target.node or request.target.resource_id
+    cluster_status = await _safe_proxmox_get(context, "/cluster/status")
+    node_status = await _safe_proxmox_get(context, f"/nodes/{node}/status")
+    qemu_guests = await _safe_proxmox_get(context, f"/nodes/{node}/qemu")
+    lxc_guests = await _safe_proxmox_get(context, f"/nodes/{node}/lxc")
+    ha_resources = await _safe_proxmox_get(context, "/cluster/ha/resources")
+    storage = await _safe_proxmox_get(context, f"/nodes/{node}/storage")
+    pending_updates = await _safe_proxmox_get(context, f"/nodes/{node}/apt/update")
+    return {
+        "quorum": _quorum_status(cluster_status),
+        "node_status": _node_status_value(node_status),
+        "running_guests": _running_guest_count(qemu_guests) + _running_guest_count(lxc_guests),
+        "ha_resources": _list_count(ha_resources),
+        "storage_health": _storage_health(storage),
+        "pending_updates": _list_count(pending_updates),
+        "backup_availability": "operator_required",
+    }
+
+
+async def _safe_proxmox_get(context: ToolExecutionContext, path: str) -> object:
+    if context.proxmox_client is None:
+        return None
+    try:
+        return await context.proxmox_client.get(path)
+    except ProxmoxApiError:
+        return None
+
+
+def _node_update_blockers(details: dict[str, object]) -> list[str]:
+    blockers: list[str] = []
+    if details.get("quorum") != "present":
+        blockers.append("cluster quorum is not confirmed")
+    if details.get("node_status") not in {"online", "unknown"}:
+        blockers.append("node is not online")
+    if int(str(details.get("running_guests", 0))) > 0:
+        blockers.append("running guests require drain evidence")
+    return blockers
+
+
+def _quorum_status(payload: object) -> str:
+    if isinstance(payload, list):
+        for item in cast(list[object], payload):
+            quorate = (
+                cast(dict[str, object], item).get("quorate") if isinstance(item, dict) else None
+            )
+            if quorate == 1 or quorate is True:
+                return "present"
+        return "absent"
+    return "unknown"
+
+
+def _node_status_value(payload: object) -> str:
+    if isinstance(payload, dict):
+        value = cast(dict[str, object], payload).get("status")
+        if isinstance(value, str) and value:
+            return value
+    return "unknown"
+
+
+def _running_guest_count(payload: object) -> int:
+    if not isinstance(payload, list):
+        return 0
+    return sum(
+        1
+        for item in cast(list[object], payload)
+        if isinstance(item, dict) and cast(dict[str, object], item).get("status") == "running"
+    )
+
+
+def _list_count(payload: object) -> int:
+    return len(cast(list[object], payload)) if isinstance(payload, list) else 0
+
+
+def _storage_health(payload: object) -> str:
+    if not isinstance(payload, list):
+        return "unknown"
+    storage_items = [
+        cast(dict[str, object], item)
+        for item in cast(list[object], payload)
+        if isinstance(item, dict)
+    ]
+    if not storage_items:
+        return "unknown"
+    unavailable = [
+        item
+        for item in storage_items
+        if _disabled_flag(item.get("active")) or _disabled_flag(item.get("enabled"))
+    ]
+    return "degraded" if unavailable else "available"
+
+
+def _disabled_flag(value: object) -> bool:
+    return value == 0 or value is False

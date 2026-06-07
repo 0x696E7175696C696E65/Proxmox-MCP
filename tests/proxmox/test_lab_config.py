@@ -147,6 +147,31 @@ def test_lab_config_parses_lxc_template_prerequisites_without_requiring_them() -
     assert config.profile_missing_prerequisites() == ()
 
 
+def test_lab_config_parses_lab_automation_options() -> None:
+    config = LabEnvironmentConfig.from_env(
+        {
+            "PROXMOX_MCP_LAB_ENABLED": "true",
+            "PROXMOX_MCP_LAB_API_ENDPOINT": "https://pve.example.test:8006",
+            "PROXMOX_MCP_LAB_USERNAME": "root@pam",
+            "PROXMOX_MCP_LAB_PASSWORD": "secret-value",
+            "PROXMOX_MCP_LAB_NODE": "pve-a",
+            "PROXMOX_MCP_LAB_STORAGE": "local",
+            "PROXMOX_MCP_LAB_EXPECTED_STORAGE_IDS": "local,local-lvm",
+            "PROXMOX_MCP_LAB_EVIDENCE_DIR": "release-evidence/lab",
+            "PROXMOX_MCP_LAB_HELPER_SCRIPTS_ENABLED": "true",
+            "PROXMOX_MCP_LAB_LXC_TEMPLATE_BOOTSTRAP_ENABLED": "true",
+            "PROXMOX_MCP_LAB_LXC_TEMPLATE_NAME": "debian-12-standard_12.7-1_amd64.tar.zst",
+        }
+    )
+
+    assert config.enabled is True
+    assert config.expected_storage_ids == ("local", "local-lvm")
+    assert config.evidence_output_dir == "release-evidence/lab"
+    assert config.helper_scripts_enabled is True
+    assert config.lxc_template_bootstrap_enabled is True
+    assert config.lxc_template_name == "debian-12-standard_12.7-1_amd64.tar.zst"
+
+
 def test_lab_config_reports_profile_prerequisites_without_credentials() -> None:
     config = LabEnvironmentConfig.from_env(
         {

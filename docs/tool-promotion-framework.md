@@ -55,3 +55,16 @@ If any requirement is incomplete, keep the tool guarded and document the reason.
 Until then, live execution returns `NOT_IMPLEMENTED` with the backend and missing evidence requirements.
 
 Restore paths must expose dry-run restore-preview evidence before promotion. A restore preview records the artifact, target type, target ID, storage target, artifact addressability, and confirms that mutation is still disabled.
+
+## Storage Benchmark Contract
+
+`benchmark_storage` is live-supported only for bounded benchmark runs:
+
+- Runtime must be between 1 and 60 seconds.
+- Artifact size must be between 4096 and 1073741824 bytes.
+- Artifact paths must live under `/var/lib/vz/mcp-lab-*`.
+- Execution uses the allowlisted `fio` executable with `--unlink=1` cleanup.
+- Result evidence records artifact path, cleanup status, duration, size, and command hash.
+
+Broader backend claims still require profile-specific lab evidence. `expand_storage`
+remains guarded until each backend has resize, rollback, and cleanup proof.

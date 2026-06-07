@@ -64,7 +64,7 @@ def make_context(
         audit_writer=InMemoryAuditWriter(),
         ssh_client=ssh_client,
         ssh_command_policy=SshCommandPolicy(
-            allowed_executables=frozenset({"zpool", "pvesm", "wipefs"})
+            allowed_executables=frozenset({"fio", "zpool", "pvesm", "wipefs"})
         ),
     )
 
@@ -82,7 +82,7 @@ def test_storage_pack_promotion_records_identify_live_and_guarded_tools() -> Non
     assert records["wipe_disk"].promotion_status == "live_supported"
 
     assert records["expand_storage"].promotion_status == "guarded_not_implemented"
-    assert records["benchmark_storage"].promotion_status == "guarded_not_implemented"
+    assert records["benchmark_storage"].promotion_status == "live_supported"
 
 
 async def test_storage_pack_dry_run_requires_command_fields() -> None:
@@ -251,8 +251,9 @@ async def test_benchmark_storage_dry_run_returns_bounded_cleanup_plan() -> None:
     assert isinstance(response, ToolResponse)
     result = cast(dict[str, object], response.result)
     benchmark_plan = cast(dict[str, object], result["result"])
-    assert benchmark_plan["execution_status"] == "guarded"
+    assert benchmark_plan["execution_status"] == "bounded_live_supported"
     assert benchmark_plan["cleanup_required"] is True
+    assert benchmark_plan["artifact_path"] == "/var/lib/vz/mcp-lab-local-zfs-benchmark.dat"
     assert benchmark_plan["timeout_seconds"] == 35
     assert benchmark_plan["artifact_scope"] == "disposable"
     assert benchmark_plan["result_schema"] == [
@@ -262,6 +263,43 @@ async def test_benchmark_storage_dry_run_returns_bounded_cleanup_plan() -> None:
         "cleanup_status",
         "command_hash",
     ]
+
+
+async def test_benchmark_storage_live_runs_bounded_fio_with_cleanup_evidence() -> None:
+    registry = make_registry()
+    request = make_request(
+        parameters={
+            "payload": {
+                "backend": "dir",
+                "target_type": "storage",
+                "duration_seconds": 5,
+                "max_bytes": 4096,
+                "artifact_path": "/var/lib/vz/mcp-lab-local-zfs-benchmark.dat",
+            }
+        },
+        dry_run=False,
+    )
+    command = (
+        "fio --name=mcp-lab-storage-benchmark "
+        "--filename=/var/lib/vz/mcp-lab-local-zfs-benchmark.dat "
+        "--size=4096 --runtime=5 --time_based --rw=write --ioengine=sync "
+        "--direct=0 --unlink=1 --output-format=json"
+    )
+    client = InMemorySshClient(
+        command_results={command: SshCommandResult(exit_status=0, stdout='{"jobs":[]}', stderr="")}
+    )
+
+    response = await registry.execute("benchmark_storage", request, make_context(request, client))
+
+    assert isinstance(response, ToolResponse)
+    result = cast(dict[str, object], response.result)
+    benchmark_result = cast(dict[str, object], result["result"])
+    assert benchmark_result["artifact_path"] == "/var/lib/vz/mcp-lab-local-zfs-benchmark.dat"
+    assert benchmark_result["cleanup_status"] == "unlink_requested"
+    assert benchmark_result["duration_seconds"] == 5
+    assert benchmark_result["max_bytes"] == 4096
+    _, executed_command = client.executions[-1]
+    assert executed_command.command == command
 
 
 async def test_storage_pack_nonzero_ssh_exit_returns_error() -> None:

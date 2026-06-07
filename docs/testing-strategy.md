@@ -94,6 +94,14 @@ Phase 1 lab tests are read-only and skip unless explicitly enabled. Configure:
   `docs/proxmox-compatibility.md`.
 - `PROXMOX_MCP_LAB_LXC_TEMPLATE_STORAGE` and `PROXMOX_MCP_LAB_LXC_TEMPLATE_VOLID`
   when disposable LXC lifecycle tests should use a known template.
+- `PROXMOX_MCP_LAB_LXC_TEMPLATE_NAME`,
+  `PROXMOX_MCP_LAB_LXC_TEMPLATE_BOOTSTRAP_ENABLED=true`, and
+  `PROXMOX_MCP_LAB_HELPER_SCRIPTS_ENABLED=true` only when the disposable lab
+  should prepare a missing template through the allowlisted Proxmox API path.
+- `PROXMOX_MCP_LAB_EXPECTED_STORAGE_IDS=local,local-lvm` when preflight should
+  assert multiple storage IDs.
+- `PROXMOX_MCP_LAB_EVIDENCE_DIR=release-evidence` for generated sanitized lab
+  evidence.
 - `PROXMOX_MCP_LAB_EXPECTED_NODE_COUNT=2` or higher for `pve-9-multi-node`.
 - `PROXMOX_MCP_LAB_PBS_REPOSITORY=<storage-id>` for `pve-9-pbs-enabled`.
 
@@ -107,6 +115,7 @@ in that lab profile.
 Run read-only lab smoke tests with:
 
 ```shell
+python scripts/lab_preflight.py --output-file release-evidence/lab-preflight.json
 python -m pytest tests/lab -m lab
 ```
 
@@ -125,10 +134,33 @@ The destructive VM lifecycle smoke test creates, updates, verifies, and deletes
 the explicit disposable VMID. Cleanup refuses to delete an existing guest unless
 its `mcp-lab-*` ownership marker matches the harness.
 
+Prepare LXC templates only when explicitly opted in:
+
+```shell
+python scripts/lab_prepare_lxc_template.py --output-file release-evidence/lxc-template-plan.json
+```
+
+Storage benchmark promotion evidence uses bounded `fio` execution with
+`mcp-lab-*` artifact paths, runtime and byte caps, and `--unlink=1` cleanup. Live
+storage expansion remains guarded until backend-specific resize and rollback
+evidence exists.
+
+Generate sanitized lab evidence from preflight and JUnit output:
+
+```shell
+python -m pytest tests/lab -m lab --junitxml=release-evidence/lab-junit.xml
+python scripts/collect_lab_evidence.py \
+  --junit release-evidence/lab-junit.xml \
+  --preflight release-evidence/lab-preflight.json \
+  --output-file release-evidence/lab-evidence.json
+```
+
 Topology profile smoke tests are read-only unless a separate mutation/destructive
 gate explicitly opts in. The current `pve-9-single-node-no-ceph` profile expects
 LXC template-dependent tests to skip when no `vztmpl` content exists on the
 configured storage. That skip is evidence of a prerequisite gap, not a failure.
+
+For the full operator procedure, see `docs/lab-runbook.md`.
 
 ### SSH Sandbox Tests
 

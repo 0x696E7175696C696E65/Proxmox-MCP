@@ -21,7 +21,8 @@ without relying on marketing language.
 ## Profile-Gated Capabilities
 
 - `pve-9-single-node-no-ceph` has preview lab evidence for read-only, registered MCP read, disposable VM mutation, backup create/list, and storage profile smoke tests.
-- `pve-9-storage-local-local-lvm`, `pve-9-ceph-enabled`, `pve-9-ha-enabled`, `pve-9-multi-node`, and `pve-9-pbs-enabled` require their named lab profiles and required tests before support claims can move beyond preview.
+- `pve-9-storage-local-local-lvm` now records bounded benchmark preview evidence, while live expansion remains backend-gated.
+- `pve-9-ceph-enabled`, `pve-9-ha-enabled`, `pve-9-multi-node`, and `pve-9-pbs-enabled` require their named lab profiles and required tests before support claims can move beyond preview.
 
 ## Operator-Qualified Deployment Gates
 
@@ -33,5 +34,10 @@ without relying on marketing language.
 
 - `verify_backup` remains guarded until PBS or PVE-local verification has backend-specific artifact verification and restore-preview evidence.
 - `expand_storage` remains guarded for live execution until each backend has disposable lab proof.
-- `benchmark_storage` remains guarded for live execution until bounded workload and cleanup evidence exist.
 - `apply_node_updates` remains guarded until update preflight, rollback, reboot/reconnect, and failure recovery evidence exist.
+
+## Bounded Live Candidates
+
+- `benchmark_storage` supports bounded `fio` execution with runtime and size caps,
+  `mcp-lab-*` artifact paths, and `--unlink=1` cleanup evidence. Operators still
+  need profile-specific lab evidence before making broad backend claims.

@@ -173,8 +173,13 @@ class LabEnvironmentConfig(BaseModel):
     storage_id: str | None = Field(default=None, min_length=1)
     lxc_template_storage_id: str | None = Field(default=None, min_length=1)
     lxc_template_volid: str | None = Field(default=None, min_length=1)
+    lxc_template_name: str | None = Field(default=None, min_length=1)
+    lxc_template_bootstrap_enabled: bool = False
     expected_node_count: int | None = Field(default=None, ge=1)
+    expected_storage_ids: tuple[str, ...] = ()
     pbs_repository_id: str | None = Field(default=None, min_length=1)
+    evidence_output_dir: str | None = Field(default=None, min_length=1)
+    helper_scripts_enabled: bool = False
     cluster_id: str = "lab"
     profile: LabProfileName = "pve-9-single-node-no-ceph"
     skip_reason: str | None = None
@@ -256,8 +261,19 @@ class LabEnvironmentConfig(BaseModel):
             storage_id=env.get("PROXMOX_MCP_LAB_STORAGE"),
             lxc_template_storage_id=env.get("PROXMOX_MCP_LAB_LXC_TEMPLATE_STORAGE"),
             lxc_template_volid=env.get("PROXMOX_MCP_LAB_LXC_TEMPLATE_VOLID"),
+            lxc_template_name=env.get("PROXMOX_MCP_LAB_LXC_TEMPLATE_NAME"),
+            lxc_template_bootstrap_enabled=_env_bool(
+                env.get("PROXMOX_MCP_LAB_LXC_TEMPLATE_BOOTSTRAP_ENABLED"),
+                default=False,
+            ),
             expected_node_count=_env_int(env.get("PROXMOX_MCP_LAB_EXPECTED_NODE_COUNT")),
+            expected_storage_ids=_env_tuple(env.get("PROXMOX_MCP_LAB_EXPECTED_STORAGE_IDS")),
             pbs_repository_id=env.get("PROXMOX_MCP_LAB_PBS_REPOSITORY"),
+            evidence_output_dir=env.get("PROXMOX_MCP_LAB_EVIDENCE_DIR"),
+            helper_scripts_enabled=_env_bool(
+                env.get("PROXMOX_MCP_LAB_HELPER_SCRIPTS_ENABLED"),
+                default=False,
+            ),
             cluster_id=env.get("PROXMOX_MCP_LAB_CLUSTER_ID", "lab"),
             profile=cast(LabProfileName, raw_profile),
         )
@@ -306,3 +322,9 @@ def _env_int(value: str | None) -> int | None:
         return int(value)
     except ValueError:
         return None
+
+
+def _env_tuple(value: str | None) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    return tuple(part.strip() for part in value.split(",") if part.strip())

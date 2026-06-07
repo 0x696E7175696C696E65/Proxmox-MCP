@@ -15,6 +15,7 @@ from proxmox_mcp.policy import PolicyEngine, PolicyRule
 from proxmox_mcp.proxmox import register_read_only_tools, register_safe_mutation_tools
 from proxmox_mcp.proxmox.http_client import ProxmoxHttpApiClient
 from proxmox_mcp.proxmox.lab import LabEnvironmentConfig
+from proxmox_mcp.proxmox.lab_resources import DisposableProxmoxResources
 from proxmox_mcp.rbac import Role, RoleAssignment, Scope
 from proxmox_mcp.reliability import ProxmoxTaskStore
 from proxmox_mcp.schemas.envelope import ToolRequest
@@ -90,6 +91,14 @@ def optional_lab_storage(lab_config: LabEnvironmentConfig) -> Iterator[str]:
     if lab_config.storage_id is None:
         pytest.skip("Set PROXMOX_MCP_LAB_STORAGE to run storage-scoped lab smoke tests")
     yield lab_config.storage_id
+
+
+@pytest.fixture
+def lab_resources(
+    lab_client: ProxmoxHttpApiClient,
+    optional_lab_node: str,
+) -> DisposableProxmoxResources:
+    return DisposableProxmoxResources(client=lab_client, node=optional_lab_node)
 
 
 @pytest.fixture

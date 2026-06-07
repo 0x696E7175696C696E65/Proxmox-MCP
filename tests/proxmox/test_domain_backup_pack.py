@@ -176,6 +176,41 @@ async def test_restore_vm_backup_dry_run_returns_restore_preview_evidence() -> N
     assert payload["archive"] == "backup:backup/vzdump-qemu-100.vma.zst"
 
 
+async def test_restore_vm_backup_dry_run_checks_artifact_and_target_conflict() -> None:
+    registry = make_registry()
+    archive = "backup:backup/vzdump-qemu-100.vma.zst"
+    request = make_request(
+        parameters={
+            "payload": {
+                "archive": archive,
+                "storage": "local-lvm",
+            }
+        }
+    )
+    encoded_archive = "backup%3Abackup%2Fvzdump-qemu-100.vma.zst"
+    client = InMemoryProxmoxApiClient(
+        {
+            f"/nodes/pve-1/storage/backup/content/{encoded_archive}": {"volid": archive},
+            "/nodes/pve-1/qemu/100/config": {"name": "existing-vm"},
+        }
+    )
+
+    response = await registry.execute("restore_vm_backup", request, make_context(request, client))
+
+    assert isinstance(response, ToolResponse)
+    result = cast(dict[str, object], response.result)
+    preview = cast(dict[str, object], cast(dict[str, object], result["result"])["restore_preview"])
+    assert preview["artifact_addressability"] == "found"
+    assert preview["artifact_check"] == {
+        "status": "found",
+        "storage": "backup",
+        "path": f"/nodes/pve-1/storage/backup/content/{encoded_archive}",
+    }
+    assert preview["target_conflict"] == "present"
+    assert preview["conflict_check"] == "target_exists"
+    assert preview["mutation_performed"] is False
+
+
 async def test_verify_backup_live_returns_backend_specific_unsupported_response() -> None:
     registry = make_registry()
     request = make_request(

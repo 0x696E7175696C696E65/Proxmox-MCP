@@ -74,11 +74,11 @@
     },
     {
       "name": "storage mutation smoke",
-      "status": "skipped",
-      "passed": 0,
-      "skipped": 1,
+      "status": "passed",
+      "passed": 2,
+      "skipped": 0,
       "failed": 0,
-      "notes": "Storage expansion and benchmark execution remain guarded until a disposable profile and cleanup evidence exist."
+      "notes": "Bounded benchmark preview and expansion guarded evidence were recorded; live expansion remains guarded."
     },
     {
       "name": "PBS verification gate",

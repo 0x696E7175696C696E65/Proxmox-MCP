@@ -25,7 +25,7 @@ This matrix records evidence, not marketing claims. A Proxmox version or topolog
 | Profile | Required evidence | Expected skips | Promotion eligibility |
 | --- | --- | --- | --- |
 | `pve-9-single-node-no-ceph` | Read-only discovery, registered read tool execution, disposable VM create/update/delete, backup create/list, `local` storage discovery | Ceph, HA, PBS, multi-node, LXC lifecycle when no template exists | Preview only |
-| `pve-9-storage-local-local-lvm` | `local` directory storage content reads and `local-lvm` LVM-thin metadata/status reads | Storage expansion and benchmarking | Storage discovery preview |
+| `pve-9-storage-local-local-lvm` | `local` directory storage content reads, `local-lvm` LVM-thin metadata/status reads, bounded benchmark preview evidence | Storage expansion and live backend resize | Storage discovery and bounded benchmark preview |
 | `pve-9-single-node-with-guests` | Existing guest inventory plus safe read-only VM/LXC config/status reads | HA, migration, PBS unless configured | Read-only guest management preview |
 | `pve-9-ceph-enabled` | `tests/lab/test_ceph_profile_smoke.py` reads node Ceph status | Ceph mutations until separately proven | Ceph read-only preview |
 | `pve-9-ha-enabled` | `tests/lab/test_ha_profile_smoke.py` reads HA cluster status/resources | HA migration/failover until disposable tests exist | HA read-only preview |
@@ -43,7 +43,8 @@ Profile-specific environment variables:
 
 - `pve-9-multi-node` requires `PROXMOX_MCP_LAB_EXPECTED_NODE_COUNT=2` or higher.
 - `pve-9-pbs-enabled` requires `PROXMOX_MCP_LAB_PBS_REPOSITORY=<storage-id>`.
-- LXC lifecycle promotion can use `PROXMOX_MCP_LAB_LXC_TEMPLATE_STORAGE` and `PROXMOX_MCP_LAB_LXC_TEMPLATE_VOLID` when template discovery should not rely on the default storage.
+- LXC lifecycle promotion can use `PROXMOX_MCP_LAB_LXC_TEMPLATE_STORAGE` and `PROXMOX_MCP_LAB_LXC_TEMPLATE_VOLID` when template discovery should not rely on the default storage. Missing-template bootstrap additionally requires `PROXMOX_MCP_LAB_LXC_TEMPLATE_BOOTSTRAP_ENABLED=true`, `PROXMOX_MCP_LAB_HELPER_SCRIPTS_ENABLED=true`, and `PROXMOX_MCP_LAB_LXC_TEMPLATE_NAME=<template-name>`.
+- Lab preflight and evidence collection use `scripts/lab_preflight.py`, `scripts/collect_lab_evidence.py`, and the runbook in `docs/lab-runbook.md`.
 
 ## Release Evidence Gates
 

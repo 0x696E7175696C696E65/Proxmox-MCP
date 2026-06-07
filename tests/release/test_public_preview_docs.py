@@ -7,6 +7,7 @@ def test_public_preview_documentation_artifacts_exist() -> None:
     for relative_path in (
         "README.md",
         "docs/release-hardening.md",
+        "docs/lab-runbook.md",
         "docs/proxmox-compatibility.md",
         "docs/release-candidate-notes.md",
         "docs/release-evidence/compatibility-report.example.json",

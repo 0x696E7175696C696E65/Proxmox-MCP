@@ -121,6 +121,19 @@ async def test_execute_ssh_denies_shell_metacharacters_by_default() -> None:
     assert client.executions == []
 
 
+async def test_execute_ssh_denies_arbitrary_fio_by_default() -> None:
+    registry = make_registry()
+    request = make_request(parameters={"command": "fio --name=unsafe --filename=/tmp/file"})
+    writer = InMemoryAuditWriter()
+    client = InMemorySshClient()
+
+    response = await registry.execute("execute_ssh", request, make_context(request, client, writer))
+
+    assert isinstance(response, ToolErrorResponse)
+    assert response.error.code == "SSH_POLICY_DENIED"
+    assert client.executions == []
+
+
 async def test_execute_ssh_live_records_command_reference_in_result_and_audit() -> None:
     registry = make_registry()
     request = make_request(parameters={"command": "zpool status -x"}, dry_run=False)

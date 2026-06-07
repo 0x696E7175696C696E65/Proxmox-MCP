@@ -8,13 +8,16 @@ from pathlib import Path
 from typing import Any
 
 try:
+    from scripts.collect_lab_evidence import collect_lab_evidence
     from scripts.validate_release_evidence import REQUIRED_ARTIFACTS
 except ModuleNotFoundError:  # pragma: no cover - exercised by path-based CLI invocation
+    from collect_lab_evidence import collect_lab_evidence
     from validate_release_evidence import REQUIRED_ARTIFACTS
 
 
 def collect_release_evidence(source_dir: Path, output_dir: Path) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
+    _generate_lab_evidence_when_present(source_dir, output_dir)
     artifacts: dict[str, dict[str, object]] = {}
     for artifact in REQUIRED_ARTIFACTS:
         if artifact == "artifact-manifest.json":
@@ -38,6 +41,24 @@ def collect_release_evidence(source_dir: Path, output_dir: Path) -> dict[str, An
         encoding="utf-8",
     )
     return manifest
+
+
+def _generate_lab_evidence_when_present(source_dir: Path, output_dir: Path) -> None:
+    if (source_dir / "lab-evidence.json").is_file() or (output_dir / "lab-evidence.json").is_file():
+        return
+    junit_path = source_dir / "lab-junit.xml"
+    preflight_path = source_dir / "lab-preflight.json"
+    if not junit_path.is_file() or not preflight_path.is_file():
+        return
+    metadata = json.loads(preflight_path.read_text(encoding="utf-8"))
+    if not isinstance(metadata, dict):
+        return
+    collect_lab_evidence(
+        junit_path=junit_path,
+        output_path=output_dir / "lab-evidence.json",
+        lab_metadata=metadata,
+        status="preview",
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

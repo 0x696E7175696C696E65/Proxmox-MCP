@@ -444,7 +444,6 @@ def test_high_blast_radius_tools_remain_guarded_until_contracts_exist() -> None:
 
     for tool_name in (
         "verify_backup",
-        "benchmark_storage",
         "expand_storage",
         "apply_node_updates",
     ):
@@ -456,6 +455,10 @@ def test_high_blast_radius_tools_remain_guarded_until_contracts_exist() -> None:
     enter_lxc_console = records["enter_lxc_console"]
     assert enter_lxc_console.live_supported is True
     assert enter_lxc_console.promotion_status == "live_supported"
+
+    benchmark_storage = records["benchmark_storage"]
+    assert benchmark_storage.live_supported is True
+    assert benchmark_storage.promotion_status == "live_supported"
 
 
 async def test_apply_node_updates_dry_run_returns_guarded_orchestration_plan() -> None:
@@ -487,6 +490,48 @@ async def test_apply_node_updates_dry_run_returns_guarded_orchestration_plan() -
         "execution_status",
         "rollback_guidance",
     ]
+
+
+async def test_apply_node_updates_dry_run_collects_read_only_preflight_details() -> None:
+    registry = make_registry()
+    request = make_node_request(parameters={"payload": {"maintenance_window": "lab-only"}})
+    client = InMemoryProxmoxApiClient(
+        {
+            "/cluster/status": [{"type": "cluster", "quorate": 1}],
+            "/nodes/pve-1/status": {"status": "online"},
+            "/nodes/pve-1/qemu": [{"vmid": 100, "status": "running"}],
+            "/nodes/pve-1/lxc": [],
+            "/cluster/ha/resources": [],
+            "/nodes/pve-1/storage": [{"storage": "local", "active": 1, "enabled": 1}],
+            "/nodes/pve-1/apt/update": [{"Package": "pve-manager", "OldVersion": "9.0"}],
+        }
+    )
+
+    response = await registry.execute(
+        "apply_node_updates",
+        request,
+        make_context(request, proxmox_client=client),
+    )
+
+    assert isinstance(response, ToolResponse)
+    result = cast(dict[str, object], response.result)
+    update_plan = cast(dict[str, object], result["result"])
+    assert update_plan["preflight_status"] == "blocked"
+    assert update_plan["mutation_performed"] is False
+    assert update_plan["preflight_details"] == {
+        "quorum": "present",
+        "node_status": "online",
+        "running_guests": 1,
+        "ha_resources": 0,
+        "storage_health": "available",
+        "pending_updates": 1,
+        "backup_availability": "operator_required",
+    }
+    assert update_plan["blockers"] == ["running guests require drain evidence"]
+    assert update_plan["rollback_guidance"] == (
+        "Keep live updates guarded until drain, backup, reboot, reconnect, "
+        "and rollback evidence exists"
+    )
 
 
 async def test_apply_node_updates_live_returns_update_specific_guard() -> None:
