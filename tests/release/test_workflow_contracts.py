@@ -34,6 +34,19 @@ def test_ci_runs_secret_scan_and_manifest_contracts() -> None:
     assert "tests/release/test_workflow_contracts.py" in run_commands
 
 
+def test_workflows_opt_into_node_24_actions_runtime() -> None:
+    for workflow_path in (
+        ".github/workflows/ci.yml",
+        ".github/workflows/distribution.yml",
+        ".github/workflows/hardening.yml",
+        ".github/workflows/release-candidate.yml",
+    ):
+        workflow = _workflow(workflow_path)
+        workflow_env = cast(dict[str, Any], workflow.get("env", {}))
+
+        assert workflow_env["FORCE_JAVASCRIPT_ACTIONS_TO_NODE24"] == "true"
+
+
 def test_hardening_validates_migrations_against_postgresql() -> None:
     workflow = _workflow(".github/workflows/hardening.yml")
     jobs = cast(dict[str, Any], workflow["jobs"])

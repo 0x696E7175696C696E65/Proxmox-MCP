@@ -14,6 +14,9 @@ on:
   schedule:
     - cron: "17 3 * * *"
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   migration-validation:
     runs-on: ubuntu-latest
