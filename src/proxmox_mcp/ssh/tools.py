@@ -283,7 +283,7 @@ def _build_ssh_handler(
         if spec.action == "open_session":
             return await _handle_open_session(request, context)
         if spec.action == "close_session":
-            return _handle_close_session(request, context)
+            return await _handle_close_session(request, context)
         if spec.action == "upload":
             return await _handle_upload(request, context)
         if spec.action == "download":
@@ -329,7 +329,7 @@ async def _handle_execute(
                 error_code="INVALID_REQUEST",
                 message="Interactive SSH execution requires an active session_id",
             )
-        _active_session(context, session_id)
+        await _active_session(context, session_id)
 
     context.audit_metadata.update(
         {
@@ -382,17 +382,16 @@ async def _handle_open_session(
     context: ToolExecutionContext,
 ) -> dict[str, object]:
     _ = OpenSshSessionParameters.model_validate(request.parameters)
-    manager = _session_manager(context)
     store = _recording_store(context)
     target = _target_for(request)
     actor = _actor_for(context, request)
     try:
-        session = manager.open_session(actor=actor, target=target, interactive=True)
+        session = await _open_session(context, actor=actor, target=target, interactive=True)
         recording = await store.reserve_session_recording(
             request_id=request.request_id,
             session_id=session.session_id,
         )
-        session = manager.attach_recording(session.session_id, recording.recording_ref)
+        session = await _attach_recording(context, session.session_id, recording.recording_ref)
     except SshSessionLimitError as exc:
         raise ToolExecutionError(
             error_code="RATE_LIMITED",
@@ -413,10 +412,12 @@ async def _handle_open_session(
     }
 
 
-def _handle_close_session(request: ToolRequest, context: ToolExecutionContext) -> dict[str, object]:
+async def _handle_close_session(
+    request: ToolRequest, context: ToolExecutionContext
+) -> dict[str, object]:
     parameters = CloseSshSessionParameters.model_validate(request.parameters)
     try:
-        session = _session_manager(context).close_session(parameters.session_id)
+        session = await _close_session(context, parameters.session_id)
     except SshSessionNotFoundError as exc:
         raise ToolExecutionError(
             error_code="NOT_FOUND",
@@ -651,6 +652,38 @@ def _session_manager(context: ToolExecutionContext):
     return context.ssh_session_manager
 
 
+async def _open_session(
+    context: ToolExecutionContext,
+    *,
+    actor: Actor,
+    target: SshTarget,
+    interactive: bool,
+):
+    if context.ssh_session_store is not None:
+        return await context.ssh_session_store.open_session(
+            actor=actor,
+            target=target,
+            interactive=interactive,
+        )
+    return _session_manager(context).open_session(
+        actor=actor,
+        target=target,
+        interactive=interactive,
+    )
+
+
+async def _close_session(context: ToolExecutionContext, session_id: str):
+    if context.ssh_session_store is not None:
+        return await context.ssh_session_store.close_session(session_id)
+    return _session_manager(context).close_session(session_id)
+
+
+async def _attach_recording(context: ToolExecutionContext, session_id: str, recording_ref: str):
+    if context.ssh_session_store is not None:
+        return await context.ssh_session_store.attach_recording(session_id, recording_ref)
+    return _session_manager(context).attach_recording(session_id, recording_ref)
+
+
 def _recording_store(context: ToolExecutionContext):
     if context.ssh_recording_store is None:
         raise ToolExecutionError(
@@ -661,9 +694,12 @@ def _recording_store(context: ToolExecutionContext):
     return context.ssh_recording_store
 
 
-def _active_session(context: ToolExecutionContext, session_id: str) -> None:
+async def _active_session(context: ToolExecutionContext, session_id: str) -> None:
     try:
-        _session_manager(context).get_active_session(session_id)
+        if context.ssh_session_store is not None:
+            await context.ssh_session_store.get_active_session(session_id)
+        else:
+            _session_manager(context).get_active_session(session_id)
     except SshSessionNotFoundError as exc:
         raise ToolExecutionError(
             error_code="NOT_FOUND",

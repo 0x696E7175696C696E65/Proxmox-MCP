@@ -13,7 +13,14 @@ from sqlalchemy import inspect
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from proxmox_mcp.persistence.models import ApprovalRecord, AuditEventRecord, IdempotencyRecord
+from proxmox_mcp.persistence.models import (
+    ApprovalRecord,
+    AuditEventRecord,
+    IdempotencyRecord,
+    ProxmoxTaskRecord,
+    SshRecordingRecord,
+    SshSessionRecordModel,
+)
 
 
 def _expected_model_columns() -> dict[str, set[str]]:
@@ -21,6 +28,9 @@ def _expected_model_columns() -> dict[str, set[str]]:
         "audit_events": {column.name for column in AuditEventRecord.__table__.columns},
         "approval_requests": {column.name for column in ApprovalRecord.__table__.columns},
         "idempotency_records": {column.name for column in IdempotencyRecord.__table__.columns},
+        "proxmox_tasks": {column.name for column in ProxmoxTaskRecord.__table__.columns},
+        "ssh_recordings": {column.name for column in SshRecordingRecord.__table__.columns},
+        "ssh_sessions": {column.name for column in SshSessionRecordModel.__table__.columns},
     }
 
 
@@ -30,24 +40,14 @@ def _assert_migrated_schema_matches_models(database_path: Path) -> None:
             row[0]
             for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
         }
-        migrated_columns = {row[1] for row in connection.execute("PRAGMA table_info(audit_events)")}
-        approval_columns = {
-            row[1] for row in connection.execute("PRAGMA table_info(approval_requests)")
-        }
-        idempotency_columns = {
-            row[1] for row in connection.execute("PRAGMA table_info(idempotency_records)")
+        migrated_columns = {
+            table_name: {row[1] for row in connection.execute(f"PRAGMA table_info({table_name})")}
+            for table_name in _expected_model_columns()
         }
 
-    assert {
-        "alembic_version",
-        "approval_requests",
-        "audit_events",
-        "idempotency_records",
-    } <= table_names
+    assert {"alembic_version", *_expected_model_columns()} <= table_names
     expected_columns = _expected_model_columns()
-    assert migrated_columns == expected_columns["audit_events"]
-    assert approval_columns == expected_columns["approval_requests"]
-    assert idempotency_columns == expected_columns["idempotency_records"]
+    assert migrated_columns == expected_columns
 
 
 async def _postgresql_schema_columns(database_url: str) -> dict[str, set[str]]:
@@ -62,11 +62,7 @@ async def _postgresql_schema_columns(database_url: str) -> dict[str, set[str]]:
                         cast(str, column["name"])
                         for column in cast(list[dict[str, Any]], inspector.get_columns(table_name))
                     }
-                    for table_name in (
-                        "audit_events",
-                        "approval_requests",
-                        "idempotency_records",
-                    )
+                    for table_name in _expected_model_columns()
                 }
 
             return await connection.run_sync(collect_columns)

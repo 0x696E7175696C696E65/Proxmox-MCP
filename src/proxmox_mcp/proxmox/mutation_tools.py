@@ -10,6 +10,7 @@ from typing import Any, Literal, cast
 from pydantic import BaseModel, ConfigDict, create_model
 
 from proxmox_mcp.proxmox.client import ProxmoxApiError
+from proxmox_mcp.reliability import request_fingerprint
 from proxmox_mcp.schemas.envelope import ToolRequest
 from proxmox_mcp.tools.context import ToolExecutionContext
 from proxmox_mcp.tools.registry import ToolDefinition, ToolExecutionError, ToolRegistry
@@ -32,6 +33,7 @@ class MutationResult(BaseModel):
     payload: dict[str, object]
     impact: dict[str, object]
     result: object | None = None
+    task_ref: str | None = None
 
 
 def _empty_payload_fields() -> frozenset[str]:
@@ -259,7 +261,15 @@ def _build_mutation_handler(
                 retryable=exc.retryable,
             ) from exc
 
-        return _result(spec, request, path, payload, impact, result=data)
+        task_ref = await _record_proxmox_task(
+            spec,
+            request,
+            context,
+            path=path,
+            payload=payload,
+            result=data,
+        )
+        return _result(spec, request, path, payload, impact, result=data, task_ref=task_ref)
 
     return handler
 
@@ -272,6 +282,7 @@ def _result(
     impact: dict[str, object],
     *,
     result: object | None,
+    task_ref: str | None = None,
 ) -> dict[str, object]:
     return {
         "dry_run": request.options.dry_run,
@@ -281,7 +292,45 @@ def _result(
         "payload": payload,
         "impact": impact,
         "result": result,
+        "task_ref": task_ref,
     }
+
+
+async def _record_proxmox_task(
+    spec: MutationToolSpec,
+    request: ToolRequest,
+    context: ToolExecutionContext,
+    *,
+    path: str,
+    payload: dict[str, object],
+    result: object,
+) -> str | None:
+    if context.proxmox_task_store is None or not _is_upid(result):
+        return None
+    fingerprint = request_fingerprint(
+        {
+            "tool": spec.name,
+            "target": request.target.model_dump(mode="json"),
+            "parameters": request.parameters,
+            "payload": payload,
+        }
+    )
+    task = await context.proxmox_task_store.record_task(
+        upid=str(result),
+        operation=spec.name,
+        method=spec.method,
+        endpoint=path,
+        target=cast(dict[str, object], request.target.model_dump(mode="json")),
+        request_fingerprint=fingerprint,
+        idempotency_key=request.options.idempotency_key,
+    )
+    context.audit_metadata["proxmox_task_id"] = task.task_id
+    context.audit_metadata["proxmox_task_upid"] = task.upid
+    return task.task_id
+
+
+def _is_upid(result: object) -> bool:
+    return isinstance(result, str) and result.startswith("UPID:")
 
 
 def _format_endpoint(spec: MutationToolSpec, request: ToolRequest) -> str:

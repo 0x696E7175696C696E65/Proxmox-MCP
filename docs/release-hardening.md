@@ -33,7 +33,7 @@ Current lab-rollout evidence:
 | Migrations | Alembic migration exists for audit, approval, and idempotency records | SQLite and PostgreSQL upgrade validation plus model/schema parity checks | `hardening.yml` runs SQLite and PostgreSQL migration gates |
 | Container supply chain | Docker image builds in distribution workflow | Image vulnerability scan and SBOM artifact upload | `hardening.yml` uploads Trivy SARIF and SBOM artifacts |
 | Runtime readiness | Dependency-aware live/ready payloads and HTTPS runtime exist | Manifest tests assert HTTPS `/health/live`, `/health/ready`, and startup probes | Kubernetes probes use HTTPS endpoints and do not fall back to raw TCP |
-| Shared-state HA | Deployment manifests describe replicas; some runtime stores are still in-memory | Multi-replica approval consumption, idempotency locking, audit persistence, SSH session/recording behavior | HA test suite documents replica-safe paths and explicit sticky-session constraints |
+| Shared-state HA | Database-backed approval, idempotency, SSH session, SSH recording, and Proxmox task stores exist | Multi-replica approval consumption, idempotency locking, audit persistence, SSH session/recording behavior, and task-state replay | HA test suite documents replica-safe paths and requires durable stores for multi-replica claims |
 | Internal observability | In-process metrics/log/trace wiring exists | Query tests for audit events plus explicit external-source responses for metrics, alerts, and trends | Internal tools must return real source data or `external_source_required` |
 | Guarded Proxmox tools | Guarded tools fail visibly instead of returning fake success | Contract, unit, and opt-in lab tests per promoted tool | Tool promotion checklist and evidence must be attached |
 | Compatibility | Disposable lab evidence exists for the current lab only | Version/topology matrix for tested Proxmox and optional Ceph/HA/PBS features | Release notes include compatibility report |
@@ -63,7 +63,7 @@ Security-critical dependencies must fail closed. Optional observability exporter
 
 ## Known Limitations
 
-- SSH interactive sessions should remain sticky to a single replica until a session broker is introduced.
+- SSH interactive sessions should use the database-backed session store for multi-replica deployments; in-memory development sessions still require sticky routing.
 - Lab chaos gates require operator-provided Proxmox credentials and are not enabled by default.
 - SIEM exporters format payloads locally; production delivery retries should be backed by a durable queue.
 - SSH session paths still need shared-state validation before multi-replica production claims.

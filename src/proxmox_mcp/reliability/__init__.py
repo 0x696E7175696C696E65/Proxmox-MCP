@@ -7,11 +7,12 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Protocol, TypeVar
+from uuid import uuid4
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from proxmox_mcp.persistence.models import IdempotencyRecord
+from proxmox_mcp.persistence.models import IdempotencyRecord, ProxmoxTaskRecord
 
 T = TypeVar("T")
 
@@ -160,6 +161,96 @@ class DatabaseIdempotencyStore:
             await session.commit()
 
 
+@dataclass(frozen=True, slots=True)
+class ProxmoxTask:
+    task_id: str
+    upid: str
+    operation: str
+    method: str
+    endpoint: str
+    target: dict[str, object]
+    request_fingerprint: str
+    idempotency_key: str | None
+    status: str
+    retryable: bool
+    last_observed_state: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProxmoxTaskStore(Protocol):
+    async def record_task(
+        self,
+        *,
+        upid: str,
+        operation: str,
+        method: str,
+        endpoint: str,
+        target: dict[str, object],
+        request_fingerprint: str,
+        idempotency_key: str | None,
+        status: str = "running",
+        retryable: bool = True,
+        last_observed_state: str | None = None,
+    ) -> ProxmoxTask: ...
+
+    async def get_by_upid(self, upid: str) -> ProxmoxTask: ...
+
+
+class DatabaseProxmoxTaskStore:
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self._session_factory = session_factory
+
+    async def record_task(
+        self,
+        *,
+        upid: str,
+        operation: str,
+        method: str,
+        endpoint: str,
+        target: dict[str, object],
+        request_fingerprint: str,
+        idempotency_key: str | None,
+        status: str = "running",
+        retryable: bool = True,
+        last_observed_state: str | None = None,
+    ) -> ProxmoxTask:
+        now = datetime.now(UTC)
+        async with self._session_factory() as session:
+            existing = await session.scalar(
+                select(ProxmoxTaskRecord).where(ProxmoxTaskRecord.upid == upid)
+            )
+            if existing is not None:
+                return _task_from_record(existing)
+            record = ProxmoxTaskRecord(
+                task_id=f"proxmox_task_{uuid4().hex}",
+                upid=upid,
+                operation=operation,
+                method=method,
+                endpoint=endpoint,
+                target_json=target,
+                request_fingerprint=request_fingerprint,
+                idempotency_key=idempotency_key,
+                status=status,
+                retryable=retryable,
+                last_observed_state=last_observed_state,
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(record)
+            await session.commit()
+            return _task_from_record(record)
+
+    async def get_by_upid(self, upid: str) -> ProxmoxTask:
+        async with self._session_factory() as session:
+            record = await session.scalar(
+                select(ProxmoxTaskRecord).where(ProxmoxTaskRecord.upid == upid)
+            )
+            if record is None:
+                raise KeyError(upid)
+            return _task_from_record(record)
+
+
 class RedisLockClient(Protocol):
     async def set(
         self,
@@ -207,3 +298,21 @@ def _as_aware(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value
+
+
+def _task_from_record(record: ProxmoxTaskRecord) -> ProxmoxTask:
+    return ProxmoxTask(
+        task_id=record.task_id,
+        upid=record.upid,
+        operation=record.operation,
+        method=record.method,
+        endpoint=record.endpoint,
+        target=record.target_json,
+        request_fingerprint=record.request_fingerprint,
+        idempotency_key=record.idempotency_key,
+        status=record.status,
+        retryable=record.retryable,
+        last_observed_state=record.last_observed_state,
+        created_at=_as_aware(record.created_at),
+        updated_at=_as_aware(record.updated_at),
+    )

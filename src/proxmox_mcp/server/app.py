@@ -18,7 +18,7 @@ from proxmox_mcp.proxmox import (
     register_read_only_tools,
     register_safe_mutation_tools,
 )
-from proxmox_mcp.reliability import IdempotencyStore
+from proxmox_mcp.reliability import IdempotencyStore, ProxmoxTaskStore
 from proxmox_mcp.schemas.envelope import (
     Actor,
     RequestOptions,
@@ -40,6 +40,7 @@ from proxmox_mcp.ssh import (
     SshCommandPolicy,
     SshRecordingStore,
     SshSessionManager,
+    SshSessionStore,
 )
 from proxmox_mcp.ssh.tools import register_ssh_tools
 from proxmox_mcp.tools.context import ToolExecutionContext
@@ -115,11 +116,13 @@ def build_server(
     ssh_client: SshClient | None = None,
     ssh_command_policy: SshCommandPolicy | None = None,
     ssh_session_manager: SshSessionManager | None = None,
+    ssh_session_store: SshSessionStore | None = None,
     ssh_recording_store: SshRecordingStore | None = None,
     metrics_registry: InMemoryMetricsRegistry | None = None,
     dependency_checkers: Mapping[str, DependencyChecker] | None = None,
     audit_repository: AuditEventRepository | None = None,
     idempotency_store: IdempotencyStore | None = None,
+    proxmox_task_store: ProxmoxTaskStore | None = None,
 ) -> FastMCP:
     settings = Settings() if settings is None else settings
     audit_writer = InMemoryAuditWriter() if audit_writer is None else audit_writer
@@ -150,10 +153,12 @@ def build_server(
             ssh_client=ssh_client,
             ssh_command_policy=ssh_command_policy,
             ssh_session_manager=ssh_session_manager,
+            ssh_session_store=ssh_session_store,
             ssh_recording_store=ssh_recording_store,
             audit_repository=audit_repository,
             metrics_registry=metrics_registry,
             idempotency_store=idempotency_store,
+            proxmox_task_store=proxmox_task_store,
         )
 
     registry.register_with_fastmcp(app, context_factory)

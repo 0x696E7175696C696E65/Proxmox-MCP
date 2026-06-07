@@ -141,9 +141,9 @@ HA-sensitive workflows:
 
 - Approval validation has database-backed storage available and should use it for multi-replica deployments.
 - Idempotency has durable records available and should be paired with Redis locks for live mutating requests.
-- SSH interactive sessions are currently sticky to a single replica; use load balancer affinity for SSH session tools unless a session broker is introduced.
-- SSH recordings should use a shared recording store before interactive SSH is advertised as replica-safe.
-- Long-running Proxmox task polling should be resumable through stored tool invocation state.
+- SSH interactive sessions have a database-backed session store available. Use it for multi-replica deployments; the in-memory manager remains a development fallback and still requires sticky routing.
+- SSH recordings have a database-backed metadata and redacted output store available. Use a shared object store or durable volume if raw recording blobs are stored outside PostgreSQL.
+- Proxmox UPID task state has a database-backed store available so long-running mutating operations can return a durable task reference and be resumed by another process.
 
 ## Network Security
 
