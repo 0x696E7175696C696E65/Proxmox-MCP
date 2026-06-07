@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol, cast
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
@@ -168,6 +171,59 @@ class MigrationDependencyChecker:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class ConfiguredUrlDependencyChecker:
+    name: str
+    settings_field: Literal["alertmanager_url", "prometheus_url"]
+    required_field: Literal["alertmanager_required", "prometheus_required"]
+
+    async def check(self, settings: Settings) -> DependencyCheck:
+        url = getattr(settings.observability, self.settings_field)
+        required = bool(getattr(settings.observability, self.required_field))
+        if url is None:
+            return DependencyCheck(
+                name=self.name,
+                required=required,
+                status="unavailable",
+                detail="not configured",
+            )
+        if required:
+            return await _probe_required_https_url(self.name, url)
+        return DependencyCheck(
+            name=self.name,
+            required=required,
+            status="ok",
+            detail="configured",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SiemDeliveryDependencyChecker:
+    configured: bool = False
+
+    async def check(self, settings: Settings) -> DependencyCheck:
+        if self.configured:
+            return DependencyCheck(
+                name="siem_delivery",
+                required=settings.observability.siem_required,
+                status="ok",
+                detail="durable SIEM delivery configured",
+            )
+        if settings.observability.siem_required:
+            return DependencyCheck(
+                name="siem_delivery",
+                required=True,
+                status="unavailable",
+                detail="durable SIEM delivery checker is not configured",
+            )
+        return DependencyCheck(
+            name="siem_delivery",
+            required=False,
+            status="unavailable",
+            detail="not configured",
+        )
+
+
 def build_liveness_payload(settings: Settings) -> LivenessPayload:
     return LivenessPayload(
         status="ok",
@@ -202,4 +258,38 @@ def default_dependency_checkers() -> Mapping[str, DependencyChecker]:
         "secret_backend": SecretBackendDependencyChecker(),
         "tls": TlsDependencyChecker(),
         "migrations": MigrationDependencyChecker(),
+        "alertmanager": ConfiguredUrlDependencyChecker(
+            name="alertmanager",
+            settings_field="alertmanager_url",
+            required_field="alertmanager_required",
+        ),
+        "prometheus": ConfiguredUrlDependencyChecker(
+            name="prometheus",
+            settings_field="prometheus_url",
+            required_field="prometheus_required",
+        ),
+        "siem_delivery": SiemDeliveryDependencyChecker(),
     }
+
+
+async def _probe_required_https_url(name: str, base_url: str) -> DependencyCheck:
+    try:
+        await asyncio.to_thread(_blocking_probe_ready, f"{base_url.rstrip('/')}/-/ready")
+    except Exception as exc:  # pragma: no cover - exact network errors vary
+        return DependencyCheck(
+            name=name,
+            required=True,
+            status="unavailable",
+            detail=exc.__class__.__name__,
+        )
+    return DependencyCheck(name=name, required=True, status="ok", detail="ready probe succeeded")
+
+
+def _blocking_probe_ready(url: str) -> None:
+    request = Request(url, method="GET")  # noqa: S310 - operator-configured HTTPS endpoint.
+    try:
+        with urlopen(request, timeout=5) as response:  # noqa: S310
+            if response.status >= 400:
+                raise RuntimeError(f"HTTP {response.status}")
+    except (HTTPError, URLError) as exc:
+        raise RuntimeError(exc.__class__.__name__) from exc

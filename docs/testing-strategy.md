@@ -41,6 +41,9 @@ Integration tests run against local services:
 - Redis rate limiting and distributed locks.
 - Secret backend development provider.
 - Audit event persistence.
+- Alertmanager alert normalization.
+- Prometheus resource trend normalization.
+- SIEM retry and dead-letter queue behavior.
 - Approval lifecycle.
 - Circuit breaker state.
 
@@ -73,7 +76,7 @@ when connecting to the MCP endpoint.
 
 Application dependencies must also use encrypted transports. `Settings` rejects
 PostgreSQL URLs that do not require TLS and Redis URLs that do not use
-`rediss://`.
+`rediss://`. External Alertmanager and Prometheus URLs must use `https://`.
 
 Phase 1 lab tests are read-only and skip unless explicitly enabled. Configure:
 
@@ -143,6 +146,7 @@ Reliability tests simulate:
 - Redis unavailable.
 - Secret backend unavailable.
 - SIEM exporter unavailable.
+- Alertmanager or Prometheus source unavailable.
 - Network interruption.
 - Quorum loss reported by Proxmox.
 

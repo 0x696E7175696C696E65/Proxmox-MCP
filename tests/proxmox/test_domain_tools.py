@@ -4,7 +4,7 @@ from typing import cast
 
 from proxmox_mcp.audit.writer import InMemoryAuditWriter
 from proxmox_mcp.config import Settings
-from proxmox_mcp.observability import InMemoryMetricsRegistry
+from proxmox_mcp.observability import AlertRecord, InMemoryMetricsRegistry, ResourceTrend
 from proxmox_mcp.proxmox import (
     InMemoryProxmoxApiClient,
     domain_tool_promotion_records,
@@ -41,6 +41,58 @@ class FakeAuditEventRepository:
     ) -> list[dict[str, object]]:
         self.calls.append({"limit": limit, "tenant_id": tenant_id})
         return self.events[:limit]
+
+
+class FakeAlertBackend:
+    def __init__(self, alerts: list[AlertRecord]) -> None:
+        self.alerts = alerts
+        self.calls: list[dict[str, object]] = []
+
+    async def get_recent_alerts(
+        self,
+        *,
+        limit: int,
+        tenant_id: str | None,
+        cluster_id: str | None,
+        node_id: str | None,
+    ) -> list[AlertRecord]:
+        self.calls.append(
+            {
+                "limit": limit,
+                "tenant_id": tenant_id,
+                "cluster_id": cluster_id,
+                "node_id": node_id,
+            }
+        )
+        return self.alerts[:limit]
+
+
+class FakeTrendBackend:
+    def __init__(self, trends: list[ResourceTrend]) -> None:
+        self.trends = trends
+        self.calls: list[dict[str, object]] = []
+
+    async def get_resource_trends(
+        self,
+        *,
+        resource_type: str,
+        resource_id: str,
+        metric: str,
+        range_seconds: int,
+        step_seconds: int,
+        limit: int,
+    ) -> list[ResourceTrend]:
+        self.calls.append(
+            {
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+                "metric": metric,
+                "range_seconds": range_seconds,
+                "step_seconds": step_seconds,
+                "limit": limit,
+            }
+        )
+        return self.trends[:limit]
 
 
 class AllowGuard:
@@ -109,6 +161,8 @@ def make_internal_context(
     *,
     audit_repository: FakeAuditEventRepository | None = None,
     metrics_registry: InMemoryMetricsRegistry | None = None,
+    alert_backend: FakeAlertBackend | None = None,
+    trend_backend: FakeTrendBackend | None = None,
 ) -> ToolExecutionContext:
     return ToolExecutionContext(
         request=request,
@@ -116,6 +170,8 @@ def make_internal_context(
         audit_writer=InMemoryAuditWriter(),
         audit_repository=audit_repository,
         metrics_registry=metrics_registry,
+        alert_backend=alert_backend,
+        trend_backend=trend_backend,
     )
 
 
@@ -455,3 +511,104 @@ async def test_external_observability_tools_require_explicit_sources() -> None:
 
     assert isinstance(response, ToolErrorResponse)
     assert response.error.code == "EXTERNAL_SOURCE_REQUIRED"
+
+
+async def test_get_recent_alerts_uses_configured_alert_backend() -> None:
+    registry = make_registry()
+    request = make_request(parameters={"payload": {"limit": 1}}, dry_run=False)
+    backend = FakeAlertBackend(
+        [
+            AlertRecord(
+                name="NodeDown",
+                status="firing",
+                severity="critical",
+                starts_at="2026-06-06T00:00:00Z",
+                labels={"alertname": "NodeDown", "node": "pve-1"},
+                annotations={"summary": "node unavailable"},
+                fingerprint="abc123",
+            )
+        ]
+    )
+
+    response = await registry.execute(
+        "get_recent_alerts",
+        request,
+        make_internal_context(request, alert_backend=backend),
+    )
+
+    assert isinstance(response, ToolResponse)
+    result = cast(dict[str, object], response.result)
+    alerts = cast(list[dict[str, object]], result["result"])
+    assert alerts[0]["name"] == "NodeDown"
+    assert alerts[0]["severity"] == "critical"
+    assert backend.calls == [
+        {
+            "limit": 1,
+            "tenant_id": "tenant_1",
+            "cluster_id": "lab",
+            "node_id": "pve-1",
+        }
+    ]
+
+
+async def test_get_resource_trends_uses_configured_trend_backend() -> None:
+    registry = make_registry()
+    request = make_request(
+        parameters={
+            "payload": {
+                "metric": "cpu_usage",
+                "range_seconds": 3600,
+                "step_seconds": 60,
+                "limit": 1,
+            }
+        },
+        dry_run=False,
+    )
+    backend = FakeTrendBackend(
+        [
+            ResourceTrend(
+                resource_type="vm",
+                resource_id="100",
+                metric="cpu_usage",
+                range_seconds=3600,
+                step_seconds=60,
+                samples=[{"timestamp": "2026-06-06T00:00:00Z", "value": 0.42}],
+            )
+        ]
+    )
+
+    response = await registry.execute(
+        "get_resource_trends",
+        request,
+        make_internal_context(request, trend_backend=backend),
+    )
+
+    assert isinstance(response, ToolResponse)
+    result = cast(dict[str, object], response.result)
+    trends = cast(list[dict[str, object]], result["result"])
+    assert trends[0]["metric"] == "cpu_usage"
+    assert trends[0]["samples"] == [{"timestamp": "2026-06-06T00:00:00Z", "value": 0.42}]
+    assert backend.calls == [
+        {
+            "resource_type": "vm",
+            "resource_id": "100",
+            "metric": "cpu_usage",
+            "range_seconds": 3600,
+            "step_seconds": 60,
+            "limit": 1,
+        }
+    ]
+
+
+async def test_get_resource_trends_rejects_invalid_window() -> None:
+    registry = make_registry()
+    request = make_request(parameters={"payload": {"range_seconds": 0}}, dry_run=False)
+
+    response = await registry.execute(
+        "get_resource_trends",
+        request,
+        make_internal_context(request, trend_backend=FakeTrendBackend([])),
+    )
+
+    assert isinstance(response, ToolErrorResponse)
+    assert response.error.code == "INVALID_REQUEST"

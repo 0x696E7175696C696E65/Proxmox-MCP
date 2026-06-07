@@ -4,7 +4,12 @@ from typing import cast
 import pytest
 from pydantic import SecretStr
 
-from proxmox_mcp.config import DangerousOperationSettings, Settings, TlsSettings
+from proxmox_mcp.config import (
+    DangerousOperationSettings,
+    ObservabilitySettings,
+    Settings,
+    TlsSettings,
+)
 
 REDACTED = "**********"
 
@@ -124,3 +129,21 @@ def test_database_url_requires_tls() -> None:
 def test_redis_url_requires_tls() -> None:
     with pytest.raises(ValueError, match="Redis TLS"):
         Settings(redis_url=SecretStr("redis://redis.example:6379/5"))
+
+
+def test_external_observability_urls_require_https() -> None:
+    with pytest.raises(ValueError, match="External observability URLs"):
+        Settings(
+            observability=ObservabilitySettings(
+                alertmanager_url="http://alerts.example",
+                prometheus_url="https://prometheus.example",
+            )
+        )
+
+    with pytest.raises(ValueError, match="External observability URLs"):
+        Settings(
+            observability=ObservabilitySettings(
+                alertmanager_url="https://alerts.example",
+                prometheus_url="http://prometheus.example",
+            )
+        )

@@ -4,7 +4,7 @@ from typing import Any, cast
 import pytest
 
 from proxmox_mcp.audit.writer import InMemoryAuditWriter
-from proxmox_mcp.config import Settings, TlsSettings
+from proxmox_mcp.config import ObservabilitySettings, Settings, TlsSettings
 from proxmox_mcp.observability import InMemoryMetricsRegistry
 from proxmox_mcp.proxmox import (
     DANGEROUS_TOOL_SPECS,
@@ -16,6 +16,8 @@ from proxmox_mcp.schemas.envelope import Actor, RequestOptions, Target, ToolRequ
 from proxmox_mcp.server import app as app_module
 from proxmox_mcp.server.app import build_health_payload, build_server, health_check
 from proxmox_mcp.server.health import (
+    ConfiguredUrlDependencyChecker,
+    SiemDeliveryDependencyChecker,
     StaticDependencyChecker,
     build_liveness_payload,
     build_readiness_payload,
@@ -88,6 +90,57 @@ async def test_readiness_payload_allows_optional_dependency_degradation() -> Non
 
     assert payload.status == "ready"
     assert payload.dependencies["external_alerts"].required is False
+
+
+async def test_default_readiness_fails_when_required_alertmanager_is_missing() -> None:
+    settings = Settings(
+        environment="test",
+        observability=ObservabilitySettings(alertmanager_required=True),
+    )
+    payload = await build_readiness_payload(
+        settings,
+        {
+            "alertmanager": ConfiguredUrlDependencyChecker(
+                name="alertmanager",
+                settings_field="alertmanager_url",
+                required_field="alertmanager_required",
+            )
+        },
+    )
+
+    assert payload.status == "not_ready"
+    assert payload.dependencies["alertmanager"].required is True
+    assert payload.dependencies["alertmanager"].status == "unavailable"
+
+
+async def test_default_readiness_fails_when_required_siem_delivery_is_missing() -> None:
+    settings = Settings(
+        environment="test",
+        observability=ObservabilitySettings(siem_required=True),
+    )
+    payload = await build_readiness_payload(
+        settings,
+        {"siem_delivery": SiemDeliveryDependencyChecker()},
+    )
+
+    assert payload.status == "not_ready"
+    assert payload.dependencies["siem_delivery"].required is True
+    assert payload.dependencies["siem_delivery"].status == "unavailable"
+
+
+async def test_readiness_accepts_configured_required_siem_delivery() -> None:
+    settings = Settings(
+        environment="test",
+        observability=ObservabilitySettings(siem_required=True),
+    )
+    payload = await build_readiness_payload(
+        settings,
+        {"siem_delivery": SiemDeliveryDependencyChecker(configured=True)},
+    )
+
+    assert payload.status == "ready"
+    assert payload.dependencies["siem_delivery"].required is True
+    assert payload.dependencies["siem_delivery"].status == "ok"
 
 
 def test_build_server_returns_named_app() -> None:

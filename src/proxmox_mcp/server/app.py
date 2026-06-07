@@ -10,7 +10,13 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 from proxmox_mcp.audit.repository import AuditEventRepository
 from proxmox_mcp.audit.writer import AuditWriter, InMemoryAuditWriter
 from proxmox_mcp.config import Settings
-from proxmox_mcp.observability import InMemoryMetricsRegistry
+from proxmox_mcp.observability import (
+    AlertBackend,
+    AlertmanagerAlertBackend,
+    InMemoryMetricsRegistry,
+    PrometheusTrendBackend,
+    TrendBackend,
+)
 from proxmox_mcp.proxmox import (
     ProxmoxApiClient,
     register_dangerous_tools,
@@ -119,6 +125,8 @@ def build_server(
     ssh_session_store: SshSessionStore | None = None,
     ssh_recording_store: SshRecordingStore | None = None,
     metrics_registry: InMemoryMetricsRegistry | None = None,
+    alert_backend: AlertBackend | None = None,
+    trend_backend: TrendBackend | None = None,
     dependency_checkers: Mapping[str, DependencyChecker] | None = None,
     audit_repository: AuditEventRepository | None = None,
     idempotency_store: IdempotencyStore | None = None,
@@ -134,6 +142,10 @@ def build_server(
         InMemorySshRecordingStore() if ssh_recording_store is None else ssh_recording_store
     )
     metrics_registry = InMemoryMetricsRegistry() if metrics_registry is None else metrics_registry
+    if alert_backend is None and settings.observability.alertmanager_url is not None:
+        alert_backend = AlertmanagerAlertBackend(base_url=settings.observability.alertmanager_url)
+    if trend_backend is None and settings.observability.prometheus_url is not None:
+        trend_backend = PrometheusTrendBackend(base_url=settings.observability.prometheus_url)
 
     app = FastMCP("Enterprise Proxmox MCP")
     registry = ToolRegistry(guard=SecurityPlaneGuard(), metrics_sink=metrics_registry)
@@ -157,6 +169,8 @@ def build_server(
             ssh_recording_store=ssh_recording_store,
             audit_repository=audit_repository,
             metrics_registry=metrics_registry,
+            alert_backend=alert_backend,
+            trend_backend=trend_backend,
             idempotency_store=idempotency_store,
             proxmox_task_store=proxmox_task_store,
         )

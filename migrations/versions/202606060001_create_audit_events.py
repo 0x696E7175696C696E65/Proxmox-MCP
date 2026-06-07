@@ -107,6 +107,21 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("recording_ref", name=op.f("pk_ssh_recordings")),
     )
     op.create_table(
+        "siem_deliveries",
+        sa.Column("delivery_id", sa.String(length=128), nullable=False),
+        sa.Column("destination", sa.String(length=128), nullable=False),
+        sa.Column("payload_json", sa.JSON(), nullable=False),
+        sa.Column("status", sa.String(length=32), nullable=False),
+        sa.Column("attempt_count", sa.Integer(), nullable=False),
+        sa.Column("max_attempts", sa.Integer(), nullable=False),
+        sa.Column("next_retry_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("delivered_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("last_error", sa.String(length=512), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.PrimaryKeyConstraint("delivery_id", name=op.f("pk_siem_deliveries")),
+    )
+    op.create_table(
         "ssh_sessions",
         sa.Column("session_id", sa.String(length=128), nullable=False),
         sa.Column("actor_user_id", sa.String(length=128), nullable=False),
@@ -126,6 +141,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("ssh_sessions")
+    op.drop_table("siem_deliveries")
     op.drop_table("ssh_recordings")
     op.drop_table("proxmox_tasks")
     op.drop_table("idempotency_records")

@@ -18,6 +18,7 @@ from proxmox_mcp.persistence.models import (
     AuditEventRecord,
     IdempotencyRecord,
     ProxmoxTaskRecord,
+    SiemDeliveryRecord,
     SshRecordingRecord,
     SshSessionRecordModel,
 )
@@ -29,6 +30,7 @@ def _expected_model_columns() -> dict[str, set[str]]:
         "approval_requests": {column.name for column in ApprovalRecord.__table__.columns},
         "idempotency_records": {column.name for column in IdempotencyRecord.__table__.columns},
         "proxmox_tasks": {column.name for column in ProxmoxTaskRecord.__table__.columns},
+        "siem_deliveries": {column.name for column in SiemDeliveryRecord.__table__.columns},
         "ssh_recordings": {column.name for column in SshRecordingRecord.__table__.columns},
         "ssh_sessions": {column.name for column in SshSessionRecordModel.__table__.columns},
     }

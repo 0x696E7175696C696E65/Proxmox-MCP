@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import shlex
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, is_dataclass, replace
 from hashlib import sha256
 from string import Formatter
 from typing import Any, Literal, cast
@@ -11,6 +11,7 @@ from urllib.parse import quote
 
 from pydantic import BaseModel, ConfigDict, Field, create_model
 
+from proxmox_mcp.observability import ObservabilityBackendError
 from proxmox_mcp.proxmox.client import ProxmoxApiError
 from proxmox_mcp.schemas.envelope import RiskLevel, ToolRequest
 from proxmox_mcp.ssh.client import SshClientError, SshCommand, SshCommandResult, SshTarget
@@ -1064,15 +1065,83 @@ async def _internal_result_for(
             "metrics": context.metrics_registry.render_prometheus(),
         }
 
-    if spec.name in {"get_recent_alerts", "get_resource_trends"}:
-        raise ToolExecutionError(
-            error_code="EXTERNAL_SOURCE_REQUIRED",
-            message="Internal telemetry source requires a configured external backend",
-            details={
-                "tool_name": spec.name,
-                "promotion_status": "external_source_required",
-            },
+    if spec.name == "get_recent_alerts":
+        if context.alert_backend is None:
+            raise ToolExecutionError(
+                error_code="EXTERNAL_SOURCE_REQUIRED",
+                message="Recent alerts require a configured Alertmanager-compatible backend",
+                details={
+                    "tool_name": spec.name,
+                    "promotion_status": "external_source_required",
+                },
+            )
+        limit = _positive_int_from_payload(request.parameters, "limit", default=100, maximum=500)
+        try:
+            alerts = await context.alert_backend.get_recent_alerts(
+                limit=limit,
+                tenant_id=request.actor.tenant_id,
+                cluster_id=request.target.cluster,
+                node_id=request.target.node,
+            )
+            return [_serializable_record(alert) for alert in alerts]
+        except ObservabilityBackendError as exc:
+            raise ToolExecutionError(
+                error_code="EXTERNAL_SOURCE_REQUIRED",
+                message="Alert backend query failed",
+                retryable=exc.retryable,
+                details={"tool_name": spec.name, **exc.details},
+            ) from exc
+
+    if spec.name == "get_resource_trends":
+        if context.trend_backend is None:
+            raise ToolExecutionError(
+                error_code="EXTERNAL_SOURCE_REQUIRED",
+                message="Resource trends require a configured Prometheus-compatible backend",
+                details={
+                    "tool_name": spec.name,
+                    "promotion_status": "external_source_required",
+                },
+            )
+        payload = request.parameters.get("payload", {})
+        payload_mapping: dict[str, object] = {}
+        if isinstance(payload, dict):
+            payload_mapping = cast(dict[str, object], payload)
+        metric = str(payload_mapping.get("metric", "cpu_usage"))
+        if not metric:
+            raise ToolExecutionError(
+                error_code="INVALID_REQUEST",
+                message="Domain tool payload metric must be non-empty",
+            )
+        range_seconds = _positive_int_from_payload(
+            request.parameters,
+            "range_seconds",
+            default=3600,
+            maximum=86_400,
         )
+        step_seconds = _positive_int_from_payload(
+            request.parameters,
+            "step_seconds",
+            default=60,
+            maximum=3600,
+        )
+        limit = _positive_int_from_payload(request.parameters, "limit", default=100, maximum=1000)
+        try:
+            trends = await context.trend_backend.get_resource_trends(
+                resource_type=request.target.resource_type,
+                resource_id=request.target.resource_id,
+                metric=metric,
+                range_seconds=range_seconds,
+                step_seconds=step_seconds,
+                limit=limit,
+            )
+            return [_serializable_record(trend) for trend in trends]
+        except ObservabilityBackendError as exc:
+            raise ToolExecutionError(
+                error_code="EXTERNAL_SOURCE_REQUIRED",
+                message="Trend backend query failed",
+                retryable=exc.retryable,
+                details={"tool_name": spec.name, **exc.details},
+            ) from exc
 
     raise ToolExecutionError(
         error_code="NOT_IMPLEMENTED",
@@ -1106,6 +1175,12 @@ def _positive_int_from_payload(
             message=f"Domain tool payload {key} must be between 1 and {maximum}",
         )
     return parsed
+
+
+def _serializable_record(value: object) -> object:
+    if is_dataclass(value):
+        return asdict(cast(Any, value))
+    return value
 
 
 def _result(

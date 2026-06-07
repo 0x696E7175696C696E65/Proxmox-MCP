@@ -34,7 +34,8 @@ Current lab-rollout evidence:
 | Container supply chain | Docker image builds in distribution workflow | Image vulnerability scan and SBOM artifact upload | `hardening.yml` uploads Trivy SARIF and SBOM artifacts |
 | Runtime readiness | Dependency-aware live/ready payloads and HTTPS runtime exist | Manifest tests assert HTTPS `/health/live`, `/health/ready`, and startup probes | Kubernetes probes use HTTPS endpoints and do not fall back to raw TCP |
 | Shared-state HA | Database-backed approval, idempotency, SSH session, SSH recording, and Proxmox task stores exist | Multi-replica approval consumption, idempotency locking, audit persistence, SSH session/recording behavior, and task-state replay | HA test suite documents replica-safe paths and requires durable stores for multi-replica claims |
-| Internal observability | In-process metrics/log/trace wiring exists | Query tests for audit events plus explicit external-source responses for metrics, alerts, and trends | Internal tools must return real source data or `external_source_required` |
+| External observability | In-process metrics/log/trace wiring exists; Alertmanager and Prometheus adapters are available when configured | Query tests for audit events, Alertmanager alert normalization, Prometheus trend normalization, required-source readiness, and explicit external-source responses when unconfigured | Internal tools must return real source data or `external_source_required` |
+| SIEM delivery | SIEM payload formatting plus durable retry/dead-letter queue exists | Queue redaction, retry, dead-letter, and audit-writer degradation tests | Audit DB remains authoritative; SIEM delivery degrades for read-only operations and retries durably |
 | Guarded Proxmox tools | Guarded tools fail visibly instead of returning fake success | Contract, unit, and opt-in lab tests per promoted tool | Tool promotion checklist and evidence must be attached |
 | Compatibility | Disposable lab evidence exists for the current lab only | Version/topology matrix for tested Proxmox and optional Ceph/HA/PBS features | Release notes include compatibility report |
 | Release evidence | Evidence requirements are explicit | Release-candidate workflow fails when required evidence artifacts are missing or invalid | `.github/workflows/release-candidate.yml` runs `scripts/validate_release_evidence.py` |
@@ -65,7 +66,6 @@ Security-critical dependencies must fail closed. Optional observability exporter
 
 - SSH interactive sessions should use the database-backed session store for multi-replica deployments; in-memory development sessions still require sticky routing.
 - Lab chaos gates require operator-provided Proxmox credentials and are not enabled by default.
-- SIEM exporters format payloads locally; production delivery retries should be backed by a durable queue.
-- SSH session paths still need shared-state validation before multi-replica production claims.
+- SIEM exporters format payloads locally and can use the durable retry queue; vendor-specific delivery adapters beyond the current generic delivery protocol still require deployment-specific wiring.
 - Release-candidate validation requires evidence artifacts to be staged under the configured evidence directory.
 - Backend-specific operations without universal safe semantics remain guarded with `NOT_IMPLEMENTED` until lab evidence exists.

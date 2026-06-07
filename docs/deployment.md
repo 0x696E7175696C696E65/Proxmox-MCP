@@ -48,6 +48,12 @@ security:
 secrets:
   provider: hashicorp_vault
   vault_addr: https://vault.example.com
+
+observability:
+  alertmanager_url: https://alertmanager.example.com
+  prometheus_url: https://prometheus.example.com
+  alertmanager_required: false
+  prometheus_required: false
 ```
 
 No secrets should be committed to the repository. Production deployments should load sensitive values from a secret manager or orchestrator secret mechanism.
@@ -59,6 +65,13 @@ and `PROXMOX_MCP_TLS__KEY_FILE`. PostgreSQL URLs must require TLS with
 `rediss://`. Disposable lab and development deployments may set
 `PROXMOX_MCP_TLS__GENERATE_SELF_SIGNED=true`, but clients must explicitly trust
 the generated certificate.
+
+External Alertmanager and Prometheus sources are configured through
+`PROXMOX_MCP_OBSERVABILITY__ALERTMANAGER_URL` and
+`PROXMOX_MCP_OBSERVABILITY__PROMETHEUS_URL`. These URLs must use `https://`.
+If `PROXMOX_MCP_OBSERVABILITY__ALERTMANAGER_REQUIRED=true` or
+`PROXMOX_MCP_OBSERVABILITY__PROMETHEUS_REQUIRED=true`, readiness fails closed
+until the corresponding source is configured.
 
 ## Docker Deployment
 
@@ -144,6 +157,7 @@ HA-sensitive workflows:
 - SSH interactive sessions have a database-backed session store available. Use it for multi-replica deployments; the in-memory manager remains a development fallback and still requires sticky routing.
 - SSH recordings have a database-backed metadata and redacted output store available. Use a shared object store or durable volume if raw recording blobs are stored outside PostgreSQL.
 - Proxmox UPID task state has a database-backed store available so long-running mutating operations can return a durable task reference and be resumed by another process.
+- SIEM delivery has a database-backed retry/dead-letter queue available. Audit persistence remains authoritative; SIEM delivery failures are retryable and should not block read-only operations.
 
 ## Network Security
 
@@ -164,6 +178,8 @@ Expose:
 - `/metrics`
 - OpenTelemetry traces.
 - Structured JSON logs.
+- Alertmanager-backed recent alert queries when configured.
+- Prometheus-backed resource trend queries when configured.
 
 Important metrics:
 
@@ -187,7 +203,7 @@ Audit events should be forwardable to:
 - Wazuh.
 - Loki.
 
-The primary database remains the authoritative audit source. SIEM export failures should be logged and retried, but should not block read-only tool execution. Required audit persistence failures should block mutating execution.
+The primary database remains the authoritative audit source. SIEM export failures are queued for retry and then dead-lettered after configured attempts, but should not block read-only tool execution. Required audit persistence failures should block mutating execution.
 
 ## Backup And Recovery
 

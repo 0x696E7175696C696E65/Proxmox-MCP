@@ -32,8 +32,9 @@ Implemented:
 - Proxmox cluster credential resolution, in-memory Proxmox API test client, and token/password-auth Proxmox lab HTTP adapter.
 - Read-only Proxmox tools, safe mutations, dangerous operations, promoted domain-pack tools, and SSH tools.
 - Controlled SSH execution, command policy, session tracking, SFTP/SCP operations, and output redaction.
-- Runtime observability wiring for Prometheus-style metrics, structured JSON logs, trace context, audit correlation, and SIEM/Loki payloads.
-- Reliability primitives for retries and circuit breakers.
+- Runtime observability wiring for Prometheus-style metrics, structured JSON logs, trace context, audit correlation, Alertmanager-backed recent alerts, Prometheus-backed resource trends, and SIEM/Loki payloads.
+- Durable shared-state foundations for approvals, idempotency, SSH sessions, SSH recordings, Proxmox task state, and SIEM retry/dead-letter delivery.
+- Reliability primitives for retries, circuit breakers, idempotency, and resumable Proxmox task references.
 - Docker, Docker Compose, Kubernetes, Grafana dashboard, hardening workflow, and release hardening runbook.
 - Contract tests that verify the registered tool catalog against [`docs/tool-specification.md`](docs/tool-specification.md).
 
@@ -45,12 +46,12 @@ Validation at merge time:
 - `python -m pytest`
 - Distribution readiness workflow: builds and validates Python sdist/wheel artifacts, smoke-installs the wheel, audits dependencies, and builds the Docker image.
 - Dedicated security invariant suite covering fail-closed guard behavior, approval replay protection, audit evidence, redaction boundaries, and encrypted transport enforcement.
-- Current offline suite: `230 passed, 6 skipped`
+- Current offline suite should be rerun before each release candidate; latest development gates include Ruff, Pyright, migration parity, durable-state tests, and observability backend tests.
 - Live disposable Proxmox lab: `5 passed, 1 skipped` using node `test`; Ceph skipped because it is not installed.
 - MCP communication audit: local runtime test negotiated `TLSv1.3` with `TLS_AES_256_GCM_SHA384`, FastMCP client access succeeded over HTTPS, and plaintext HTTP to the MCP port returned no response bytes.
 - Network transport policy: MCP ingress is HTTPS-only, Proxmox API endpoints require `https://`, PostgreSQL must request TLS, Redis must use `rediss://`, and SSH remains encrypted by protocol.
 
-Important caveat: the codebase is preview-ready for development and lab validation, not yet certified for unattended production control of real Proxmox clusters. Ambiguous or backend-specific operations, such as generic storage expansion, benchmark execution, backup verification, and node update orchestration, remain guarded with `NOT_IMPLEMENTED` or `external_source_required` until they have exact contracts, lab evidence, and release gates. Multi-replica production claims are also constrained until approvals, idempotency, SSH sessions, and recording storage are proven with shared state.
+Important caveat: the codebase is preview-ready for development and lab validation, not yet certified for unattended production control of real Proxmox clusters. Ambiguous or backend-specific operations, such as generic storage expansion, benchmark execution, backup verification, and node update orchestration, remain guarded with `NOT_IMPLEMENTED` until they have exact contracts, lab evidence, and release gates. External observability tools return `external_source_required` unless Alertmanager or Prometheus backends are configured. Multi-replica production claims now have durable foundations, but still require operator configuration and release evidence before GA certification.
 
 ## Architecture
 

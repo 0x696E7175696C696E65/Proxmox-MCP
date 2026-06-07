@@ -39,6 +39,24 @@ class TlsSettings(BaseModel):
         return value
 
 
+class ObservabilitySettings(BaseModel):
+    alertmanager_url: str | None = None
+    alertmanager_required: bool = False
+    prometheus_url: str | None = None
+    prometheus_required: bool = False
+    siem_required: bool = False
+
+    @field_validator("alertmanager_url", "prometheus_url")
+    @classmethod
+    def _require_https_observability_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        parsed = urlparse(value)
+        if parsed.scheme != "https":
+            raise ValueError("External observability URLs must use https://")
+        return value.rstrip("/")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="PROXMOX_MCP_",
@@ -61,6 +79,7 @@ class Settings(BaseSettings):
         default_factory=DangerousOperationSettings
     )
     tls: TlsSettings = Field(default_factory=TlsSettings)
+    observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
 
     @model_validator(mode="after")
     def _validate_encrypted_network_urls(self) -> Settings:
