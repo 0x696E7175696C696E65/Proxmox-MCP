@@ -350,9 +350,7 @@ class DatabaseSiemDeliveryQueue:
                 if result.rowcount != 1:
                     continue
                 record = await session.scalar(
-                    select(SiemDeliveryRecord).where(
-                        SiemDeliveryRecord.delivery_id == delivery_id
-                    )
+                    select(SiemDeliveryRecord).where(SiemDeliveryRecord.delivery_id == delivery_id)
                 )
                 if record is not None:
                     claimed.append(record)
