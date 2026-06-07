@@ -44,7 +44,7 @@ Current lab-rollout evidence:
 | Production deployment qualification | Docker Compose and Kubernetes examples enforce HTTPS probes, TLS mounts, non-root runtime posture, encrypted dependencies, external auth enablement, and operator-supplied secrets | `tests/deploy/test_kubernetes_manifest.py`, `tests/deploy/test_docker_compose.py`, and readiness tests in `tests/test_server.py` | Production readiness fails closed for development auth, missing external auth resolver, development secret provider, plaintext PostgreSQL/Redis URLs, and missing TLS material |
 | Guarded Proxmox tools | Guarded tools fail visibly instead of returning fake success | Contract, unit, and opt-in lab tests per promoted tool | Tool promotion checklist and evidence must be attached |
 | Compatibility | Preview evidence exists for `pve-9-single-node-no-ceph` and `pve-9-storage-local-local-lvm` only | Version/topology matrix for tested Proxmox and optional Ceph/HA/PBS features | Release notes include compatibility report; qualified reports cannot contain required skipped lab runs |
-| Release evidence | Evidence requirements are explicit and schema-checked for compatibility/lab artifacts, profile declarations, release-summary fields, and sanitized payloads | Release-candidate workflow fails when required evidence artifacts are missing, invalid, incomplete, contain credential-shaped keys, reference unknown profiles, or claim `qualified` with missing/skipped required profile tests | `.github/workflows/release-candidate.yml` runs `scripts/validate_release_evidence.py`; examples live in `docs/release-evidence/` |
+| Release evidence | Evidence requirements are explicit and schema-checked for compatibility/lab artifacts, profile declarations, release-summary fields, artifact hashes, tool promotion evidence, and sanitized payloads | Release-candidate workflow fails when required evidence artifacts are missing, invalid, incomplete, hash-mismatched, contain credential-shaped keys, reference unknown profiles, or claim `qualified` with missing/skipped required profile tests | `.github/workflows/release-candidate.yml` runs `scripts/collect_release_evidence.py` and `scripts/validate_release_evidence.py`; examples live in `docs/release-evidence/` |
 | Chaos and load | Deterministic non-lab chaos/load gates exist; live lab gates remain opt-in | `tests/chaos/`, `tests/performance/`, and lab gates when credentials are configured | Hardening workflow runs executable pytest gates and fails closed when lab gates are enabled without required lab config |
 
 ## Chaos Scenarios
@@ -63,10 +63,11 @@ Security-critical dependencies must fail closed. Optional observability exporter
 
 Preview releases must include:
 
-1. Passing CI, distribution, hardening, migration, SBOM, and Trivy evidence artifacts.
+1. Passing CI, distribution, hardening, migration, SBOM, Trivy, and artifact-manifest evidence artifacts.
 2. A compatibility report whose profiles match the lab evidence and do not claim `qualified` with missing, skipped, failed, or placeholder required tests.
 3. A lab evidence artifact that contains only sanitized endpoint/profile/test summaries, never usernames, tokens, passwords, private keys, or credential-shaped keys.
 4. README, compatibility, and domain-pack status updates that keep guarded operations clearly marked as guarded.
+5. Release candidate notes in `docs/release-candidate-notes.md` that separate preview, profile-gated, operator-qualified, and still-guarded capabilities.
 5. Production deployment notes showing external auth, enterprise secret backend, TLS cert material, PostgreSQL TLS, Redis TLS, and operator-owned credentials.
 
 ## Rollback

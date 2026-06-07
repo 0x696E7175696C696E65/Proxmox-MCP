@@ -20,7 +20,7 @@ This project is not a thin Proxmox wrapper. It is an actively developed public p
 
 ## Current Status
 
-The preview foundation is implemented and actively being expanded. The current release posture is evidence-first: capabilities are advertised only when deterministic tests, registered MCP-path checks, opt-in lab gates, and sanitized release evidence support the claim.
+The preview foundation and enterprise validation expansion are now on `main`. The current release posture is evidence-first: capabilities are advertised only when deterministic tests, registered MCP-path checks, opt-in lab gates, and sanitized release evidence support the claim.
 
 Implemented:
 
@@ -40,6 +40,12 @@ Implemented:
 - Profile-driven lab gates for single-node, storage, LXC-template, Ceph, HA, multi-node, and PBS validation tracks.
 - Production readiness checks that fail closed for development auth, missing external auth integration, development secret providers, plaintext dependency URLs, and incomplete TLS configuration.
 
+Evidence-backed status:
+
+- **Preview validated:** core MCP control plane, auth/RBAC/policy/approval/audit flows, read-only Proxmox discovery, safe mutations, dangerous-operation guardrails, controlled SSH, durable state, release evidence validation, and the current Proxmox VE 9.1.1 single-node lab profile.
+- **Profile-gated:** LXC template lifecycle, Ceph, HA, multi-node, PBS availability, backup verification, storage expansion, and storage benchmarking.
+- **Operator-qualified:** production deployment depends on environment-specific external auth, enterprise secret backend, TLS material, PostgreSQL TLS, Redis TLS, least-privilege Proxmox credentials, and release evidence for the enabled profile.
+
 Validation at merge time:
 
 - `python -m ruff format .`
@@ -49,7 +55,7 @@ Validation at merge time:
 - Distribution readiness workflow: builds and validates Python sdist/wheel artifacts, smoke-installs the wheel, audits dependencies, and builds the Docker image.
 - Dedicated security invariant suite covering fail-closed guard behavior, approval replay protection, audit evidence, redaction boundaries, and encrypted transport enforcement.
 - Current offline suite should be rerun before each release candidate; latest local run reported `350 passed, 10 skipped`, with live lab and PostgreSQL tests skipping unless explicit operator endpoints are configured.
-- Release evidence validation now schema-checks compatibility profiles, release summary fields, lab artifacts, required profile tests, and credential-shaped key rejection.
+- Release evidence validation now schema-checks compatibility profiles, release summary fields, lab artifacts, artifact hashes, required profile tests, tool promotion evidence, and credential-shaped key rejection.
 - Live disposable Proxmox VE 9.1.1 lab evidence currently covers the `pve-9-single-node-no-ceph` and `pve-9-storage-local-local-lvm` preview profiles; Ceph, HA, multi-node, PBS verification, storage expansion, and benchmarks remain profile-gated.
 - MCP communication audit: local runtime test negotiated `TLSv1.3` with `TLS_AES_256_GCM_SHA384`, FastMCP client access succeeded over HTTPS, and plaintext HTTP to the MCP port returned no response bytes.
 - Network transport policy: MCP ingress is HTTPS-only, Proxmox API endpoints require `https://`, PostgreSQL must request TLS, Redis must use `rediss://`, and SSH remains encrypted by protocol.
@@ -174,7 +180,7 @@ Operational references:
 Before cutting or sharing a preview release, attach evidence for:
 
 - CI, distribution, hardening, migration, SBOM, and Trivy gates.
-- `docs/release-evidence/compatibility-report.example.json` and `docs/release-evidence/lab-evidence.example.json` schema validation.
+- `docs/release-evidence/compatibility-report.example.json`, `docs/release-evidence/lab-evidence.example.json`, and generated artifact-manifest schema/hash validation.
 - The exact Proxmox lab profile being claimed in [`docs/proxmox-compatibility.md`](docs/proxmox-compatibility.md).
 - Guarded-tool status for `verify_backup`, `expand_storage`, `benchmark_storage`, and node update orchestration.
 - Production configuration review covering TLS, external auth, secret backend, PostgreSQL TLS, Redis TLS, and operator-provided credentials.
@@ -303,7 +309,7 @@ flowchart LR
   m9 --> m10["Milestone 10 Hardening"]
 ```
 
-The detailed implementation roadmap lives in [`docs/roadmap.md`](docs/roadmap.md). The preview implementation now covers the planned runtime, security, Proxmox tool, SSH, dangerous-operation, observability, deployment, and hardening milestones at code and test level. The next phase is lab validation, API-semantic tightening against real Proxmox clusters, and release qualification.
+The detailed implementation roadmap lives in [`docs/roadmap.md`](docs/roadmap.md). The preview implementation now covers the planned runtime, security, Proxmox tool, SSH, dangerous-operation, observability, deployment, hardening, and validation-expansion milestones at code and test level. The next phase is collecting additional topology evidence for Ceph, HA, multi-node, PBS, and backend-specific storage promotion before any broader qualification claims.
 
 ## Documentation
 
@@ -316,6 +322,9 @@ The detailed implementation roadmap lives in [`docs/roadmap.md`](docs/roadmap.md
 - [`docs/testing-strategy.md`](docs/testing-strategy.md): unit, integration, security, lab, SSH sandbox, chaos, and acceptance testing.
 - [`docs/deployment.md`](docs/deployment.md): Docker, Kubernetes, HA, observability, and operations guidance.
 - [`docs/release-hardening.md`](docs/release-hardening.md): preview release gates, chaos scenarios, rollback, and known limitations.
+- [`docs/release-candidate-notes.md`](docs/release-candidate-notes.md): release-review categories for preview, profile-gated, operator-qualified, and still-guarded capabilities.
+- [`docs/proxmox-compatibility.md`](docs/proxmox-compatibility.md): evidence-backed compatibility profiles and known topology limits.
+- [`docs/domain-pack-status.md`](docs/domain-pack-status.md): domain-by-domain tool promotion status and guarded operations.
 
 ## License
 

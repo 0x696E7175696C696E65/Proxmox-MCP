@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import json
+from collections.abc import Iterable
 from pathlib import Path
 
 from scripts.validate_release_evidence import validate_release_evidence
@@ -10,6 +12,7 @@ def test_release_evidence_validation_reports_missing_required_artifacts(tmp_path
     result = validate_release_evidence(tmp_path)
 
     assert not result.valid
+    assert "artifact-manifest.json" in result.missing_artifacts
     assert "migration-validation.json" in result.missing_artifacts
     assert "sbom.spdx.json" in result.missing_artifacts
     assert "trivy-image-results.sarif" in result.missing_artifacts
@@ -30,6 +33,7 @@ def test_release_evidence_validation_accepts_complete_artifact_set(tmp_path: Pat
     }
     for name, payload in artifacts.items():
         (tmp_path / name).write_text(json.dumps(payload), encoding="utf-8")
+    _write_artifact_manifest(tmp_path, artifacts.keys())
 
     result = validate_release_evidence(tmp_path)
 
@@ -57,6 +61,52 @@ def test_release_evidence_validation_rejects_lab_evidence_with_secrets(
         "node": "test",
         "password": "redacted-but-forbidden-key",
     }
+    _write_complete_artifacts(tmp_path, lab_evidence=lab_evidence)
+
+    result = validate_release_evidence(tmp_path)
+
+    assert not result.valid
+    assert "lab-evidence.json" in result.invalid_artifacts
+
+
+def test_release_evidence_validation_rejects_authorization_shaped_keys(
+    tmp_path: Path,
+) -> None:
+    lab_evidence = _lab_evidence()
+    lab_evidence["operator_notes"] = [{"authorization": "redacted-but-forbidden-key"}]
+    _write_complete_artifacts(tmp_path, lab_evidence=lab_evidence)
+
+    result = validate_release_evidence(tmp_path)
+
+    assert not result.valid
+    assert "lab-evidence.json" in result.invalid_artifacts
+
+
+def test_release_evidence_validation_rejects_manifest_hash_mismatch(
+    tmp_path: Path,
+) -> None:
+    _write_complete_artifacts(tmp_path)
+    manifest = json.loads((tmp_path / "artifact-manifest.json").read_text(encoding="utf-8"))
+    manifest["artifacts"]["ci-success.json"]["sha256"] = "0" * 64
+    (tmp_path / "artifact-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = validate_release_evidence(tmp_path)
+
+    assert not result.valid
+    assert "artifact-manifest.json" in result.invalid_artifacts
+
+
+def test_release_evidence_validation_rejects_live_supported_tool_without_profile_evidence(
+    tmp_path: Path,
+) -> None:
+    lab_evidence = _lab_evidence()
+    lab_evidence["promoted_tools"] = [
+        {
+            "tool": "verify_backup",
+            "status": "live_supported",
+            "evidence": "unit tests only",
+        }
+    ]
     _write_complete_artifacts(tmp_path, lab_evidence=lab_evidence)
 
     result = validate_release_evidence(tmp_path)
@@ -185,6 +235,43 @@ def test_release_evidence_validation_rejects_qualified_missing_required_profile_
     assert "lab-evidence.json" in result.invalid_artifacts
 
 
+def test_release_evidence_validation_rejects_qualified_compatibility_with_preview_lab(
+    tmp_path: Path,
+) -> None:
+    compatibility_report = _compatibility_report()
+    compatibility_report["status"] = "qualified"
+    compatibility_report["matrix"] = [
+        {
+            "proxmox_version": "Proxmox VE 9.1.1",
+            "topology": "single-node",
+            "profile": "pve-9-single-node-no-ceph",
+            "evidence_status": "qualified",
+            "evidence_artifacts": ["lab-evidence.json"],
+        }
+    ]
+    compatibility_report["profiles"] = [
+        {
+            "name": "pve-9-single-node-no-ceph",
+            "status": "qualified",
+            "required_tests": ["read-only smoke"],
+            "optional_tests": [],
+            "expected_skips": [],
+        }
+    ]
+    lab_evidence = _lab_evidence()
+    lab_evidence["status"] = "preview"
+    _write_complete_artifacts(
+        tmp_path,
+        compatibility_report=compatibility_report,
+        lab_evidence=lab_evidence,
+    )
+
+    result = validate_release_evidence(tmp_path)
+
+    assert not result.valid
+    assert "lab-evidence.json" in result.invalid_artifacts
+
+
 def test_release_evidence_examples_match_validator_schema(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[2]
     compatibility_report = json.loads(
@@ -268,6 +355,7 @@ def _write_complete_artifacts(
     }
     for name, payload in artifacts.items():
         (path / name).write_text(json.dumps(payload), encoding="utf-8")
+    _write_artifact_manifest(path, artifacts.keys())
 
 
 def _compatibility_report() -> dict[str, object]:
@@ -328,7 +416,23 @@ def _lab_evidence() -> dict[str, object]:
             {
                 "tool": "enter_lxc_console",
                 "status": "live_supported",
-                "evidence": "durable session and recording contract tests",
+                "evidence": (
+                    "durable session and recording contract tests with "
+                    "pve-9-single-node-no-ceph profile evidence"
+                ),
             }
         ],
     }
+
+
+def _write_artifact_manifest(path: Path, artifact_names: Iterable[object]) -> None:
+    artifacts: dict[str, dict[str, object]] = {}
+    for name in sorted(str(artifact_name) for artifact_name in artifact_names):
+        digest = hashlib.sha256((path / name).read_bytes()).hexdigest()
+        artifacts[name] = {"sha256": digest}
+    manifest = {
+        "schema_version": 1,
+        "generated_at": "2026-06-06T00:00:00Z",
+        "artifacts": artifacts,
+    }
+    (path / "artifact-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")

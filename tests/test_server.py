@@ -25,6 +25,7 @@ from proxmox_mcp.server.app import (
 from proxmox_mcp.server.health import (
     ConfiguredUrlDependencyChecker,
     ProductionAuthDependencyChecker,
+    ProductionStateDependencyChecker,
     SecretBackendDependencyChecker,
     SiemDeliveryDependencyChecker,
     StaticDependencyChecker,
@@ -221,6 +222,93 @@ async def test_production_readiness_accepts_external_auth_path() -> None:
 
     assert payload.status == "ready"
     assert payload.dependencies["auth"].status == "ok"
+
+
+async def test_production_readiness_requires_durable_state() -> None:
+    payload = await build_readiness_payload(
+        Settings(environment="production", durable_state_enabled=False),
+        {
+            "production_state": ProductionStateDependencyChecker(
+                durable_components_configured=True,
+                approval_store_configured=True,
+            )
+        },
+    )
+
+    assert payload.status == "not_ready"
+    assert payload.dependencies["production_state"].status == "unavailable"
+    assert "durable state" in payload.dependencies["production_state"].detail
+
+
+async def test_workload_identity_requires_redis_replay_cache_in_production() -> None:
+    payload = await build_readiness_payload(
+        Settings(
+            environment="production",
+            auth_mode="workload_identity",
+            durable_state_enabled=True,
+            workload_identity_replay_cache="memory",
+        ),
+        {
+            "production_state": ProductionStateDependencyChecker(
+                durable_components_configured=True,
+                approval_store_configured=True,
+            )
+        },
+    )
+
+    assert payload.status == "not_ready"
+    assert payload.dependencies["production_state"].status == "unavailable"
+    assert (
+        "Redis-backed workload identity replay cache"
+        in payload.dependencies["production_state"].detail
+    )
+
+
+async def test_production_state_accepts_durable_state_and_redis_replay_cache() -> None:
+    payload = await build_readiness_payload(
+        Settings(
+            environment="production",
+            auth_mode="workload_identity",
+            durable_state_enabled=True,
+            workload_identity_replay_cache="redis",
+        ),
+        {
+            "production_state": ProductionStateDependencyChecker(
+                durable_components_configured=True,
+                approval_store_configured=True,
+            )
+        },
+    )
+
+    assert payload.status == "ready"
+    assert payload.dependencies["production_state"].status == "ok"
+
+
+async def test_production_state_rejects_claim_without_actual_durable_components() -> None:
+    payload = await build_readiness_payload(
+        Settings(environment="production", durable_state_enabled=True),
+        {"production_state": ProductionStateDependencyChecker(durable_components_configured=False)},
+    )
+
+    assert payload.status == "not_ready"
+    assert payload.dependencies["production_state"].status == "unavailable"
+    assert "actual durable" in payload.dependencies["production_state"].detail
+
+
+async def test_production_state_requires_actual_approval_store() -> None:
+    payload = await build_readiness_payload(
+        Settings(environment="production", durable_state_enabled=True),
+        {
+            "production_state": ProductionStateDependencyChecker(
+                durable_components_configured=True,
+                approval_store_configured=False,
+            )
+        },
+    )
+
+    assert payload.status == "not_ready"
+    assert payload.dependencies["production_state"].status == "unavailable"
+    assert "approval store" in payload.dependencies["production_state"].detail
 
 
 def test_build_server_returns_named_app() -> None:

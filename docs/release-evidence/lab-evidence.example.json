@@ -115,7 +115,7 @@
     {
       "tool": "enter_lxc_console",
       "status": "live_supported",
-      "evidence": "Durable SSH session and recording contract tests require database-backed stores for live console sessions."
+      "evidence": "Durable SSH session and recording contract tests for pve-9-single-node-no-ceph require database-backed stores for live console sessions."
     }
   ],
   "operator_notes": [

@@ -36,16 +36,20 @@ LAB_PROFILE_NAMES: frozenset[str] = frozenset(
 @dataclass(frozen=True, slots=True)
 class LabProfileMetadata:
     name: str
+    evidence_label: str
     required_env: tuple[str, ...]
     required_tests: tuple[str, ...]
     optional_tests: tuple[str, ...]
     expected_skips: tuple[str, ...]
+    topology_assertions: tuple[str, ...]
+    destructive_gates: tuple[str, ...]
     promotion_eligible: bool
 
 
 LAB_PROFILE_METADATA: dict[str, LabProfileMetadata] = {
     "pve-9-single-node-no-ceph": LabProfileMetadata(
         name="pve-9-single-node-no-ceph",
+        evidence_label="single-node no Ceph",
         required_env=("PROXMOX_MCP_LAB_NODE", "PROXMOX_MCP_LAB_STORAGE"),
         required_tests=(
             "read-only lab smoke",
@@ -59,54 +63,95 @@ LAB_PROFILE_METADATA: dict[str, LabProfileMetadata] = {
             "Ceph status when Ceph is not installed",
             "LXC lifecycle when no template exists",
         ),
+        topology_assertions=("single_node", "ceph_absent", "local_storage"),
+        destructive_gates=(
+            "PROXMOX_MCP_LAB_MUTATIONS_ENABLED",
+            "PROXMOX_MCP_LAB_DESTRUCTIVE_ENABLED",
+        ),
         promotion_eligible=False,
     ),
     "pve-9-storage-local-local-lvm": LabProfileMetadata(
         name="pve-9-storage-local-local-lvm",
+        evidence_label="local and local-lvm storage",
         required_env=("PROXMOX_MCP_LAB_NODE", "PROXMOX_MCP_LAB_STORAGE"),
         required_tests=("storage profile smoke",),
         optional_tests=("storage mutation smoke",),
         expected_skips=("Storage expansion and benchmarking",),
+        topology_assertions=("local_dir_storage", "local_lvmthin_storage"),
+        destructive_gates=(
+            "PROXMOX_MCP_LAB_MUTATIONS_ENABLED",
+            "PROXMOX_MCP_LAB_DESTRUCTIVE_ENABLED",
+        ),
         promotion_eligible=False,
     ),
     "pve-9-single-node-with-guests": LabProfileMetadata(
         name="pve-9-single-node-with-guests",
+        evidence_label="single-node guest inventory",
         required_env=("PROXMOX_MCP_LAB_NODE",),
         required_tests=("read-only lab smoke", "guest inventory smoke"),
         optional_tests=("LXC template lifecycle",),
         expected_skips=(),
+        topology_assertions=("single_node", "guest_inventory_present"),
+        destructive_gates=(
+            "PROXMOX_MCP_LAB_MUTATIONS_ENABLED",
+            "PROXMOX_MCP_LAB_DESTRUCTIVE_ENABLED",
+        ),
         promotion_eligible=False,
     ),
     "pve-9-ceph-enabled": LabProfileMetadata(
         name="pve-9-ceph-enabled",
+        evidence_label="Ceph topology",
         required_env=("PROXMOX_MCP_LAB_NODE",),
         required_tests=("Ceph discovery smoke",),
         optional_tests=("Ceph mutation smoke",),
         expected_skips=(),
+        topology_assertions=("ceph_status", "ceph_pools", "ceph_osds"),
+        destructive_gates=(
+            "PROXMOX_MCP_LAB_MUTATIONS_ENABLED",
+            "PROXMOX_MCP_LAB_DESTRUCTIVE_ENABLED",
+        ),
         promotion_eligible=False,
     ),
     "pve-9-ha-enabled": LabProfileMetadata(
         name="pve-9-ha-enabled",
+        evidence_label="HA topology",
         required_env=("PROXMOX_MCP_LAB_NODE",),
         required_tests=("HA discovery smoke",),
         optional_tests=("HA migration smoke",),
         expected_skips=(),
+        topology_assertions=("ha_status", "ha_resources"),
+        destructive_gates=(
+            "PROXMOX_MCP_LAB_MUTATIONS_ENABLED",
+            "PROXMOX_MCP_LAB_DESTRUCTIVE_ENABLED",
+        ),
         promotion_eligible=False,
     ),
     "pve-9-multi-node": LabProfileMetadata(
         name="pve-9-multi-node",
+        evidence_label="multi-node topology",
         required_env=("PROXMOX_MCP_LAB_EXPECTED_NODE_COUNT",),
         required_tests=("multi-node inventory smoke", "cluster quorum smoke"),
         optional_tests=("migration smoke",),
         expected_skips=(),
+        topology_assertions=("expected_node_count", "cluster_quorum"),
+        destructive_gates=(
+            "PROXMOX_MCP_LAB_MUTATIONS_ENABLED",
+            "PROXMOX_MCP_LAB_DESTRUCTIVE_ENABLED",
+        ),
         promotion_eligible=False,
     ),
     "pve-9-pbs-enabled": LabProfileMetadata(
         name="pve-9-pbs-enabled",
+        evidence_label="PBS backup verification",
         required_env=("PROXMOX_MCP_LAB_NODE", "PROXMOX_MCP_LAB_PBS_REPOSITORY"),
         required_tests=("PBS availability smoke", "PBS verification gate"),
         optional_tests=("backup verification smoke",),
         expected_skips=("Live PBS verification until artifact evidence is available",),
+        topology_assertions=("pbs_storage_configured", "backup_artifact_addressable"),
+        destructive_gates=(
+            "PROXMOX_MCP_LAB_MUTATIONS_ENABLED",
+            "PROXMOX_MCP_LAB_DESTRUCTIVE_ENABLED",
+        ),
         promotion_eligible=False,
     ),
 }

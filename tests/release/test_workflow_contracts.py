@@ -72,6 +72,7 @@ def test_release_candidate_workflow_requires_evidence_artifacts() -> None:
     )
 
     assert "scripts/validate_release_evidence.py" in run_commands
+    assert "scripts/collect_release_evidence.py" in run_commands
     assert "--evidence-dir" in run_commands
 
 

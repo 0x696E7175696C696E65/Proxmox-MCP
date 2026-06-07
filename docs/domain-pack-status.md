@@ -34,8 +34,8 @@ Live command-backed tools:
 
 Still guarded:
 
-- `expand_storage`: storage expansion is backend-specific. Dry-runs now record backend and preview mode, while live execution returns `NOT_IMPLEMENTED` with required backend evidence.
-- `benchmark_storage`: benchmark behavior requires `target_type`, a bounded `duration_seconds` value, disposable artifact scope, and cleanup evidence before live execution.
+- `expand_storage`: storage expansion is backend-specific. LVM-thin dry-runs now produce an expansion plan with requested size, preflight checks, audit fields, and guarded execution status; live execution returns `NOT_IMPLEMENTED` until disposable lab evidence exists.
+- `benchmark_storage`: benchmark behavior requires `target_type`, bounded `duration_seconds`, bounded `max_bytes`, disposable artifact scope, cleanup evidence, timeout metadata, and result schema before live execution.
 
 Validation:
 
@@ -66,7 +66,7 @@ Safety notes:
 
 ## Backup, Restore, Verify, Prune, And Scheduled Jobs
 
-Status: implemented with Proxmox API live support for cluster backup jobs, VM/LXC backup requests, VM/LXC backup restore requests, and storage prune operations. Backup verification remains guarded with backend-specific dry-run metadata until exact PVE-local or PBS verification semantics are configured and lab-validated.
+Status: implemented with Proxmox API live support for cluster backup jobs, VM/LXC backup requests, VM/LXC backup restore requests, and storage prune operations. Backup verification remains guarded with backend-specific dry-run metadata until exact PVE-local or PBS verification semantics are configured and lab-validated. Restore tools now return dry-run restore-preview evidence before any live restore mutation.
 
 Validation:
 
@@ -74,6 +74,7 @@ Validation:
 - Read-only lab discovery: `python -m pytest tests/lab -m lab`
 - Backup create/list lab evidence: `python -m pytest tests/lab/test_backup_smoke.py -q` validates registered `run_vm_backup`, UPID task capture, backup content listing, and cleanup against a disposable VM.
 - PBS verification gate: `python -m pytest tests/lab/test_backup_verify_smoke.py -q` skips unless `PROXMOX_MCP_LAB_PROFILE=pve-9-pbs-enabled` and PBS repository prerequisites are present. `verify_backup` remains guarded until this profile records real verification evidence.
+- Restore preview evidence is covered by `python -m pytest tests/proxmox/test_domain_backup_pack.py -q` and confirms artifact, target type, target ID, storage, and non-mutating preview status.
 
 Safety notes:
 
@@ -150,4 +151,4 @@ Correlation fields:
 2. Promote `verify_backup` only after the exact PVE or PBS verification contract and lab evidence exist.
 3. Promote `benchmark_storage` only with bounded workload, timeout, cleanup, and result schema guarantees.
 4. Promote `expand_storage` backend-by-backend after each storage type has implementation and lab proof.
-5. Promote `apply_node_updates` last because node update, reboot, rollback, and task-polling semantics have the highest operational blast radius.
+5. Promote `apply_node_updates` last because node update, reboot, rollback, and task-polling semantics have the highest operational blast radius. Dry-runs now produce a guarded orchestration plan with quorum, guest/HA, storage, backup, rollback, and audit preflight fields; live lab evidence is tracked by `tests/lab/test_node_update_smoke.py`.

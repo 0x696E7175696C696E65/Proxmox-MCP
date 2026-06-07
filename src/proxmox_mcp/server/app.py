@@ -34,11 +34,13 @@ from proxmox_mcp.schemas.envelope import (
     ToolRequest,
     ToolResponse,
 )
-from proxmox_mcp.security import SecurityPlaneGuard
+from proxmox_mcp.security import ApprovalConsumer, SecurityPlaneGuard
 from proxmox_mcp.server.health import (
     DependencyChecker,
+    ProductionStateDependencyChecker,
     build_liveness_payload,
     build_readiness_payload,
+    default_dependency_checkers,
 )
 from proxmox_mcp.server.tls import resolve_tls_config
 from proxmox_mcp.ssh import (
@@ -134,6 +136,7 @@ def build_server(
     proxmox_task_store: ProxmoxTaskStore | None = None,
     authenticated_session_resolver: Callable[[ToolRequest], AuthenticatedSession | None]
     | None = None,
+    approval_store: ApprovalConsumer | None = None,
 ) -> FastMCP:
     settings = Settings() if settings is None else settings
     audit_writer = InMemoryAuditWriter() if audit_writer is None else audit_writer
@@ -150,8 +153,22 @@ def build_server(
     if trend_backend is None and settings.observability.prometheus_url is not None:
         trend_backend = PrometheusTrendBackend(base_url=settings.observability.prometheus_url)
 
+    runtime_dependency_checkers = dependency_checkers
+    if runtime_dependency_checkers is None:
+        runtime_dependency_checkers = _runtime_dependency_checkers(
+            audit_writer=audit_writer,
+            ssh_session_store=ssh_session_store,
+            ssh_recording_store=ssh_recording_store,
+            idempotency_store=idempotency_store,
+            proxmox_task_store=proxmox_task_store,
+            approval_store=approval_store,
+        )
+
     app = FastMCP("Enterprise Proxmox MCP")
-    registry = ToolRegistry(guard=SecurityPlaneGuard(), metrics_sink=metrics_registry)
+    registry = ToolRegistry(
+        guard=SecurityPlaneGuard(approval_store=approval_store),
+        metrics_sink=metrics_registry,
+    )
     register_internal_tools(registry)
     register_read_only_tools(registry)
     register_safe_mutation_tools(registry)
@@ -186,9 +203,32 @@ def build_server(
         app,
         settings=settings,
         metrics_registry=metrics_registry,
-        dependency_checkers=dependency_checkers,
+        dependency_checkers=runtime_dependency_checkers,
     )
     return app
+
+
+def _runtime_dependency_checkers(
+    *,
+    audit_writer: AuditWriter,
+    ssh_session_store: SshSessionStore | None,
+    ssh_recording_store: SshRecordingStore,
+    idempotency_store: IdempotencyStore | None,
+    proxmox_task_store: ProxmoxTaskStore | None,
+    approval_store: ApprovalConsumer | None,
+) -> Mapping[str, DependencyChecker]:
+    checkers = dict(default_dependency_checkers())
+    checkers["production_state"] = ProductionStateDependencyChecker(
+        durable_components_configured=(
+            not isinstance(audit_writer, InMemoryAuditWriter)
+            and ssh_session_store is not None
+            and not isinstance(ssh_recording_store, InMemorySshRecordingStore)
+            and idempotency_store is not None
+            and proxmox_task_store is not None
+        ),
+        approval_store_configured=approval_store is not None,
+    )
+    return checkers
 
 
 def build_tool_context(

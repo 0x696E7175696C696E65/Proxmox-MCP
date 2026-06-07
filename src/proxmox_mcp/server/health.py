@@ -213,6 +213,66 @@ class ProductionAuthDependencyChecker:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class ProductionStateDependencyChecker:
+    durable_components_configured: bool = False
+    approval_store_configured: bool = False
+
+    async def check(self, settings: Settings) -> DependencyCheck:
+        if settings.environment != "production":
+            return DependencyCheck(
+                name="production_state",
+                required=True,
+                status="ok",
+                detail="production durable state checks are relaxed outside production",
+            )
+        if not settings.durable_state_enabled:
+            return DependencyCheck(
+                name="production_state",
+                required=True,
+                status="unavailable",
+                detail=(
+                    "production requires durable state for audit, approvals, tasks, and sessions"
+                ),
+            )
+        if not self.durable_components_configured:
+            return DependencyCheck(
+                name="production_state",
+                required=True,
+                status="unavailable",
+                detail=(
+                    "production requires actual durable audit, session, recording, "
+                    "idempotency, and task-state components"
+                ),
+            )
+        if not self.approval_store_configured:
+            return DependencyCheck(
+                name="production_state",
+                required=True,
+                status="unavailable",
+                detail="production requires an actual durable approval store",
+            )
+        if (
+            settings.auth_mode == "workload_identity"
+            and settings.workload_identity_replay_cache != "redis"
+        ):
+            return DependencyCheck(
+                name="production_state",
+                required=True,
+                status="unavailable",
+                detail=(
+                    "production workload identity requires Redis-backed workload identity "
+                    "replay cache"
+                ),
+            )
+        return DependencyCheck(
+            name="production_state",
+            required=True,
+            status="ok",
+            detail="durable state and replay cache configuration accepted",
+        )
+
+
 class TlsDependencyChecker:
     async def check(self, settings: Settings) -> DependencyCheck:
         tls = settings.tls
@@ -336,6 +396,7 @@ def default_dependency_checkers() -> Mapping[str, DependencyChecker]:
         "postgresql": DatabaseDependencyChecker(),
         "redis": RedisDependencyChecker(),
         "auth": ProductionAuthDependencyChecker(),
+        "production_state": ProductionStateDependencyChecker(),
         "secret_backend": SecretBackendDependencyChecker(),
         "tls": TlsDependencyChecker(),
         "migrations": MigrationDependencyChecker(),

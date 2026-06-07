@@ -632,7 +632,14 @@ def _build_domain_handler(
         command = _command_for(spec, request, parameters)
 
         if request.options.dry_run:
-            return _result(spec, request, endpoint=endpoint, command=command, payload=payload)
+            return _result(
+                spec,
+                request,
+                endpoint=endpoint,
+                command=command,
+                payload=payload,
+                result=_dry_run_result_for(spec, request, parameters, payload),
+            )
 
         if not spec.live_supported and spec.connector == "internal":
             return _result(
@@ -693,6 +700,22 @@ def _build_domain_handler(
                         "backend": backend,
                         "required_evidence": (
                             "bounded storage benchmark contract and cleanup lab evidence"
+                        ),
+                    },
+                )
+            if spec.name == "apply_node_updates":
+                raise ToolExecutionError(
+                    error_code="NOT_IMPLEMENTED",
+                    message=(
+                        "Node update orchestration requires preflight, rollback, reboot, "
+                        "and recovery lab evidence"
+                    ),
+                    details={
+                        "tool_name": spec.name,
+                        "connector": spec.connector,
+                        "required_evidence": (
+                            "node update orchestration preflight, rollback, reboot, "
+                            "and recovery lab evidence"
                         ),
                     },
                 )
@@ -796,6 +819,68 @@ def _payload_for_execution(
         error_code="INVALID_REQUEST",
         message="Backup prune requires a storage, VM, or LXC target",
     )
+
+
+def _dry_run_result_for(
+    spec: DomainToolSpec,
+    request: ToolRequest,
+    parameters: dict[str, object],
+    payload: dict[str, object],
+) -> object | None:
+    if spec.name == "verify_backup":
+        volume = parameters.get("volume")
+        artifact = volume if isinstance(volume, str) else ""
+        backend = _backup_verification_backend(payload)
+        return {
+            "backend": backend,
+            "repository": payload.get("repository", request.target.storage_id),
+            "artifact": artifact,
+            "verification_source": "pbs" if backend == "pbs" else "pve-local",
+            "verification_status": "guarded",
+            "audit_fields": [
+                "backend",
+                "repository",
+                "artifact",
+                "verification_source",
+                "verification_status",
+            ],
+        }
+    if spec.name in {"restore_vm_backup", "restore_lxc_backup"}:
+        return {
+            "restore_preview": _restore_preview_for(
+                spec,
+                request,
+                payload,
+            )
+        }
+    if spec.name == "expand_storage":
+        return _storage_expansion_plan_for(request, payload)
+    if spec.name == "benchmark_storage":
+        return _storage_benchmark_plan_for(payload)
+    if spec.name == "apply_node_updates":
+        return _node_update_plan_for(request, payload)
+    return None
+
+
+def _restore_preview_for(
+    spec: DomainToolSpec,
+    request: ToolRequest,
+    payload: dict[str, object],
+) -> dict[str, object]:
+    artifact = payload.get("archive")
+    if artifact is None:
+        artifact = payload.get("volid", "")
+    target_id = _target_backed_value_for("vmid", request) or request.target.resource_id
+    return {
+        "artifact": artifact,
+        "target_type": "lxc" if spec.name == "restore_lxc_backup" else "vm",
+        "target_id": target_id,
+        "storage": payload.get("storage", request.target.storage_id),
+        "artifact_addressability": "check_required",
+        "mutation_performed": False,
+        "live_mutation_required": True,
+        "conflict_check": "required_before_live_restore",
+    }
 
 
 def _validate_target_consistency(request: ToolRequest) -> None:
@@ -1394,6 +1479,11 @@ def _rollback_guidance_for(spec: DomainToolSpec) -> str | None:
             "Benchmarking requires bounded duration, disposable artifacts, and cleanup evidence "
             "before live execution."
         )
+    if spec.name == "apply_node_updates":
+        return (
+            "Node updates require quorum, guest/HA drain checks, verified backups, rollback "
+            "window, reboot/reconnect evidence, and approval before live execution."
+        )
     if spec.risk == "critical":
         return (
             "Require a verified backup, console access, and a documented rollback "
@@ -1417,7 +1507,13 @@ def _storage_expansion_payload_for(
     request: ToolRequest,
     payload: dict[str, object],
 ) -> dict[str, object]:
+    backend = _storage_backend(payload)
     requested_size = payload.get("requested_size")
+    if backend == "lvmthin" and not requested_size:
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="Storage expansion requested_size is required for lvmthin",
+        )
     if requested_size is not None and not isinstance(requested_size, str):
         raise ToolExecutionError(
             error_code="INVALID_REQUEST",
@@ -1426,9 +1522,46 @@ def _storage_expansion_payload_for(
     if request.options.dry_run:
         preview_payload = dict(payload)
         preview_payload.setdefault("mode", "preview")
-        preview_payload.setdefault("backend", _storage_backend(payload))
+        preview_payload.setdefault("backend", backend)
         return preview_payload
     return payload
+
+
+def _storage_expansion_plan_for(
+    request: ToolRequest,
+    payload: dict[str, object],
+) -> dict[str, object]:
+    backend = _storage_backend(payload)
+    return {
+        "backend": backend,
+        "storage_id": request.target.storage_id or request.target.resource_id,
+        "requested_size": payload.get("requested_size"),
+        "execution_status": "guarded",
+        "preflight_checks": _storage_expansion_preflight_checks(backend),
+        "audit_fields": [
+            "backend",
+            "storage_id",
+            "requested_size",
+            "execution_status",
+        ],
+    }
+
+
+def _storage_expansion_preflight_checks(backend: str) -> list[str]:
+    if backend == "lvmthin":
+        return [
+            "backend_type",
+            "free_space",
+            "thin_pool_health",
+            "rollback_feasibility",
+            "lab_profile_evidence",
+        ]
+    return [
+        "backend_type",
+        "free_space",
+        "rollback_feasibility",
+        "lab_profile_evidence",
+    ]
 
 
 def _storage_benchmark_payload_for(payload: dict[str, object]) -> dict[str, object]:
@@ -1451,11 +1584,46 @@ def _storage_benchmark_payload_for(payload: dict[str, object]) -> dict[str, obje
             error_code="INVALID_REQUEST",
             message="Storage benchmark duration_seconds must be between 1 and 60",
         )
+    max_bytes = payload.get("max_bytes")
+    try:
+        parsed_max_bytes = int(str(max_bytes))
+    except (TypeError, ValueError) as exc:
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="Storage benchmark max_bytes must be an integer",
+        ) from exc
+    if parsed_max_bytes < 4096 or parsed_max_bytes > 1_073_741_824:
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="Storage benchmark max_bytes must be between 4096 and 1073741824",
+        )
     benchmark_payload = dict(payload)
     benchmark_payload["duration_seconds"] = duration_seconds
+    benchmark_payload["max_bytes"] = parsed_max_bytes
     benchmark_payload.setdefault("backend", _storage_backend(payload))
     benchmark_payload.setdefault("artifact_scope", "disposable")
     return benchmark_payload
+
+
+def _storage_benchmark_plan_for(payload: dict[str, object]) -> dict[str, object]:
+    duration_seconds = int(str(payload["duration_seconds"]))
+    return {
+        "backend": _storage_backend(payload),
+        "target_type": payload["target_type"],
+        "duration_seconds": duration_seconds,
+        "max_bytes": payload["max_bytes"],
+        "artifact_scope": payload["artifact_scope"],
+        "execution_status": "guarded",
+        "cleanup_required": True,
+        "timeout_seconds": duration_seconds + 5,
+        "result_schema": [
+            "throughput_bytes_per_second",
+            "duration_seconds",
+            "artifact_path",
+            "cleanup_status",
+            "command_hash",
+        ],
+    }
 
 
 def _storage_backend(payload: dict[str, object]) -> str:
@@ -1463,3 +1631,31 @@ def _storage_backend(payload: dict[str, object]) -> str:
     if isinstance(backend, str) and backend:
         return backend
     return "unknown"
+
+
+def _node_update_plan_for(
+    request: ToolRequest,
+    payload: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "node": request.target.node or request.target.resource_id,
+        "maintenance_window": payload.get("maintenance_window"),
+        "preflight_status": "required",
+        "execution_status": "guarded",
+        "preflight_checks": [
+            "cluster_quorum",
+            "node_health",
+            "running_guests",
+            "ha_resources",
+            "storage_health",
+            "verified_backups",
+            "rollback_window",
+        ],
+        "audit_fields": [
+            "node",
+            "maintenance_window",
+            "preflight_status",
+            "execution_status",
+            "rollback_guidance",
+        ],
+    }

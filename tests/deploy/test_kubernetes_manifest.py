@@ -77,5 +77,7 @@ def test_kubernetes_manifest_requires_production_auth_and_tls_config() -> None:
     assert config["PROXMOX_MCP_ENVIRONMENT"] == "production"
     assert config["PROXMOX_MCP_AUTH_MODE"] in {"oidc", "mtls", "workload_identity"}
     assert config["PROXMOX_MCP_EXTERNAL_AUTH_ENABLED"] == "true"
+    assert config["PROXMOX_MCP_DURABLE_STATE_ENABLED"] == "true"
+    assert config["PROXMOX_MCP_WORKLOAD_IDENTITY_REPLAY_CACHE"] == "redis"
     assert config["PROXMOX_MCP_TLS__GENERATE_SELF_SIGNED"] == "false"
     assert volume_mounts["tls"]["readOnly"] is True

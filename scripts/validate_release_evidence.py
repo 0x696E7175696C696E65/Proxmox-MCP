@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from dataclasses import dataclass
@@ -8,6 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 REQUIRED_ARTIFACTS: tuple[str, ...] = (
+    "artifact-manifest.json",
     "ci-success.json",
     "distribution-summary.json",
     "hardening-summary.json",
@@ -72,6 +74,11 @@ def validate_release_evidence(evidence_dir: Path) -> ReleaseEvidenceValidationRe
         if artifact == "compatibility-report.json" and not _valid_compatibility_report(parsed):
             invalid.append(artifact)
         if artifact == "lab-evidence.json" and not _valid_lab_evidence(parsed):
+            invalid.append(artifact)
+        if artifact == "artifact-manifest.json" and not _valid_artifact_manifest(
+            parsed,
+            evidence_dir,
+        ):
             invalid.append(artifact)
 
     if (
@@ -173,6 +180,36 @@ def _valid_compatibility_report(payload: object | None) -> bool:
     return True
 
 
+def _valid_artifact_manifest(payload: object | None, evidence_dir: Path) -> bool:
+    if not isinstance(payload, dict) or _contains_sensitive_key(payload):
+        return False
+    manifest = cast(dict[str, object], payload)
+    if manifest.get("schema_version") != 1:
+        return False
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, dict):
+        return False
+    typed_artifacts = cast(dict[str, object], artifacts)
+    expected_artifacts = set(REQUIRED_ARTIFACTS) - {"artifact-manifest.json"}
+    if set(typed_artifacts) != expected_artifacts:
+        return False
+    for artifact_name in expected_artifacts:
+        entry = typed_artifacts.get(artifact_name)
+        if not isinstance(entry, dict):
+            return False
+        typed_entry = cast(dict[str, object], entry)
+        expected_sha = typed_entry.get("sha256")
+        if not isinstance(expected_sha, str) or len(expected_sha) != 64:
+            return False
+        artifact_path = evidence_dir / artifact_name
+        if not artifact_path.is_file():
+            return False
+        actual_sha = hashlib.sha256(artifact_path.read_bytes()).hexdigest()
+        if actual_sha != expected_sha:
+            return False
+    return True
+
+
 def _valid_profile(profile: object) -> bool:
     if not isinstance(profile, dict):
         return False
@@ -249,6 +286,7 @@ def _valid_lab_evidence(payload: object | None) -> bool:
             not isinstance(evidence, str)
             or not evidence.strip()
             or evidence.lower() in {"pending", "todo", "tbd"}
+            or not any(profile in evidence for profile in KNOWN_LAB_PROFILES)
         ):
             return False
 
@@ -264,7 +302,11 @@ def _valid_profile_evidence_alignment(
 
     compatibility = cast(dict[str, object], compatibility_payload)
     lab_evidence = cast(dict[str, object], lab_payload)
+    requires_qualified_lab = _compatibility_requires_qualified_lab(compatibility)
     if lab_evidence.get("status") != "qualified":
+        return not requires_qualified_lab
+
+    if not requires_qualified_lab:
         return True
 
     lab = lab_evidence.get("lab")
@@ -298,6 +340,22 @@ def _valid_profile_evidence_alignment(
         and run.get("failed") == 0
     }
     return all(test_name in passed_runs for test_name in cast(list[str], required_tests))
+
+
+def _compatibility_requires_qualified_lab(compatibility: dict[str, object]) -> bool:
+    if compatibility.get("status") == "qualified":
+        return True
+    matrix = compatibility.get("matrix")
+    if isinstance(matrix, list) and any(
+        isinstance(row, dict) and row.get("evidence_status") == "qualified"
+        for row in cast(list[object], matrix)
+    ):
+        return True
+    profiles = compatibility.get("profiles")
+    return isinstance(profiles, list) and any(
+        isinstance(profile, dict) and profile.get("status") == "qualified"
+        for profile in cast(list[object], profiles)
+    )
 
 
 def _profile_by_name(
@@ -335,6 +393,9 @@ def _is_sensitive_key(key: str) -> bool:
             "secret",
             "private_key",
             "credential",
+            "authorization",
+            "bearer",
+            "cookie",
         )
     )
 

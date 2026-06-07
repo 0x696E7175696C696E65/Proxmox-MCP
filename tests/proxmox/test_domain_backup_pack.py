@@ -131,7 +131,49 @@ async def test_verify_backup_pbs_dry_run_records_backend_contract() -> None:
         "backend": "pbs",
         "repository": "pbs-local",
     }
+    verification = cast(dict[str, object], result["result"])
+    assert verification["backend"] == "pbs"
+    assert verification["repository"] == "pbs-local"
+    assert verification["artifact"] == "backup:backup/vzdump-qemu-100.vma.zst"
+    assert verification["verification_status"] == "guarded"
+    assert verification["audit_fields"] == [
+        "backend",
+        "repository",
+        "artifact",
+        "verification_source",
+        "verification_status",
+    ]
     assert "PBS verification requires" in cast(str, result["rollback_guidance"])
+
+
+async def test_restore_vm_backup_dry_run_returns_restore_preview_evidence() -> None:
+    registry = make_registry()
+    request = make_request(
+        parameters={
+            "payload": {
+                "archive": "backup:backup/vzdump-qemu-100.vma.zst",
+                "storage": "local-lvm",
+            }
+        }
+    )
+
+    response = await registry.execute("restore_vm_backup", request, make_context(request))
+
+    assert isinstance(response, ToolResponse)
+    result = cast(dict[str, object], response.result)
+    preview = cast(dict[str, object], result["result"])
+    assert preview["restore_preview"] == {
+        "artifact": "backup:backup/vzdump-qemu-100.vma.zst",
+        "target_type": "vm",
+        "target_id": "100",
+        "storage": "local-lvm",
+        "artifact_addressability": "check_required",
+        "mutation_performed": False,
+        "live_mutation_required": True,
+        "conflict_check": "required_before_live_restore",
+    }
+    payload = cast(dict[str, object], result["payload"])
+    assert payload["archive"] == "backup:backup/vzdump-qemu-100.vma.zst"
 
 
 async def test_verify_backup_live_returns_backend_specific_unsupported_response() -> None:

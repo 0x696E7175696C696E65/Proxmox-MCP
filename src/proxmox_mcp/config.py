@@ -69,6 +69,8 @@ class Settings(BaseSettings):
         "development"
     )
     external_auth_enabled: bool = False
+    durable_state_enabled: bool = False
+    workload_identity_replay_cache: Literal["memory", "redis"] = "memory"
     server_host: str = "127.0.0.1"
     server_port: int = Field(default=8443, ge=1, le=65535)
     database_url: SecretStr = SecretStr(

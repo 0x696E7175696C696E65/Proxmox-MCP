@@ -35,6 +35,9 @@ This matrix records evidence, not marketing claims. A Proxmox version or topolog
 Profiles not listed as preview or qualified are `Not yet claimed`. A profile can
 move from preview to qualified only when required tests pass without required
 skips and the structured evidence artifacts include the exact profile name.
+Each profile also carries an evidence label, topology assertions, and destructive
+gate requirements in `src/proxmox_mcp/proxmox/lab.py` so live evidence can be
+classified without embedding secrets or relying on prose-only claims.
 
 Profile-specific environment variables:
 

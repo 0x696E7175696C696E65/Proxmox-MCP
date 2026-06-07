@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Literal, Protocol, cast
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
@@ -122,6 +122,15 @@ class JsonGetter(Protocol):
     async def __call__(self, url: str, timeout_seconds: int) -> object: ...
 
 
+class JsonPoster(Protocol):
+    async def __call__(
+        self,
+        url: str,
+        payload: dict[str, object],
+        timeout_seconds: int,
+    ) -> int: ...
+
+
 class SiemDelivery(Protocol):
     async def deliver(self, destination: str, payload: dict[str, object]) -> None: ...
 
@@ -152,6 +161,32 @@ class SiemDeliveryError(RuntimeError):
     def __init__(self, message: str, *, retryable: bool = True) -> None:
         super().__init__(message)
         self.retryable = retryable
+
+
+class HttpJsonSiemDelivery:
+    def __init__(
+        self,
+        *,
+        timeout_seconds: int = 10,
+        json_post: JsonPoster | None = None,
+    ) -> None:
+        self._timeout_seconds = timeout_seconds
+        self._json_post = _default_json_post if json_post is None else json_post
+
+    def validate_destination(self, destination: str) -> None:
+        _require_https_url(destination, "SIEM destination HTTPS URL")
+        _reject_credential_bearing_destination(destination, "SIEM destination HTTPS URL")
+
+    async def deliver(self, destination: str, payload: dict[str, object]) -> None:
+        self.validate_destination(destination)
+        sanitized = cast(dict[str, object], _sanitize_for_delivery(payload))
+        status_code = await self._json_post(destination, sanitized, self._timeout_seconds)
+        if 200 <= status_code < 300:
+            return
+        raise SiemDeliveryError(
+            f"SIEM delivery returned HTTP {status_code}",
+            retryable=status_code >= 500 or status_code == 429,
+        )
 
 
 class AlertmanagerAlertBackend:
@@ -304,6 +339,7 @@ class DatabaseSiemDeliveryQueue:
         destination: str,
         payload: dict[str, object],
     ) -> SiemDeliveryRecordData:
+        _reject_credential_bearing_destination(destination, "SIEM destination")
         now = datetime.now(UTC)
         record = SiemDeliveryRecord(
             delivery_id=f"siem_delivery_{uuid4().hex}",
@@ -418,6 +454,7 @@ class SiemQueueingAuditWriter:
     ) -> None:
         self._audit_writer = audit_writer
         self._delivery_queue = delivery_queue
+        _reject_credential_bearing_destination(destination, "SIEM destination")
         self._destination = destination
         self._format_name: SiemFormat
         self._format_name = format_name
@@ -561,6 +598,37 @@ def format_siem_event(
 
 async def _default_json_get(url: str, timeout_seconds: int) -> object:
     return await asyncio.to_thread(_blocking_json_get, url, timeout_seconds)
+
+
+async def _default_json_post(
+    url: str,
+    payload: dict[str, object],
+    timeout_seconds: int,
+) -> int:
+    return await asyncio.to_thread(_blocking_json_post, url, payload, timeout_seconds)
+
+
+def _blocking_json_post(
+    url: str,
+    payload: dict[str, object],
+    timeout_seconds: int,
+) -> int:
+    request = Request(  # noqa: S310
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Accept": "application/json", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310
+            return int(response.status)
+    except HTTPError as exc:
+        return int(exc.code)
+    except URLError as exc:
+        raise SiemDeliveryError(
+            f"SIEM destination is unavailable: {exc.reason}",
+            retryable=True,
+        ) from exc
 
 
 def _blocking_json_get(url: str, timeout_seconds: int) -> object:
@@ -742,6 +810,21 @@ def _require_https_url(value: str, label: str) -> None:
     parsed = urlparse(value)
     if parsed.scheme != "https":
         raise ValueError(f"{label} must use https://")
+
+
+def _reject_credential_bearing_destination(value: str, label: str) -> None:
+    parsed = urlparse(value)
+    if not parsed.scheme:
+        return
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError(f"{label} must not contain userinfo")
+    sensitive_query_keys = [
+        key
+        for key, _value in parse_qsl(parsed.query, keep_blank_values=True)
+        if _is_sensitive_key(key)
+    ]
+    if sensitive_query_keys:
+        raise ValueError(f"{label} must not contain credential-shaped query keys")
 
 
 async def _get_delivery_record(

@@ -144,7 +144,36 @@ async def test_expand_storage_local_lvm_dry_run_records_backend_preview_contract
         "requested_size": "+10G",
         "mode": "preview",
     }
+    expansion_plan = cast(dict[str, object], result["result"])
+    assert expansion_plan["backend"] == "lvmthin"
+    assert expansion_plan["storage_id"] == "local-zfs"
+    assert expansion_plan["requested_size"] == "+10G"
+    assert expansion_plan["execution_status"] == "guarded"
+    assert expansion_plan["preflight_checks"] == [
+        "backend_type",
+        "free_space",
+        "thin_pool_health",
+        "rollback_feasibility",
+        "lab_profile_evidence",
+    ]
+    assert expansion_plan["audit_fields"] == [
+        "backend",
+        "storage_id",
+        "requested_size",
+        "execution_status",
+    ]
     assert "backend-specific expansion" in cast(str, result["rollback_guidance"])
+
+
+async def test_expand_storage_lvmthin_requires_requested_size() -> None:
+    registry = make_registry()
+    request = make_request(parameters={"payload": {"backend": "lvmthin"}})
+
+    response = await registry.execute("expand_storage", request, make_context(request))
+
+    assert isinstance(response, ToolErrorResponse)
+    assert response.error.code == "INVALID_REQUEST"
+    assert "requested_size" in response.error.message
 
 
 async def test_expand_storage_live_returns_backend_specific_guard() -> None:
@@ -184,6 +213,55 @@ async def test_benchmark_storage_requires_bounded_runtime_settings() -> None:
     assert isinstance(response, ToolErrorResponse)
     assert response.error.code == "INVALID_REQUEST"
     assert "duration_seconds" in response.error.message
+
+
+async def test_benchmark_storage_requires_max_bytes_bound() -> None:
+    registry = make_registry()
+    request = make_request(
+        parameters={
+            "payload": {
+                "target_type": "storage",
+                "duration_seconds": 30,
+            }
+        }
+    )
+
+    response = await registry.execute("benchmark_storage", request, make_context(request))
+
+    assert isinstance(response, ToolErrorResponse)
+    assert response.error.code == "INVALID_REQUEST"
+    assert "max_bytes" in response.error.message
+
+
+async def test_benchmark_storage_dry_run_returns_bounded_cleanup_plan() -> None:
+    registry = make_registry()
+    request = make_request(
+        parameters={
+            "payload": {
+                "backend": "dir",
+                "target_type": "storage",
+                "duration_seconds": 30,
+                "max_bytes": 1048576,
+            }
+        }
+    )
+
+    response = await registry.execute("benchmark_storage", request, make_context(request))
+
+    assert isinstance(response, ToolResponse)
+    result = cast(dict[str, object], response.result)
+    benchmark_plan = cast(dict[str, object], result["result"])
+    assert benchmark_plan["execution_status"] == "guarded"
+    assert benchmark_plan["cleanup_required"] is True
+    assert benchmark_plan["timeout_seconds"] == 35
+    assert benchmark_plan["artifact_scope"] == "disposable"
+    assert benchmark_plan["result_schema"] == [
+        "throughput_bytes_per_second",
+        "duration_seconds",
+        "artifact_path",
+        "cleanup_status",
+        "command_hash",
+    ]
 
 
 async def test_storage_pack_nonzero_ssh_exit_returns_error() -> None:

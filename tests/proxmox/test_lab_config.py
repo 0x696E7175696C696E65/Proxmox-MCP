@@ -181,6 +181,15 @@ def test_lab_config_reports_topology_profile_prerequisites() -> None:
         "multi-node inventory smoke",
         "cluster quorum smoke",
     )
+    assert config.profile_metadata().evidence_label == "multi-node topology"
+    assert config.profile_metadata().topology_assertions == (
+        "expected_node_count",
+        "cluster_quorum",
+    )
+    assert config.profile_metadata().destructive_gates == (
+        "PROXMOX_MCP_LAB_MUTATIONS_ENABLED",
+        "PROXMOX_MCP_LAB_DESTRUCTIVE_ENABLED",
+    )
     assert config.profile_missing_prerequisites() == (
         "Set PROXMOX_MCP_LAB_EXPECTED_NODE_COUNT=2 or higher for multi-node profile tests",
     )
@@ -204,6 +213,11 @@ def test_lab_config_parses_pbs_profile_metadata() -> None:
     assert config.profile_metadata().required_tests == (
         "PBS availability smoke",
         "PBS verification gate",
+    )
+    assert config.profile_metadata().evidence_label == "PBS backup verification"
+    assert config.profile_metadata().topology_assertions == (
+        "pbs_storage_configured",
+        "backup_artifact_addressable",
     )
     assert config.profile_missing_prerequisites() == ()
 

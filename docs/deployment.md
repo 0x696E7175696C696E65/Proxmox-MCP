@@ -59,7 +59,7 @@ observability:
 
 No secrets should be committed to the repository. Production deployments should load sensitive values from a secret manager or orchestrator secret mechanism.
 
-Supported authentication primitives are service tokens, OIDC JWTs verified against RS256/JWKS material, mTLS client certificates mapped to explicit identities, and signed workload identity tokens with audience, expiry, and replay checks. Production readiness rejects `development` auth and requires `PROXMOX_MCP_EXTERNAL_AUTH_ENABLED=true`, which means the deployment gateway or server integration has wired `build_server(..., authenticated_session_resolver=...)` so every non-internal MCP tool receives an authenticated session before RBAC and policy evaluation. Multi-replica workload identity deployments must use `RedisWorkloadIdentityReplayCache` with `build_sync_redis_client()` or an equivalent atomic shared replay store for token nonces.
+Supported authentication primitives are service tokens, OIDC JWTs verified against RS256/JWKS material, mTLS client certificates mapped to explicit identities, and signed workload identity tokens with audience, expiry, and replay checks. Production readiness rejects `development` auth and requires `PROXMOX_MCP_EXTERNAL_AUTH_ENABLED=true`, which means the deployment gateway or server integration has wired `build_server(..., authenticated_session_resolver=...)` so every non-internal MCP tool receives an authenticated session before RBAC and policy evaluation. Production also requires `PROXMOX_MCP_DURABLE_STATE_ENABLED=true`; workload identity production deployments must set `PROXMOX_MCP_WORKLOAD_IDENTITY_REPLAY_CACHE=redis` and use `RedisWorkloadIdentityReplayCache` with `build_sync_redis_client()` or an equivalent atomic shared replay store for token nonces.
 
 Supported credential providers are `development`, `hashicorp_vault`, `bitwarden`, `onepassword`, `aws_secrets_manager`, and `azure_key_vault`. The base package exposes provider contracts and adapters that accept deployment-supplied clients; operators should install and configure the vendor SDK or sidecar appropriate for their environment. Readiness fails closed when the selected provider is missing required bootstrap configuration.
 
@@ -107,6 +107,8 @@ services:
       PROXMOX_MCP_REDIS_URL: rediss://redis:6379/0
       PROXMOX_MCP_AUTH_MODE: oidc
       PROXMOX_MCP_EXTERNAL_AUTH_ENABLED: "true"
+      PROXMOX_MCP_DURABLE_STATE_ENABLED: "true"
+      PROXMOX_MCP_WORKLOAD_IDENTITY_REPLAY_CACHE: redis
       PROXMOX_MCP_CREDENTIAL_PROVIDER: hashicorp_vault
       PROXMOX_MCP_TLS__CERT_FILE: /run/proxmox-mcp/tls/tls.crt
       PROXMOX_MCP_TLS__KEY_FILE: /run/proxmox-mcp/tls/tls.key
@@ -200,6 +202,9 @@ Expose:
 - Alertmanager-backed recent alert queries when configured.
 - Prometheus-backed resource trend queries when configured.
 
+Alertmanager and Prometheus adapters require HTTPS endpoints and normalize backend
+responses into MCP-safe records with scope filtering.
+
 Important metrics:
 
 - Tool invocation count and latency.
@@ -222,7 +227,7 @@ Audit events should be forwardable to:
 - Wazuh.
 - Loki.
 
-The primary database remains the authoritative audit source. SIEM export failures are queued for retry and then dead-lettered after configured attempts, but should not block read-only tool execution. Required audit persistence failures should block mutating execution.
+The primary database remains the authoritative audit source. SIEM export failures are queued for retry and then dead-lettered after configured attempts, but should not block read-only tool execution. Required audit persistence failures should block mutating execution. `HttpJsonSiemDelivery` rejects plaintext destinations, redacts sensitive payload keys before delivery, and treats 429/5xx responses as retryable failures for the durable queue.
 
 ## Backup And Recovery
 

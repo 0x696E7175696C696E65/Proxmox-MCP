@@ -53,3 +53,5 @@ If any requirement is incomplete, keep the tool guarded and document the reason.
 - A profile-specific lab run with a real backup artifact and sanitized release evidence.
 
 Until then, live execution returns `NOT_IMPLEMENTED` with the backend and missing evidence requirements.
+
+Restore paths must expose dry-run restore-preview evidence before promotion. A restore preview records the artifact, target type, target ID, storage target, artifact addressability, and confirms that mutation is still disabled.

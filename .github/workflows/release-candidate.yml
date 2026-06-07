@@ -39,6 +39,13 @@ jobs:
           echo "- trivy-image-results.sarif"
           echo "- compatibility-report.json"
           echo "- lab-evidence.json"
+          echo "- artifact-manifest.json"
+
+      - name: Collect release evidence manifest
+        run: >
+          python scripts/collect_release_evidence.py
+          --source-dir "${{ inputs.evidence_dir }}"
+          --output-dir "${{ inputs.evidence_dir }}"
 
       - name: Validate release evidence artifacts
         run: python scripts/validate_release_evidence.py --evidence-dir "${{ inputs.evidence_dir }}"

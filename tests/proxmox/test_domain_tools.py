@@ -132,6 +132,25 @@ def make_request(
     )
 
 
+def make_node_request(
+    *,
+    parameters: dict[str, object] | None = None,
+    dry_run: bool = True,
+) -> ToolRequest:
+    return ToolRequest(
+        actor=Actor(user_id="user_1", agent_id="agent_1", tenant_id="tenant_1"),
+        target=Target(
+            tenant_id="tenant_1",
+            cluster="lab",
+            node="pve-1",
+            resource_type="node",
+            resource_id="pve-1",
+        ),
+        parameters={} if parameters is None else parameters,
+        options=RequestOptions(dry_run=dry_run),
+    )
+
+
 def make_context(
     request: ToolRequest,
     *,
@@ -437,6 +456,61 @@ def test_high_blast_radius_tools_remain_guarded_until_contracts_exist() -> None:
     enter_lxc_console = records["enter_lxc_console"]
     assert enter_lxc_console.live_supported is True
     assert enter_lxc_console.promotion_status == "live_supported"
+
+
+async def test_apply_node_updates_dry_run_returns_guarded_orchestration_plan() -> None:
+    registry = make_registry()
+    request = make_node_request(parameters={"payload": {"maintenance_window": "lab-only"}})
+
+    response = await registry.execute("apply_node_updates", request, make_context(request))
+
+    assert isinstance(response, ToolResponse)
+    result = cast(dict[str, object], response.result)
+    update_plan = cast(dict[str, object], result["result"])
+    assert result["promotion_status"] == "guarded_not_implemented"
+    assert update_plan["execution_status"] == "guarded"
+    assert update_plan["node"] == "pve-1"
+    assert update_plan["maintenance_window"] == "lab-only"
+    assert update_plan["preflight_checks"] == [
+        "cluster_quorum",
+        "node_health",
+        "running_guests",
+        "ha_resources",
+        "storage_health",
+        "verified_backups",
+        "rollback_window",
+    ]
+    assert update_plan["audit_fields"] == [
+        "node",
+        "maintenance_window",
+        "preflight_status",
+        "execution_status",
+        "rollback_guidance",
+    ]
+
+
+async def test_apply_node_updates_live_returns_update_specific_guard() -> None:
+    registry = make_registry()
+    request = make_node_request(
+        parameters={"payload": {"maintenance_window": "lab-only"}},
+        dry_run=False,
+    )
+    client = InMemorySshClient()
+
+    response = await registry.execute(
+        "apply_node_updates", request, make_context(request, ssh_client=client)
+    )
+
+    assert isinstance(response, ToolErrorResponse)
+    assert response.error.code == "NOT_IMPLEMENTED"
+    assert response.error.details == {
+        "tool_name": "apply_node_updates",
+        "connector": "hybrid",
+        "required_evidence": (
+            "node update orchestration preflight, rollback, reboot, and recovery lab evidence"
+        ),
+    }
+    assert client.executions == []
 
 
 async def test_get_audit_events_requires_queryable_repository() -> None:

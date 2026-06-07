@@ -11,6 +11,7 @@ from proxmox_mcp.audit.writer import InMemoryAuditWriter
 from proxmox_mcp.observability import (
     AlertmanagerAlertBackend,
     DatabaseSiemDeliveryQueue,
+    HttpJsonSiemDelivery,
     InMemoryMetricsRegistry,
     ObservabilityBackendError,
     PrometheusTrendBackend,
@@ -124,6 +125,75 @@ async def test_alertmanager_backend_normalizes_recent_alerts() -> None:
     assert alerts[0].status == "active"
     assert alerts[0].severity == "critical"
     assert alerts[0].labels["node"] == "pve-1"
+
+
+def test_http_json_siem_delivery_requires_https_destination() -> None:
+    with pytest.raises(ValueError, match="HTTPS"):
+        HttpJsonSiemDelivery(timeout_seconds=3).validate_destination("http://siem.example/ingest")
+
+
+def test_http_json_siem_delivery_rejects_credential_bearing_destinations() -> None:
+    delivery = HttpJsonSiemDelivery(timeout_seconds=3)
+
+    with pytest.raises(ValueError, match="must not contain userinfo"):
+        delivery.validate_destination("https://user:pass@siem.example/ingest")
+
+    with pytest.raises(ValueError, match="credential-shaped query"):
+        delivery.validate_destination("https://siem.example/ingest?token=value")
+
+
+def test_siem_queueing_audit_writer_rejects_credential_bearing_destination() -> None:
+    class Queue:
+        async def enqueue(
+            self,
+            *,
+            destination: str,
+            payload: dict[str, object],
+        ) -> SiemDeliveryRecordData:
+            raise AssertionError("destination validation should happen before enqueue")
+
+    with pytest.raises(ValueError, match="credential-shaped query"):
+        SiemQueueingAuditWriter(
+            InMemoryAuditWriter(),
+            Queue(),
+            destination="https://siem.example/ingest?token=value",
+        )
+
+
+async def test_http_json_siem_delivery_posts_redacted_payload() -> None:
+    calls: list[tuple[str, dict[str, object], int]] = []
+
+    async def fake_post(url: str, payload: dict[str, object], timeout_seconds: int) -> int:
+        calls.append((url, payload, timeout_seconds))
+        return 202
+
+    delivery = HttpJsonSiemDelivery(timeout_seconds=3, json_post=fake_post)
+
+    await delivery.deliver(
+        "https://siem.example/ingest",
+        {"event": "audit", "metadata": {"api_token": "secret-value"}},
+    )
+
+    assert calls == [
+        (
+            "https://siem.example/ingest",
+            {"event": "audit", "metadata": {"api_token": "**********"}},
+            3,
+        )
+    ]
+
+
+async def test_http_json_siem_delivery_maps_server_errors_to_retryable_failure() -> None:
+    async def fake_post(url: str, payload: dict[str, object], timeout_seconds: int) -> int:
+        _ = url, payload, timeout_seconds
+        return 503
+
+    delivery = HttpJsonSiemDelivery(json_post=fake_post)
+
+    with pytest.raises(SiemDeliveryError) as exc_info:
+        await delivery.deliver("https://siem.example/ingest", {"event": "audit"})
+
+    assert exc_info.value.retryable is True
 
 
 async def test_prometheus_backend_normalizes_bounded_trends() -> None:
