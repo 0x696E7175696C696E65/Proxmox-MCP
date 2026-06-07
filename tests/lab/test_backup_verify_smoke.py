@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, cast
 from urllib.parse import quote
 from uuid import uuid4
 
 import pytest
 
 from proxmox_mcp.audit.writer import InMemoryAuditWriter
-from proxmox_mcp.config import Settings
 from proxmox_mcp.proxmox import register_domain_completion_tools
 from proxmox_mcp.proxmox.client import ProxmoxApiError
 from proxmox_mcp.proxmox.http_client import ProxmoxHttpApiClient
@@ -16,7 +15,6 @@ from proxmox_mcp.proxmox.lab_resources import DisposableProxmoxResources
 from proxmox_mcp.rbac import RoleAssignment
 from proxmox_mcp.schemas.envelope import Actor, RequestOptions, Target, ToolRequest, ToolResponse
 from proxmox_mcp.security import SecurityPlaneGuard
-from proxmox_mcp.tools.context import ToolExecutionContext
 from proxmox_mcp.tools.registry import ToolRegistry
 
 pytestmark = pytest.mark.lab
@@ -43,6 +41,7 @@ async def test_disposable_backup_records_restore_preconditions(
     lab_client: ProxmoxHttpApiClient,
     lab_resources: DisposableProxmoxResources,
     lab_read_role_assignment: RoleAssignment,
+    lab_tool_context_factory: Any,
     optional_lab_node: str,
     optional_lab_storage: str,
     disposable_lab_vmid: int,
@@ -103,12 +102,7 @@ async def test_disposable_backup_records_restore_preconditions(
         response = await registry.execute(
             "restore_vm_backup",
             request,
-            ToolExecutionContext(
-                request=request,
-                settings=Settings(environment="test"),
-                audit_writer=InMemoryAuditWriter(),
-                proxmox_client=lab_client,
-            ),
+            lab_tool_context_factory(request, lab_client, InMemoryAuditWriter()),
         )
         assert isinstance(response, ToolResponse)
         result = cast(dict[str, object], response.result)

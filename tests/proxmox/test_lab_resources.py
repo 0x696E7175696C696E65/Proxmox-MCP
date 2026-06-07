@@ -33,6 +33,7 @@ class FakeLabClient:
 
 async def test_lab_resources_refuse_to_delete_unowned_vm() -> None:
     client = FakeLabClient()
+    client.responses["/nodes/pve-a/qemu"] = [{"vmid": 9001}]
     client.responses["/nodes/pve-a/qemu/9001/config"] = {"name": "production"}
     resources = DisposableProxmoxResources(client=client, node="pve-a")
 
@@ -54,6 +55,7 @@ async def test_lab_resources_do_not_treat_auth_errors_as_absent_resources() -> N
 
 async def test_lab_resources_delete_owned_vm_and_record_cleanup() -> None:
     client = FakeLabClient()
+    client.responses["/nodes/pve-a/qemu"] = [{"vmid": 9001}]
     client.responses["/nodes/pve-a/qemu/9001/config"] = {"name": "mcp-lab-9001"}
     client.responses["/nodes/pve-a/tasks/UPID%3Apve-a%3A1%3A2%3A3%3Amcp-lab%3Atask%3A/status"] = {
         "status": "stopped",
@@ -67,6 +69,17 @@ async def test_lab_resources_delete_owned_vm_and_record_cleanup() -> None:
         ("/nodes/pve-a/qemu/9001", {"purge": 1, "destroy-unreferenced-disks": 1})
     ]
     assert cleanup == {"resource_type": "vm", "resource_id": "9001", "cleanup": "deleted"}
+
+
+async def test_lab_resources_treat_missing_inventory_entry_as_absent() -> None:
+    client = FakeLabClient()
+    client.responses["/nodes/pve-a/qemu"] = []
+    resources = DisposableProxmoxResources(client=client, node="pve-a")
+
+    cleanup = await resources.delete_vm_if_present(9001)
+
+    assert cleanup == {"resource_type": "vm", "resource_id": "9001", "cleanup": "absent"}
+    assert client.deleted == []
 
 
 async def test_lab_resources_timeout_reports_sanitized_task_error() -> None:

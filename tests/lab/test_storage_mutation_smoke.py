@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
 
 from proxmox_mcp.audit.writer import InMemoryAuditWriter
-from proxmox_mcp.config import Settings
 from proxmox_mcp.proxmox import register_domain_completion_tools
+from proxmox_mcp.proxmox.http_client import ProxmoxHttpApiClient
 from proxmox_mcp.proxmox.lab import LabEnvironmentConfig
 from proxmox_mcp.rbac import RoleAssignment
 from proxmox_mcp.schemas.envelope import Actor, RequestOptions, Target, ToolRequest, ToolResponse
 from proxmox_mcp.security import SecurityPlaneGuard
-from proxmox_mcp.tools.context import ToolExecutionContext
 from proxmox_mcp.tools.registry import ToolRegistry
 
 pytestmark = pytest.mark.lab
@@ -20,7 +19,9 @@ pytestmark = pytest.mark.lab
 
 async def test_storage_benchmark_preview_records_cleanup_evidence(
     lab_config: LabEnvironmentConfig,
+    lab_client: ProxmoxHttpApiClient,
     lab_read_role_assignment: RoleAssignment,
+    lab_tool_context_factory: Any,
     optional_lab_node: str,
     optional_lab_storage: str,
 ) -> None:
@@ -57,11 +58,7 @@ async def test_storage_benchmark_preview_records_cleanup_evidence(
     response = await registry.execute(
         "benchmark_storage",
         request,
-        ToolExecutionContext(
-            request=request,
-            settings=Settings(environment="test"),
-            audit_writer=InMemoryAuditWriter(),
-        ),
+        lab_tool_context_factory(request, lab_client, InMemoryAuditWriter()),
     )
 
     assert isinstance(response, ToolResponse)
@@ -76,7 +73,9 @@ async def test_storage_benchmark_preview_records_cleanup_evidence(
 
 async def test_storage_expansion_remains_backend_guarded(
     lab_config: LabEnvironmentConfig,
+    lab_client: ProxmoxHttpApiClient,
     lab_read_role_assignment: RoleAssignment,
+    lab_tool_context_factory: Any,
     optional_lab_node: str,
     optional_lab_storage: str,
 ) -> None:
@@ -106,11 +105,7 @@ async def test_storage_expansion_remains_backend_guarded(
     response = await registry.execute(
         "expand_storage",
         request,
-        ToolExecutionContext(
-            request=request,
-            settings=Settings(environment="test"),
-            audit_writer=InMemoryAuditWriter(),
-        ),
+        lab_tool_context_factory(request, lab_client, InMemoryAuditWriter()),
     )
 
     assert isinstance(response, ToolResponse)

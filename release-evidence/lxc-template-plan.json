@@ -1,0 +1,6 @@
+{
+  "bootstrap_required": true,
+  "reason": "No LXC template found and bootstrap is not enabled",
+  "status": "skipped",
+  "storage": "local"
+}

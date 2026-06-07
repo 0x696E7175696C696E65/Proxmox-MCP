@@ -305,19 +305,23 @@ def test_release_evidence_examples_record_current_pve_9_lab_result() -> None:
     )
 
     matrix = compatibility_report["matrix"]
-    pve_9_row = next(row for row in matrix if row["proxmox_version"] == "Proxmox VE 9.1.1")
-    assert pve_9_row["profile"] == "pve-9-single-node-no-ceph"
+    pve_9_row = next(
+        row
+        for row in matrix
+        if row["proxmox_version"] == "Proxmox VE 9.1.1"
+        and row["profile"] == "pve-9-storage-local-local-lvm"
+    )
     assert pve_9_row["evidence_status"] == "preview_lab_evidence"
     profiles = {profile["name"]: profile for profile in compatibility_report["profiles"]}
-    assert profiles["pve-9-single-node-no-ceph"]["status"] == "preview"
+    assert profiles["pve-9-storage-local-local-lvm"]["status"] == "preview"
     assert (
         "LXC lifecycle when no template exists"
-        in profiles["pve-9-single-node-no-ceph"]["expected_skips"]
+        in profiles["pve-9-storage-local-local-lvm"]["expected_skips"]
     )
 
     lab = lab_evidence["lab"]
     assert lab["proxmox_version"] == "9.1.1"
-    assert lab["profile"] == "pve-9-single-node-no-ceph"
+    assert lab["profile"] == "pve-9-storage-local-local-lvm"
     assert lab["node"] == "test"
     assert lab["storage_ids"] == ["local", "local-lvm"]
     assert "username" not in lab
@@ -328,6 +332,8 @@ def test_release_evidence_examples_record_current_pve_9_lab_result() -> None:
     )
 
     runs = {run["name"]: run for run in lab_evidence["test_runs"]}
+    assert runs["full gated lab qualification"]["passed"] == 20
+    assert runs["full gated lab qualification"]["skipped"] == 8
     assert runs["read-only lab smoke"]["passed"] == 4
     assert runs["read-only lab smoke"]["skipped"] == 1
     assert runs["disposable VM mutation smoke"]["passed"] == 1

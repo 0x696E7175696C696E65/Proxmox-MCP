@@ -70,6 +70,8 @@ class DisposableProxmoxResources:
         return {"resource_type": "vm", "resource_id": str(vmid), "cleanup": "created"}
 
     async def delete_vm_if_present(self, vmid: int) -> dict[str, object]:
+        if not await self._guest_present("qemu", vmid):
+            return {"resource_type": "vm", "resource_id": str(vmid), "cleanup": "absent"}
         try:
             config = await self.client.get(f"/nodes/{self.node}/qemu/{vmid}/config")
         except ProxmoxApiError as exc:
@@ -113,6 +115,8 @@ class DisposableProxmoxResources:
         return {"resource_type": "lxc", "resource_id": str(ctid), "cleanup": "created"}
 
     async def delete_lxc_if_present(self, ctid: int) -> dict[str, object]:
+        if not await self._guest_present("lxc", ctid):
+            return {"resource_type": "lxc", "resource_id": str(ctid), "cleanup": "absent"}
         try:
             config = await self.client.get(f"/nodes/{self.node}/lxc/{ctid}/config")
         except ProxmoxApiError as exc:
@@ -167,6 +171,18 @@ class DisposableProxmoxResources:
                 "attempts": self.task_poll_attempts,
             },
         )
+
+    async def _guest_present(self, guest_type: str, guest_id: int) -> bool:
+        guests = await self.client.get(f"/nodes/{self.node}/{guest_type}")
+        if not isinstance(guests, list):
+            return False
+        for item in cast(list[object], guests):
+            if not isinstance(item, dict):
+                continue
+            vmid = cast(dict[str, object], item).get("vmid")
+            if str(vmid) == str(guest_id):
+                return True
+        return False
 
 
 def vm_name(vmid: int) -> str:

@@ -21,7 +21,7 @@ without relying on marketing language.
 ## Profile-Gated Capabilities
 
 - `pve-9-single-node-no-ceph` has preview lab evidence for read-only, registered MCP read, disposable VM mutation, backup create/list, and storage profile smoke tests.
-- `pve-9-storage-local-local-lvm` now records bounded benchmark preview evidence, while live expansion remains backend-gated.
+- `pve-9-storage-local-local-lvm` has 2026-06-07 preview evidence from a disposable Proxmox VE 9.1.1 lab: `20 passed, 8 skipped` across read-only discovery, disposable VM lifecycle, registered VM update, backup create/list, restore-precondition dry-run, storage benchmark preview, and node update preflight. Live expansion remains backend-gated.
 - `pve-9-ceph-enabled`, `pve-9-ha-enabled`, `pve-9-multi-node`, and `pve-9-pbs-enabled` require their named lab profiles and required tests before support claims can move beyond preview.
 
 ## Operator-Qualified Deployment Gates
@@ -35,6 +35,7 @@ without relying on marketing language.
 - `verify_backup` remains guarded until PBS or PVE-local verification has backend-specific artifact verification and restore-preview evidence.
 - `expand_storage` remains guarded for live execution until each backend has disposable lab proof.
 - `apply_node_updates` remains guarded until update preflight, rollback, reboot/reconnect, and failure recovery evidence exist.
+- PBS, Ceph, HA, multi-node, and LXC lifecycle claims remain unqualified in the current single-node lab because their profile prerequisites were skipped or unavailable.
 
 ## Bounded Live Candidates
 

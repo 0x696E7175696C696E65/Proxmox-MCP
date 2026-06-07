@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "status": "preview",
-  "generated_at": "2026-06-06T00:00:00Z",
+  "generated_at": "2026-06-07T00:00:00Z",
   "lab": {
     "endpoint": "https://pve.example.test:8006",
     "node": "test",
-    "topology": "single-node disposable lab, no Ceph, no existing guests",
-    "profile": "pve-9-single-node-no-ceph",
+    "topology": "single-node disposable lab, no Ceph, no PBS, no HA, no LXC template",
+    "profile": "pve-9-storage-local-local-lvm",
     "proxmox_version": "9.1.1",
     "storage_ids": [
       "local",
@@ -16,6 +16,14 @@
     "auth_note": "Username/password ticket auth requires a realm-qualified username such as user@realm."
   },
   "test_runs": [
+    {
+      "name": "full gated lab qualification",
+      "status": "skipped",
+      "passed": 20,
+      "skipped": 8,
+      "failed": 0,
+      "notes": "Preview evidence includes read-only discovery, disposable VM lifecycle, registered VM update, backup create/list, restore-precondition dry-run, storage benchmark preview, and node update preflight. Skips are expected profile gaps."
+    },
     {
       "name": "read-only lab smoke",
       "status": "passed",
@@ -115,7 +123,7 @@
     {
       "tool": "enter_lxc_console",
       "status": "live_supported",
-      "evidence": "Durable SSH session and recording contract tests for pve-9-single-node-no-ceph require database-backed stores for live console sessions."
+      "evidence": "Durable SSH session and recording contract tests for pve-9-storage-local-local-lvm require database-backed stores for live console sessions."
     }
   ],
   "operator_notes": [

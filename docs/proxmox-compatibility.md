@@ -6,7 +6,7 @@ This matrix records evidence, not marketing claims. A Proxmox version or topolog
 
 | Proxmox VE version | Topology | Evidence date | Evidence | Status |
 | --- | --- | --- | --- | --- |
-| Proxmox VE 9.1.1 | Single node, node `test`, storage `local` and `local-lvm`, no Ceph, no existing guests | 2026-06-06 | Read-only lab smoke tests: `4 passed, 1 skipped`; disposable VM mutation smoke: `1 passed`; Ceph skipped because it was not installed | Preview lab evidence |
+| Proxmox VE 9.1.1 | Single node, node `test`, storage `local` and `local-lvm`, no Ceph, no PBS, no HA, no LXC template | 2026-06-07 | Full gated lab qualification: `20 passed, 8 skipped`; disposable VM lifecycle, registered VM update, backup create/list, restore-precondition dry-run, storage benchmark preview, and node update preflight passed. Skips were expected for PBS, Ceph, HA, multi-node, and LXC lifecycle prerequisites. | Preview lab evidence |
 | Offline release gates | No live Proxmox dependency | 2026-06-06 | Chaos and lightweight load gates: `5 passed`; lab gates skipped safely because `PROXMOX_MCP_LAB_ENABLED=true` was not configured in this shell | Release gate evidence |
 | Proxmox VE 8.x multi-node | Pending | Pending | Needs read-only discovery, HA, migration, backup, and SSH evidence | Not yet claimed |
 | Proxmox VE 9.x multi-node | Pending | Pending | Needs API compatibility review, multi-node discovery, migration, HA, backup, and SSH evidence | Not yet claimed |
@@ -25,7 +25,7 @@ This matrix records evidence, not marketing claims. A Proxmox version or topolog
 | Profile | Required evidence | Expected skips | Promotion eligibility |
 | --- | --- | --- | --- |
 | `pve-9-single-node-no-ceph` | Read-only discovery, registered read tool execution, disposable VM create/update/delete, backup create/list, `local` storage discovery | Ceph, HA, PBS, multi-node, LXC lifecycle when no template exists | Preview only |
-| `pve-9-storage-local-local-lvm` | `local` directory storage content reads, `local-lvm` LVM-thin metadata/status reads, bounded benchmark preview evidence | Storage expansion and live backend resize | Storage discovery and bounded benchmark preview |
+| `pve-9-storage-local-local-lvm` | `local` directory storage content reads, `local-lvm` LVM-thin metadata/status reads, disposable VM/backup validation, restore-precondition dry-run evidence, bounded benchmark preview evidence, and node update preflight evidence | Storage expansion, live backend resize, PBS verification, Ceph, HA, multi-node, and LXC lifecycle without a template | Storage discovery, disposable VM/backup, restore-precondition, and bounded benchmark preview |
 | `pve-9-single-node-with-guests` | Existing guest inventory plus safe read-only VM/LXC config/status reads | HA, migration, PBS unless configured | Read-only guest management preview |
 | `pve-9-ceph-enabled` | `tests/lab/test_ceph_profile_smoke.py` reads node Ceph status | Ceph mutations until separately proven | Ceph read-only preview |
 | `pve-9-ha-enabled` | `tests/lab/test_ha_profile_smoke.py` reads HA cluster status/resources | HA migration/failover until disposable tests exist | HA read-only preview |

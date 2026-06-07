@@ -107,10 +107,12 @@ Phase 1 lab tests are read-only and skip unless explicitly enabled. Configure:
 
 Username/password ticket-auth labs must use realm-qualified usernames such as
 `root@pam`. Disposable Proxmox VE 9.1.1 validation currently records a
-single-node profile with node `test`, storage `local` and `local-lvm`, read-only
-smoke coverage of `4 passed, 1 skipped`, and one disposable VM mutation smoke
-test. The skipped read-only check is Ceph-specific because Ceph is not installed
-in that lab profile.
+single-node `pve-9-storage-local-local-lvm` profile with node `test`, storage
+`local` and `local-lvm`, full gated lab coverage of `20 passed, 8 skipped`, and
+validated disposable VM lifecycle, registered VM update, backup create/list,
+restore-precondition dry-run, storage benchmark preview, and node update
+preflight evidence. Skips are expected for PBS, Ceph, HA, multi-node, and LXC
+lifecycle prerequisites in this lab profile.
 
 Run read-only lab smoke tests with:
 

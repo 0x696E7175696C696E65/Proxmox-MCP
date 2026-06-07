@@ -41,8 +41,8 @@ Validation:
 
 - Unit/contract tests: `python -m pytest tests/proxmox/test_domain_storage_pack.py`
 - Read-only lab discovery: `python -m pytest tests/lab -m lab`
-- Storage profile lab evidence: `python -m pytest tests/lab/test_storage_profiles.py -q` validates `local` directory content discovery and `local-lvm` LVM-thin metadata/status without claiming expansion or benchmarking.
-- Storage mutation gate: `python -m pytest tests/lab/test_storage_mutation_smoke.py -q` remains skip-safe until an operator provisions a disposable profile for expansion or benchmark artifacts.
+- Storage profile lab evidence: `python -m pytest tests/lab/test_storage_profiles.py -q` validates `local` directory content discovery and `local-lvm` LVM-thin metadata/status.
+- Storage mutation gate: `python -m pytest tests/lab/test_storage_mutation_smoke.py -q` passed in the 2026-06-07 `pve-9-storage-local-local-lvm` disposable lab for bounded benchmark preview evidence and guarded expansion evidence. Live expansion remains unpromoted.
 
 Safety notes:
 
@@ -72,7 +72,7 @@ Validation:
 
 - Unit/contract tests: `python -m pytest tests/proxmox/test_domain_backup_pack.py`
 - Read-only lab discovery: `python -m pytest tests/lab -m lab`
-- Backup create/list lab evidence: `python -m pytest tests/lab/test_backup_smoke.py -q` validates registered `run_vm_backup`, UPID task capture, backup content listing, and cleanup against a disposable VM.
+- Backup create/list lab evidence: `python -m pytest tests/lab/test_backup_smoke.py -q` validates registered `run_vm_backup`, UPID task capture, backup content listing, and cleanup against a disposable VM. The 2026-06-07 disposable lab also validated restore-precondition dry-run evidence against a created backup artifact.
 - PBS verification gate: `python -m pytest tests/lab/test_backup_verify_smoke.py -q` skips unless `PROXMOX_MCP_LAB_PROFILE=pve-9-pbs-enabled` and PBS repository prerequisites are present. `verify_backup` remains guarded until this profile records real verification evidence.
 - Restore preview evidence is covered by `python -m pytest tests/proxmox/test_domain_backup_pack.py -q` and confirms artifact, target type, target ID, storage, non-mutating preview status, and optional read-only artifact/target-conflict checks when a Proxmox client is available.
 

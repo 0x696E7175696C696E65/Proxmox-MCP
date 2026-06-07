@@ -1,0 +1,18 @@
+{
+  "auth_method": "ticket",
+  "checks": {
+    "expected_storage_present": true,
+    "node_present": true,
+    "storage_present": true
+  },
+  "endpoint": "https://192.168.20.169:8006",
+  "node": "test",
+  "profile": "pve-9-storage-local-local-lvm",
+  "proxmox_version": "9.1.1",
+  "status": "passed",
+  "storage_ids": [
+    "local",
+    "local-lvm"
+  ],
+  "tls_verify": false
+}
