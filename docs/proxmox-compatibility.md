@@ -7,6 +7,7 @@ This matrix records evidence, not marketing claims. A Proxmox version or topolog
 | Proxmox VE version | Topology | Evidence date | Evidence | Status |
 | --- | --- | --- | --- | --- |
 | Fresh Proxmox VE lab, single node | No production data, node `test`, no Ceph | 2026-06-06 | Read-only lab smoke tests: `5 passed, 1 skipped`; Ceph skipped because it was not installed | Preview lab evidence |
+| Offline release gates | No live Proxmox dependency | 2026-06-06 | Chaos and lightweight load gates: `5 passed`; lab gates skipped safely because `PROXMOX_MCP_LAB_ENABLED=true` was not configured in this shell | Release gate evidence |
 | Proxmox VE 8.x multi-node | Pending | Pending | Needs read-only discovery, HA, migration, backup, and SSH evidence | Not yet claimed |
 | Proxmox VE 9.x | Pending | Pending | Needs API compatibility review and lab evidence | Not yet claimed |
 
@@ -28,6 +29,13 @@ Every preview or GA candidate should attach or update:
 - Chaos gate results from `tests/chaos/`.
 - Lightweight load gate results from `tests/performance/`.
 - Lab promotion evidence for every newly promoted live tool.
+
+The release-candidate validator expects structured `compatibility-report.json`
+and `lab-evidence.json` artifacts. Examples live in
+`docs/release-evidence/compatibility-report.example.json` and
+`docs/release-evidence/lab-evidence.example.json`. These artifacts must contain
+evidence summaries only; do not include usernames, passwords, service tokens,
+private keys, or raw credential references.
 
 ## Current Known Limits
 

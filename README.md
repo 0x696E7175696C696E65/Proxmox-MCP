@@ -16,7 +16,7 @@ This project is not a thin Proxmox wrapper. It is an enterprise-grade infrastruc
 - Controlled SSH operations for diagnostics, file transfer, interactive sessions, and shell workflows that are not fully covered by the Proxmox API.
 - Configurable dangerous-operation support with dry runs, risk scoring, impact analysis, approvals, target revalidation, and audit evidence.
 - Enterprise observability through structured logs, audit events, Prometheus metrics, OpenTelemetry traces, and SIEM-ready event streams.
-- Secret-provider integration through development and Vault-style providers today, with Bitwarden Secrets Manager, 1Password Connect, AWS Secrets Manager, and Azure Key Vault tracked as planned enterprise integrations.
+- Secret-provider integration through development, HashiCorp Vault KV v2, Bitwarden-style item fields, 1Password-style item fields, AWS Secrets Manager JSON secrets, and Azure Key Vault JSON secrets.
 
 ## Current Status
 
@@ -26,9 +26,9 @@ Implemented:
 
 - FastMCP server factory with registry-driven tool registration.
 - Standard MCP request, response, error, dry-run, impact, approval, and audit envelopes.
-- Authentication models, service-token authentication, RBAC evaluation, policy decisions, risk scoring, and approval validation.
+- Authentication models, service-token authentication, OIDC RS256/JWKS validation, mTLS client-certificate identity mapping, signed workload identity validation, RBAC evaluation, policy decisions, risk scoring, and approval validation.
 - Durable audit persistence with SQLAlchemy models and Alembic migration.
-- Secret-provider abstraction with development and Vault-style providers.
+- Secret-provider abstraction with development, Vault, Bitwarden, 1Password, AWS Secrets Manager, and Azure Key Vault adapters.
 - Proxmox cluster credential resolution, in-memory Proxmox API test client, and token/password-auth Proxmox lab HTTP adapter.
 - Read-only Proxmox tools, safe mutations, dangerous operations, promoted domain-pack tools, and SSH tools.
 - Controlled SSH execution, command policy, session tracking, SFTP/SCP operations, and output redaction.
@@ -46,12 +46,13 @@ Validation at merge time:
 - `python -m pytest`
 - Distribution readiness workflow: builds and validates Python sdist/wheel artifacts, smoke-installs the wheel, audits dependencies, and builds the Docker image.
 - Dedicated security invariant suite covering fail-closed guard behavior, approval replay protection, audit evidence, redaction boundaries, and encrypted transport enforcement.
-- Current offline suite should be rerun before each release candidate; latest development gates include Ruff, Pyright, migration parity, durable-state tests, and observability backend tests.
+- Current offline suite should be rerun before each release candidate; latest full local run was `310 passed, 7 skipped`, with skips requiring explicit lab/PostgreSQL endpoints.
+- Release evidence validation now schema-checks compatibility and lab artifacts and rejects credential-shaped keys in those artifacts.
 - Live disposable Proxmox lab: `5 passed, 1 skipped` using node `test`; Ceph skipped because it is not installed.
 - MCP communication audit: local runtime test negotiated `TLSv1.3` with `TLS_AES_256_GCM_SHA384`, FastMCP client access succeeded over HTTPS, and plaintext HTTP to the MCP port returned no response bytes.
 - Network transport policy: MCP ingress is HTTPS-only, Proxmox API endpoints require `https://`, PostgreSQL must request TLS, Redis must use `rediss://`, and SSH remains encrypted by protocol.
 
-Important caveat: the codebase is preview-ready for development and lab validation, not yet certified for unattended production control of real Proxmox clusters. Ambiguous or backend-specific operations, such as generic storage expansion, benchmark execution, backup verification, and node update orchestration, remain guarded with `NOT_IMPLEMENTED` until they have exact contracts, lab evidence, and release gates. External observability tools return `external_source_required` unless Alertmanager or Prometheus backends are configured. Multi-replica production claims now have durable foundations, but still require operator configuration and release evidence before GA certification.
+Important caveat: the codebase is preview-ready for development and lab validation, not yet certified for unattended production control of real Proxmox clusters. Ambiguous or backend-specific operations, such as generic storage expansion, benchmark execution, backup verification, and node update orchestration, remain guarded with `NOT_IMPLEMENTED` until they have exact contracts, lab evidence, and release gates. External observability tools return `external_source_required` unless Alertmanager or Prometheus backends are configured. Multi-replica production claims now have durable foundations, but still require operator configuration and release evidence before GA certification. Enterprise auth primitives are wired through a server `authenticated_session_resolver` hook; production gateways must supply verified sessions and use the Redis-backed replay cache for workload identities.
 
 ## Architecture
 
@@ -230,6 +231,14 @@ $env:PROXMOX_MCP_DANGEROUS_OPERATIONS__REQUIRE_APPROVAL = "true"
 Secret-like settings are modeled with Pydantic `SecretStr` and are redacted by safe serialization helpers.
 Database and Redis settings are TLS-enforced: PostgreSQL must request TLS and Redis must use `rediss://`.
 
+Secret backends are selected with `PROXMOX_MCP_CREDENTIAL_PROVIDER`. Supported values are `development`, `hashicorp_vault`, `bitwarden`, `onepassword`, `aws_secrets_manager`, and `azure_key_vault`. External backend URLs such as `PROXMOX_MCP_VAULT_URL` and `PROXMOX_MCP_AZURE_KEY_VAULT_URL` must use `https://`; readiness fails closed when the selected provider is missing required bootstrap configuration.
+
+```powershell
+$env:PROXMOX_MCP_CREDENTIAL_PROVIDER = "hashicorp_vault"
+$env:PROXMOX_MCP_VAULT_URL = "https://vault.example.com"
+$env:PROXMOX_MCP_VAULT_TOKEN = "<load-from-orchestrator-secret>"
+```
+
 The MCP server is HTTPS-only. Provide a certificate and key for managed environments:
 
 ```powershell
@@ -308,7 +317,7 @@ Before connecting to production Proxmox infrastructure:
 
 - Run the full test suite and hardening workflow.
 - Validate every enabled mutating or destructive tool against a lab Proxmox cluster.
-- Configure real PostgreSQL, Redis, Vault or another secret backend, and audit retention.
+- Configure real PostgreSQL, Redis, Vault or another supported secret backend, and audit retention.
 - Review RBAC, policy, approval, and dangerous-operation settings for your tenant model.
 - Pin SSH known hosts and validate Proxmox API TLS certificates.
 - Confirm backup, rollback, and audit recovery procedures.

@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "status": "preview",
+  "generated_at": "2026-06-06T00:00:00Z",
+  "lab": {
+    "endpoint": "https://pve.example.test:8006",
+    "node": "test",
+    "topology": "single-node disposable lab",
+    "tls_verify": false
+  },
+  "test_runs": [
+    {
+      "name": "read-only lab smoke",
+      "status": "passed",
+      "passed": 5,
+      "skipped": 1,
+      "failed": 0,
+      "notes": "Ceph test skipped because Ceph was not installed in this lab."
+    },
+    {
+      "name": "chaos gate",
+      "status": "passed",
+      "passed": 3,
+      "skipped": 0,
+      "failed": 0
+    },
+    {
+      "name": "lightweight load gate",
+      "status": "passed",
+      "passed": 2,
+      "skipped": 0,
+      "failed": 0
+    }
+  ],
+  "promoted_tools": [
+    {
+      "tool": "enter_lxc_console",
+      "status": "live_supported",
+      "evidence": "Durable SSH session and recording contract tests require database-backed stores for live console sessions."
+    }
+  ],
+  "operator_notes": [
+    "Do not include usernames, passwords, API tokens, private keys, or raw credential references in this artifact."
+  ]
+}

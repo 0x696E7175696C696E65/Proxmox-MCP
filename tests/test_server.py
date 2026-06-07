@@ -1,9 +1,11 @@
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
 
 from proxmox_mcp.audit.writer import InMemoryAuditWriter
+from proxmox_mcp.auth import ActorIdentity, AuthenticatedSession
 from proxmox_mcp.config import ObservabilitySettings, Settings, TlsSettings
 from proxmox_mcp.observability import InMemoryMetricsRegistry
 from proxmox_mcp.proxmox import (
@@ -14,9 +16,15 @@ from proxmox_mcp.proxmox import (
 )
 from proxmox_mcp.schemas.envelope import Actor, RequestOptions, Target, ToolRequest, ToolResponse
 from proxmox_mcp.server import app as app_module
-from proxmox_mcp.server.app import build_health_payload, build_server, health_check
+from proxmox_mcp.server.app import (
+    build_health_payload,
+    build_server,
+    build_tool_context,
+    health_check,
+)
 from proxmox_mcp.server.health import (
     ConfiguredUrlDependencyChecker,
+    SecretBackendDependencyChecker,
     SiemDeliveryDependencyChecker,
     StaticDependencyChecker,
     build_liveness_payload,
@@ -143,6 +151,45 @@ async def test_readiness_accepts_configured_required_siem_delivery() -> None:
     assert payload.dependencies["siem_delivery"].status == "ok"
 
 
+async def test_secret_backend_readiness_fails_closed_for_missing_provider_config() -> None:
+    payload = await build_readiness_payload(
+        Settings(environment="test", credential_provider="bitwarden"),
+        {"secret_backend": SecretBackendDependencyChecker()},
+    )
+
+    assert payload.status == "not_ready"
+    assert payload.dependencies["secret_backend"].status == "unavailable"
+    assert "bitwarden" in payload.dependencies["secret_backend"].detail
+
+
+async def test_secret_backend_readiness_rejects_development_provider_in_production() -> None:
+    payload = await build_readiness_payload(
+        Settings(environment="production", credential_provider="development"),
+        {"secret_backend": SecretBackendDependencyChecker()},
+    )
+
+    assert payload.status == "not_ready"
+    assert payload.dependencies["secret_backend"].status == "unavailable"
+    assert "not allowed in production" in payload.dependencies["secret_backend"].detail
+
+
+async def test_secret_backend_readiness_accepts_configured_enterprise_provider() -> None:
+    payload = await build_readiness_payload(
+        Settings(
+            environment="test",
+            credential_provider="aws_secrets_manager",
+            aws_region="us-east-1",
+        ),
+        {"secret_backend": SecretBackendDependencyChecker()},
+    )
+
+    assert payload.status == "ready"
+    assert payload.dependencies["secret_backend"].status == "ok"
+    assert payload.dependencies["secret_backend"].detail == (
+        "aws_secrets_manager provider configured"
+    )
+
+
 def test_build_server_returns_named_app() -> None:
     app = build_server(Settings(environment="test"), InMemoryAuditWriter())
 
@@ -219,6 +266,32 @@ async def test_build_server_registers_health_and_read_only_tools() -> None:
     } | {spec.name for spec in DANGEROUS_TOOL_SPECS} | {
         spec.name for spec in DOMAIN_COMPLETION_TOOL_SPECS
     } | {spec.name for spec in SSH_TOOL_SPECS}
+
+
+def test_build_tool_context_accepts_resolved_authenticated_session() -> None:
+    issued_at = datetime(2026, 1, 1, tzinfo=UTC)
+    session = AuthenticatedSession(
+        session_id="sess_1",
+        identity=ActorIdentity(user_id="user_1", agent_id="agent_1", tenant_id="tenant_1"),
+        auth_method="oidc_jwt",
+        status="active",
+        issued_at=issued_at,
+        expires_at=issued_at + timedelta(minutes=5),
+    )
+    request = ToolRequest(
+        actor=Actor(user_id="user_1", agent_id="agent_1", tenant_id="tenant_1"),
+        target=Target(resource_type="internal", resource_id="health"),
+        options=RequestOptions(dry_run=True),
+    )
+
+    context = build_tool_context(
+        request,
+        settings=Settings(environment="test"),
+        audit_writer=InMemoryAuditWriter(),
+        authenticated_session=session,
+    )
+
+    assert context.authenticated_session == session
 
 
 async def test_health_check_writes_audit_event() -> None:

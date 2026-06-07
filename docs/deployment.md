@@ -39,7 +39,7 @@ redis:
   url: rediss://redis:6379/0
 
 security:
-  auth_mode: oidc
+  auth_mode: oidc | mtls | workload_identity | service_token
   dangerous_operations:
     enabled: true
     require_approval: true
@@ -58,6 +58,10 @@ observability:
 
 No secrets should be committed to the repository. Production deployments should load sensitive values from a secret manager or orchestrator secret mechanism.
 
+Supported authentication primitives are service tokens, OIDC JWTs verified against RS256/JWKS material, mTLS client certificates mapped to explicit identities, and signed workload identity tokens with audience, expiry, and replay checks. OIDC, mTLS, and workload identity should be wired at the deployment gateway or server integration layer through `build_server(..., authenticated_session_resolver=...)` so every non-internal MCP tool receives an authenticated session before RBAC and policy evaluation. Multi-replica workload identity deployments must use `RedisWorkloadIdentityReplayCache` with `build_sync_redis_client()` or an equivalent atomic shared replay store for token nonces.
+
+Supported credential providers are `development`, `hashicorp_vault`, `bitwarden`, `onepassword`, `aws_secrets_manager`, and `azure_key_vault`. The base package exposes provider contracts and adapters that accept deployment-supplied clients; operators should install and configure the vendor SDK or sidecar appropriate for their environment. Readiness fails closed when the selected provider is missing required bootstrap configuration.
+
 The MCP server is HTTPS-only. Production deployments must mount a certificate and
 private key into the application container and set `PROXMOX_MCP_TLS__CERT_FILE`
 and `PROXMOX_MCP_TLS__KEY_FILE`. PostgreSQL URLs must require TLS with
@@ -72,6 +76,13 @@ External Alertmanager and Prometheus sources are configured through
 If `PROXMOX_MCP_OBSERVABILITY__ALERTMANAGER_REQUIRED=true` or
 `PROXMOX_MCP_OBSERVABILITY__PROMETHEUS_REQUIRED=true`, readiness fails closed
 until the corresponding source is configured.
+
+External secret backend endpoints must be encrypted. `PROXMOX_MCP_VAULT_URL`
+and `PROXMOX_MCP_AZURE_KEY_VAULT_URL` require `https://`. Bitwarden and
+1Password providers require their access/service-account tokens to be supplied
+through orchestrator secrets. AWS Secrets Manager requires an AWS region and
+should use workload identity or instance role credentials rather than static
+long-lived keys.
 
 ## Docker Deployment
 
@@ -93,7 +104,7 @@ services:
     environment:
       PROXMOX_MCP_DATABASE_URL: postgresql+asyncpg://proxmox_mcp:REDACTED@postgres/proxmox_mcp?ssl=require
       PROXMOX_MCP_REDIS_URL: rediss://redis:6379/0
-      PROXMOX_MCP_SECRET_PROVIDER: hashicorp_vault
+      PROXMOX_MCP_CREDENTIAL_PROVIDER: hashicorp_vault
       PROXMOX_MCP_TLS__CERT_FILE: /run/proxmox-mcp/tls/tls.crt
       PROXMOX_MCP_TLS__KEY_FILE: /run/proxmox-mcp/tls/tls.key
     ports:
@@ -166,6 +177,7 @@ Recommended network controls:
 - Restrict MCP server ingress to trusted agent networks or gateways.
 - Restrict egress to Proxmox API endpoints, SSH endpoints, PostgreSQL, Redis, secret backends, and observability sinks.
 - Use TLS for MCP ingress, Proxmox API, database, secret backend, and external logs.
+- Prefer OIDC, mTLS, or workload identity over static service tokens for production agents.
 - Use known host verification for SSH.
 - Pin or validate Proxmox API certificates in production.
 

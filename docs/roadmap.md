@@ -56,7 +56,7 @@ Exit criteria:
 
 ## Milestone 2: Auth, RBAC, Policy, And Secrets
 
-Status: implemented for service-token auth, RBAC, policy, approvals, development secrets, and Vault-style secrets. OIDC, mTLS caller auth, workload identity, and additional secret backends remain planned integrations.
+Status: implemented for service-token auth, OIDC RS256/JWKS validation, mTLS caller identity mapping, signed workload identity validation, RBAC, policy, approvals, development secrets, Vault-style secrets, Bitwarden-style item fields, 1Password-style item fields, AWS Secrets Manager JSON secrets, and Azure Key Vault JSON secrets. Production deployments must still supply trusted issuer material, certificate trust mapping, workload signing keys, or vendor SDK clients.
 
 Deliverables:
 
@@ -141,7 +141,7 @@ Exit criteria:
 
 ## Milestone 6: Controlled SSH Subsystem
 
-Status: implemented for command execution, policy, sessions, file transfer, recording references, and redaction. Production multi-replica interactive session behavior remains constrained until sticky-session or broker strategy is validated.
+Status: implemented for command execution, policy, sessions, file transfer, recording references, redaction, durable session metadata, and durable recording metadata. Production multi-replica interactive sessions require database-backed stores and deployment routing that respects active SSH connection ownership.
 
 Deliverables:
 
@@ -183,7 +183,7 @@ Exit criteria:
 
 ## Milestone 8: Observability And Integrations
 
-Status: implemented for in-process metrics, structured logs, trace context, audit correlation, and dashboard examples. Queryable audit, alerts, trends, and durable SIEM delivery remain production-readiness work.
+Status: implemented for in-process metrics, structured logs, trace context, audit correlation, dashboard examples, queryable audit, Alertmanager-backed alerts, Prometheus-backed trends, and durable SIEM retry/dead-letter delivery. External backends must be configured with HTTPS URLs before source-backed tools return data.
 
 Deliverables:
 
@@ -201,7 +201,7 @@ Exit criteria:
 
 ## Milestone 9: Production Deployment And HA
 
-Status: partially implemented at deployment-manifest level. Runtime shared-state correctness, dependency-aware readiness, distributed idempotency, and multi-replica approval/session behavior remain active work.
+Status: implemented for deployment artifacts, HTTPS health probes, dependency-aware readiness, durable approvals, durable idempotency records, Redis locking, durable SSH session/recording metadata, Proxmox task state, and SIEM delivery state. Production qualification still requires operator-provided infrastructure and release evidence.
 
 Deliverables:
 
@@ -223,7 +223,7 @@ Exit criteria:
 
 ## Milestone 10: Hardening And Compatibility
 
-Status: in progress. CI, distribution, SBOM, security invariants, and hardening scaffolds exist; migration gates, image scanning, compatibility matrix, chaos/load evidence, and release enforcement remain active work.
+Status: implemented for preview release qualification gates. CI, distribution, SBOM, security invariants, migration validation, container scanning, compatibility matrix, chaos/load gates, release-evidence validation, and known-limitation docs exist. GA certification still requires operator-provided live lab evidence for each claimed Proxmox version/topology and guarded tool promotion.
 
 Deliverables:
 

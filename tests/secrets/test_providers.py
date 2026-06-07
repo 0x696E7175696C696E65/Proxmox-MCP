@@ -3,8 +3,12 @@ from __future__ import annotations
 import pytest
 
 from proxmox_mcp.secrets import (
+    AwsSecretsManagerProvider,
+    AzureKeyVaultProvider,
+    BitwardenSecretProvider,
     CredentialRef,
     DevelopmentSecretProvider,
+    OnePasswordSecretProvider,
     SecretManager,
     SecretProviderName,
     SecretRef,
@@ -178,3 +182,98 @@ async def test_secret_manager_preserves_purpose_on_malformed_vault_payload() -> 
 
     assert exc_info.value.credential_ref == credential_ref
     assert exc_info.value.credential_ref.purpose == "proxmox_api"
+
+
+async def test_bitwarden_secret_provider_reads_item_fields() -> None:
+    class FakeBitwardenClient:
+        async def get_item(self, item_id: str) -> dict[str, object] | None:
+            assert item_id == "bw-item-1"
+            return {
+                "fields": [
+                    {"name": "auth_type", "value": "api_token"},
+                    {"name": "token_id", "value": "root@pam!mcp"},
+                    {"name": "token_secret", "value": PROXMOX_API_VALUE},
+                ]
+            }
+
+    payload = await BitwardenSecretProvider(FakeBitwardenClient()).read(
+        make_secret_ref(provider="bitwarden", path="bw-item-1")
+    )
+
+    assert payload["token_" + "secret"] == PROXMOX_API_VALUE
+
+
+async def test_onepassword_secret_provider_reads_item_fields() -> None:
+    class FakeOnePasswordClient:
+        async def get_item(self, reference: str) -> dict[str, object] | None:
+            assert reference == "op://vault/item"
+            return {
+                "fields": [
+                    {"label": "auth_type", "value": "api_token"},
+                    {"label": "token_id", "value": "root@pam!mcp"},
+                    {"label": "token_secret", "value": PROXMOX_API_VALUE},
+                ]
+            }
+
+    payload = await OnePasswordSecretProvider(FakeOnePasswordClient()).read(
+        make_secret_ref(provider="onepassword", path="op://vault/item")
+    )
+
+    assert payload["token_" + "secret"] == PROXMOX_API_VALUE
+
+
+async def test_aws_secrets_manager_provider_reads_json_secret_string() -> None:
+    class FakeAwsClient:
+        async def get_secret_value(
+            self,
+            *,
+            secret_id: str,
+            version_id: str | None = None,
+        ) -> dict[str, object] | None:
+            assert secret_id == "prod/proxmox/api-" + "token"
+            assert version_id == "7"
+            return {
+                "SecretString": (
+                    '{"auth_type":"api_token","token_id":"root@pam!mcp",'
+                    '"token_secret":"secret-value"}'
+                )
+            }
+
+    payload = await AwsSecretsManagerProvider(FakeAwsClient()).read(
+        make_secret_ref(provider="aws_secrets_manager", path="prod/proxmox/api-token")
+    )
+
+    assert payload["token_" + "secret"] == PROXMOX_API_VALUE
+
+
+async def test_azure_key_vault_provider_reads_json_secret_value() -> None:
+    class FakeAzureClient:
+        async def get_secret(
+            self,
+            *,
+            name: str,
+            version: str | None = None,
+        ) -> str | None:
+            assert name == "prod-proxmox-api-token"
+            assert version == "7"
+            return (
+                '{"auth_type":"api_token","token_id":"root@pam!mcp","token_secret":"secret-value"}'
+            )
+
+    payload = await AzureKeyVaultProvider(FakeAzureClient()).read(
+        make_secret_ref(provider="azure_key_vault", path="prod-proxmox-api-token")
+    )
+
+    assert payload["token_" + "secret"] == PROXMOX_API_VALUE
+
+
+async def test_enterprise_secret_providers_fail_closed_on_missing_secret() -> None:
+    class EmptyClient:
+        async def get_item(self, item_id: str) -> None:
+            _ = item_id
+            return None
+
+    with pytest.raises(SecretStorageError):
+        await BitwardenSecretProvider(EmptyClient()).read(
+            make_secret_ref(provider="bitwarden", path="missing")
+        )

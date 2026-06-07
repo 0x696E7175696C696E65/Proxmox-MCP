@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import cast
 
 from fastmcp import FastMCP
@@ -9,6 +9,7 @@ from starlette.responses import JSONResponse, PlainTextResponse, Response
 
 from proxmox_mcp.audit.repository import AuditEventRepository
 from proxmox_mcp.audit.writer import AuditWriter, InMemoryAuditWriter
+from proxmox_mcp.auth import AuthenticatedSession
 from proxmox_mcp.config import Settings
 from proxmox_mcp.observability import (
     AlertBackend,
@@ -131,6 +132,8 @@ def build_server(
     audit_repository: AuditEventRepository | None = None,
     idempotency_store: IdempotencyStore | None = None,
     proxmox_task_store: ProxmoxTaskStore | None = None,
+    authenticated_session_resolver: Callable[[ToolRequest], AuthenticatedSession | None]
+    | None = None,
 ) -> FastMCP:
     settings = Settings() if settings is None else settings
     audit_writer = InMemoryAuditWriter() if audit_writer is None else audit_writer
@@ -157,8 +160,8 @@ def build_server(
     register_ssh_tools(registry)
 
     def context_factory(request: ToolRequest) -> ToolExecutionContext:
-        return ToolExecutionContext(
-            request=request,
+        return build_tool_context(
+            request,
             settings=settings,
             audit_writer=audit_writer,
             proxmox_client=proxmox_client,
@@ -173,6 +176,9 @@ def build_server(
             trend_backend=trend_backend,
             idempotency_store=idempotency_store,
             proxmox_task_store=proxmox_task_store,
+            authenticated_session=authenticated_session_resolver(request)
+            if authenticated_session_resolver is not None
+            else None,
         )
 
     registry.register_with_fastmcp(app, context_factory)
@@ -183,6 +189,45 @@ def build_server(
         dependency_checkers=dependency_checkers,
     )
     return app
+
+
+def build_tool_context(
+    request: ToolRequest,
+    *,
+    settings: Settings,
+    audit_writer: AuditWriter,
+    proxmox_client: ProxmoxApiClient | None = None,
+    ssh_client: SshClient | None = None,
+    ssh_command_policy: SshCommandPolicy | None = None,
+    ssh_session_manager: SshSessionManager | None = None,
+    ssh_session_store: SshSessionStore | None = None,
+    ssh_recording_store: SshRecordingStore | None = None,
+    audit_repository: AuditEventRepository | None = None,
+    metrics_registry: InMemoryMetricsRegistry | None = None,
+    alert_backend: AlertBackend | None = None,
+    trend_backend: TrendBackend | None = None,
+    idempotency_store: IdempotencyStore | None = None,
+    proxmox_task_store: ProxmoxTaskStore | None = None,
+    authenticated_session: AuthenticatedSession | None = None,
+) -> ToolExecutionContext:
+    return ToolExecutionContext(
+        request=request,
+        settings=settings,
+        audit_writer=audit_writer,
+        authenticated_session=authenticated_session,
+        proxmox_client=proxmox_client,
+        ssh_client=ssh_client,
+        ssh_command_policy=ssh_command_policy,
+        ssh_session_manager=ssh_session_manager,
+        ssh_session_store=ssh_session_store,
+        ssh_recording_store=ssh_recording_store,
+        audit_repository=audit_repository,
+        metrics_registry=metrics_registry,
+        alert_backend=alert_backend,
+        trend_backend=trend_backend,
+        idempotency_store=idempotency_store,
+        proxmox_task_store=proxmox_task_store,
+    )
 
 
 def _register_http_routes(

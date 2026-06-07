@@ -72,9 +72,20 @@ class Settings(BaseSettings):
     )
     redis_url: SecretStr = SecretStr("rediss://localhost:6379/0")
     log_level: Literal["debug", "info", "warning", "error"] = "info"
-    credential_provider: Literal["development", "hashicorp_vault"] = "development"
+    credential_provider: Literal[
+        "development",
+        "hashicorp_vault",
+        "bitwarden",
+        "onepassword",
+        "aws_secrets_manager",
+        "azure_key_vault",
+    ] = "development"
     vault_url: str | None = None
     vault_token: SecretStr | None = None
+    bitwarden_access_token: SecretStr | None = None
+    onepassword_service_account_token: SecretStr | None = None
+    aws_region: str | None = None
+    azure_key_vault_url: str | None = None
     dangerous_operations: DangerousOperationSettings = Field(
         default_factory=DangerousOperationSettings
     )
@@ -85,6 +96,8 @@ class Settings(BaseSettings):
     def _validate_encrypted_network_urls(self) -> Settings:
         _validate_database_url(self.database_url.get_secret_value())
         _validate_redis_url(self.redis_url.get_secret_value())
+        _validate_optional_https_url(self.vault_url, "Vault URL")
+        _validate_optional_https_url(self.azure_key_vault_url, "Azure Key Vault URL")
         return self
 
     def safe_dump(self) -> dict[str, object]:
@@ -110,3 +123,10 @@ def _validate_redis_url(value: str) -> None:
     parsed = urlparse(value)
     if parsed.scheme != "rediss":
         raise ValueError("Redis TLS requires a rediss:// URL")
+
+
+def _validate_optional_https_url(value: str | None, label: str) -> None:
+    if value is None:
+        return
+    if urlparse(value).scheme != "https":
+        raise ValueError(f"{label} must use https://")

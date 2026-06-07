@@ -19,8 +19,10 @@ Current lab-rollout evidence:
 - `python -m ruff check .`: clean
 - `python -m pyright`: `0 errors, 0 warnings`
 - Security invariant suite: `54 passed`
-- `python -m pytest`: `249 passed, 6 skipped` before Phase 1 wiring; rerun full verification after each gate change.
-- Lab skips were expected because `PROXMOX_MCP_LAB_ENABLED=true` was not configured in the local environment.
+- `python -m pytest`: latest full local suite reported `310 passed, 7 skipped`; lab and PostgreSQL migration tests require explicit operator-provided endpoints.
+- Auth/secret/config/server focused suite: `50 passed`.
+- Release evidence schema suite: `5 passed`.
+- Chaos and lightweight load gates: `5 passed`; lab gates skipped safely because `PROXMOX_MCP_LAB_ENABLED=true` was not configured in the local environment.
 - Domain-pack contract tests cover VM/LXC, storage/ZFS/LVM/disk, network/firewall, backup, Ceph/HA, SSH/console, and observability runtime wiring.
 - Release hardening gates now include `tests/release/test_migration_gate.py`, `tests/deploy/test_kubernetes_manifest.py`, `tests/release/test_workflow_contracts.py`, `tests/chaos/`, and `tests/performance/`.
 - Compatibility evidence is tracked in `docs/proxmox-compatibility.md` and must be updated before tagging a release candidate.
@@ -36,9 +38,10 @@ Current lab-rollout evidence:
 | Shared-state HA | Database-backed approval, idempotency, SSH session, SSH recording, and Proxmox task stores exist | Multi-replica approval consumption, idempotency locking, audit persistence, SSH session/recording behavior, and task-state replay | HA test suite documents replica-safe paths and requires durable stores for multi-replica claims |
 | External observability | In-process metrics/log/trace wiring exists; Alertmanager and Prometheus adapters are available when configured | Query tests for audit events, Alertmanager alert normalization, Prometheus trend normalization, required-source readiness, and explicit external-source responses when unconfigured | Internal tools must return real source data or `external_source_required` |
 | SIEM delivery | SIEM payload formatting plus durable retry/dead-letter queue exists | Queue redaction, retry, dead-letter, and audit-writer degradation tests | Audit DB remains authoritative; SIEM delivery degrades for read-only operations and retries durably |
+| Enterprise auth and secrets | Service tokens, OIDC RS256/JWKS verification, mTLS identity mapping, workload identity replay checks, and enterprise secret-provider adapters exist | Authenticator unit tests, fail-closed verifier tests, secret-provider routing tests, HTTPS config validation, and readiness tests for missing provider bootstrap configuration | Production deployments must select a real identity path and secret backend; missing configuration blocks readiness |
 | Guarded Proxmox tools | Guarded tools fail visibly instead of returning fake success | Contract, unit, and opt-in lab tests per promoted tool | Tool promotion checklist and evidence must be attached |
 | Compatibility | Disposable lab evidence exists for the current lab only | Version/topology matrix for tested Proxmox and optional Ceph/HA/PBS features | Release notes include compatibility report |
-| Release evidence | Evidence requirements are explicit | Release-candidate workflow fails when required evidence artifacts are missing or invalid | `.github/workflows/release-candidate.yml` runs `scripts/validate_release_evidence.py` |
+| Release evidence | Evidence requirements are explicit and schema-checked for compatibility/lab artifacts | Release-candidate workflow fails when required evidence artifacts are missing, invalid, incomplete, or contain credential-shaped keys | `.github/workflows/release-candidate.yml` runs `scripts/validate_release_evidence.py`; examples live in `docs/release-evidence/` |
 | Chaos and load | Deterministic non-lab chaos/load gates exist; live lab gates remain opt-in | `tests/chaos/`, `tests/performance/`, and lab gates when credentials are configured | Hardening workflow runs executable pytest gates and fails closed when lab gates are enabled without required lab config |
 
 ## Chaos Scenarios
@@ -65,6 +68,7 @@ Security-critical dependencies must fail closed. Optional observability exporter
 ## Known Limitations
 
 - SSH interactive sessions should use the database-backed session store for multi-replica deployments; in-memory development sessions still require sticky routing.
+- OIDC, mTLS, workload identity, and vendor secret-provider adapters expose production-ready contracts, but each deployment must supply its own trusted issuer/JWKS, certificate trust mapping, workload signing key, Redis-backed or equivalent shared workload replay cache, or vendor SDK client.
 - Lab chaos gates require operator-provided Proxmox credentials and are not enabled by default.
 - SIEM exporters format payloads locally and can use the durable retry queue; vendor-specific delivery adapters beyond the current generic delivery protocol still require deployment-specific wiring.
 - Release-candidate validation requires evidence artifacts to be staged under the configured evidence directory.

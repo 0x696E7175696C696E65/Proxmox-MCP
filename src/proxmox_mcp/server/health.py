@@ -110,6 +110,13 @@ class RedisDependencyChecker:
 class SecretBackendDependencyChecker:
     async def check(self, settings: Settings) -> DependencyCheck:
         if settings.credential_provider == "development":
+            if settings.environment == "production":
+                return DependencyCheck(
+                    name="secret_backend",
+                    required=True,
+                    status="unavailable",
+                    detail="development provider is not allowed in production",
+                )
             return DependencyCheck(
                 name="secret_backend",
                 required=True,
@@ -117,19 +124,61 @@ class SecretBackendDependencyChecker:
                 detail="development provider configured",
             )
 
-        if settings.vault_url and settings.vault_token is not None:
+        if settings.credential_provider == "hashicorp_vault":
+            if settings.vault_url and settings.vault_token is not None:
+                return DependencyCheck(
+                    name="secret_backend",
+                    required=True,
+                    status="ok",
+                    detail="hashicorp_vault provider configured",
+                )
+            return DependencyCheck(
+                name="secret_backend",
+                required=True,
+                status="unavailable",
+                detail="hashicorp_vault requires vault_url and vault_token",
+            )
+
+        if (
+            settings.credential_provider == "bitwarden"
+            and settings.bitwarden_access_token is not None
+        ):
             return DependencyCheck(
                 name="secret_backend",
                 required=True,
                 status="ok",
-                detail="hashicorp_vault provider configured",
+                detail="bitwarden provider configured",
+            )
+        if (
+            settings.credential_provider == "onepassword"
+            and settings.onepassword_service_account_token is not None
+        ):
+            return DependencyCheck(
+                name="secret_backend",
+                required=True,
+                status="ok",
+                detail="onepassword provider configured",
+            )
+        if settings.credential_provider == "aws_secrets_manager" and settings.aws_region:
+            return DependencyCheck(
+                name="secret_backend",
+                required=True,
+                status="ok",
+                detail="aws_secrets_manager provider configured",
+            )
+        if settings.credential_provider == "azure_key_vault" and settings.azure_key_vault_url:
+            return DependencyCheck(
+                name="secret_backend",
+                required=True,
+                status="ok",
+                detail="azure_key_vault provider configured",
             )
 
         return DependencyCheck(
             name="secret_backend",
             required=True,
             status="unavailable",
-            detail="hashicorp_vault requires vault_url and vault_token",
+            detail=f"{settings.credential_provider} provider is missing required configuration",
         )
 
 

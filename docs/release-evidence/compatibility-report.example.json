@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "status": "preview",
+  "generated_at": "2026-06-06T00:00:00Z",
+  "matrix": [
+    {
+      "proxmox_version": "fresh Proxmox VE lab",
+      "topology": "single-node, no Ceph",
+      "evidence_status": "preview_lab_evidence",
+      "evidence_artifacts": [
+        "lab-evidence.json",
+        "ci-success.json",
+        "distribution-summary.json",
+        "hardening-summary.json"
+      ]
+    },
+    {
+      "proxmox_version": "Proxmox VE 8.x",
+      "topology": "multi-node",
+      "evidence_status": "not_yet_claimed",
+      "evidence_artifacts": [
+        "operator-lab-run-required"
+      ]
+    }
+  ],
+  "known_limits": [
+    "Ceph, HA, PBS, backup verification, storage expansion, and node update orchestration require topology-specific lab evidence before GA claims."
+  ]
+}

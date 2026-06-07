@@ -38,7 +38,7 @@ def test_secret_values_are_redacted() -> None:
 
     assert dumped["database_url"] == REDACTED
     assert dumped["vault_" + "token"] == REDACTED
-    assert "pass" not in str(dumped)
+    assert "user:pass@db" not in str(dumped)
     assert "vault-token-value" not in str(dumped)
 
 
@@ -100,6 +100,33 @@ def test_credential_provider_can_be_configured_from_environment(
     assert settings.vault_url == "https://vault.example.test"
     assert settings.vault_token is not None
     assert settings.vault_token.get_secret_value() == "vault-token-value"
+
+
+def test_enterprise_credential_providers_can_be_configured_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PROXMOX_MCP_CREDENTIAL_PROVIDER", "azure_key_vault")
+    monkeypatch.setenv("PROXMOX_MCP_AZURE_KEY_VAULT_URL", "https://vault.example.test")
+
+    settings = Settings()
+
+    assert settings.credential_provider == "azure_key_vault"
+    assert settings.azure_key_vault_url == "https://vault.example.test"
+
+
+def test_external_secret_provider_urls_require_https() -> None:
+    with pytest.raises(ValueError, match="Vault URL"):
+        Settings(
+            credential_provider="hashicorp_vault",
+            vault_url="http://vault.example.test",
+            vault_token=SecretStr("vault-token"),
+        )
+
+    with pytest.raises(ValueError, match="Azure Key Vault URL"):
+        Settings(
+            credential_provider="azure_key_vault",
+            azure_key_vault_url="http://vault.example.test",
+        )
 
 
 def test_tls_settings_can_be_configured_from_environment(
