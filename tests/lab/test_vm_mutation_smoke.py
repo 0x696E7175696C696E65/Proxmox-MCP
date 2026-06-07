@@ -21,39 +21,38 @@ async def test_lab_create_update_and_delete_disposable_vm(
 ) -> None:
     await _delete_vm_if_present(lab_client, optional_lab_node, disposable_lab_vmid)
 
-    create_result = await lab_client.post(
-        f"/nodes/{optional_lab_node}/qemu",
-        data={
-            "vmid": disposable_lab_vmid,
-            "name": f"mcp-lab-{disposable_lab_vmid}",
-            "memory": 512,
-            "cores": 1,
-            "ostype": "l26",
-        },
-    )
-    await _wait_for_task(lab_client, optional_lab_node, create_result)
+    try:
+        create_result = await lab_client.post(
+            f"/nodes/{optional_lab_node}/qemu",
+            data={
+                "vmid": disposable_lab_vmid,
+                "name": f"mcp-lab-{disposable_lab_vmid}",
+                "memory": 512,
+                "cores": 1,
+                "ostype": "l26",
+            },
+        )
+        await _wait_for_task(lab_client, optional_lab_node, create_result)
 
-    config = await lab_client.get(f"/nodes/{optional_lab_node}/qemu/{disposable_lab_vmid}/config")
-    assert isinstance(config, dict)
-    assert config["name"] == f"mcp-lab-{disposable_lab_vmid}"
+        config = await lab_client.get(
+            f"/nodes/{optional_lab_node}/qemu/{disposable_lab_vmid}/config"
+        )
+        assert isinstance(config, dict)
+        assert config["name"] == f"mcp-lab-{disposable_lab_vmid}"
 
-    update_result = await lab_client.put(
-        f"/nodes/{optional_lab_node}/qemu/{disposable_lab_vmid}/config",
-        data={"description": "enterprise-proxmox-mcp disposable lab VM"},
-    )
-    await _wait_for_task(lab_client, optional_lab_node, update_result)
+        update_result = await lab_client.put(
+            f"/nodes/{optional_lab_node}/qemu/{disposable_lab_vmid}/config",
+            data={"description": "enterprise-proxmox-mcp disposable lab VM"},
+        )
+        await _wait_for_task(lab_client, optional_lab_node, update_result)
 
-    updated_config = await lab_client.get(
-        f"/nodes/{optional_lab_node}/qemu/{disposable_lab_vmid}/config"
-    )
-    assert isinstance(updated_config, dict)
-    assert updated_config["description"] == "enterprise-proxmox-mcp disposable lab VM"
-
-    delete_result = await lab_client.delete(
-        f"/nodes/{optional_lab_node}/qemu/{disposable_lab_vmid}",
-        data={"purge": 1, "destroy-unreferenced-disks": 1},
-    )
-    await _wait_for_task(lab_client, optional_lab_node, delete_result)
+        updated_config = await lab_client.get(
+            f"/nodes/{optional_lab_node}/qemu/{disposable_lab_vmid}/config"
+        )
+        assert isinstance(updated_config, dict)
+        assert updated_config["description"] == "enterprise-proxmox-mcp disposable lab VM"
+    finally:
+        await _delete_vm_if_present(lab_client, optional_lab_node, disposable_lab_vmid)
 
     with pytest.raises(ProxmoxApiError):
         await lab_client.get(f"/nodes/{optional_lab_node}/qemu/{disposable_lab_vmid}/config")
@@ -65,15 +64,24 @@ async def _delete_vm_if_present(
     vmid: int,
 ) -> None:
     try:
-        await lab_client.get(f"/nodes/{node}/qemu/{vmid}/config")
+        config = await lab_client.get(f"/nodes/{node}/qemu/{vmid}/config")
     except ProxmoxApiError:
         return
+    if not _is_harness_vm_config(config, vmid):
+        raise AssertionError(f"Refusing to delete non-harness VMID {vmid}")
 
     delete_result = await lab_client.delete(
         f"/nodes/{node}/qemu/{vmid}",
         data={"purge": 1, "destroy-unreferenced-disks": 1},
     )
     await _wait_for_task(lab_client, node, delete_result)
+
+
+def _is_harness_vm_config(config: object, vmid: int) -> bool:
+    if not isinstance(config, dict):
+        return False
+    typed_config = cast(dict[str, object], config)
+    return typed_config.get("name") == f"mcp-lab-{vmid}"
 
 
 async def _wait_for_task(

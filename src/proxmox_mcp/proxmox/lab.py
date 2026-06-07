@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Literal
+from typing import Literal, cast
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
@@ -9,6 +9,27 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 _FALSE_VALUES = {"0", "false", "no", "off"}
 LabAuthMode = Literal["api_token", "username_password"]
+LabProfileName = Literal[
+    "pve-9-single-node-no-ceph",
+    "pve-9-storage-local-local-lvm",
+    "pve-9-single-node-with-guests",
+    "pve-9-ceph-enabled",
+    "pve-9-ha-enabled",
+    "pve-9-multi-node",
+    "pve-9-pbs-enabled",
+]
+
+LAB_PROFILE_NAMES: frozenset[str] = frozenset(
+    {
+        "pve-9-single-node-no-ceph",
+        "pve-9-storage-local-local-lvm",
+        "pve-9-single-node-with-guests",
+        "pve-9-ceph-enabled",
+        "pve-9-ha-enabled",
+        "pve-9-multi-node",
+        "pve-9-pbs-enabled",
+    }
+)
 
 
 class LabEnvironmentConfig(BaseModel):
@@ -26,6 +47,7 @@ class LabEnvironmentConfig(BaseModel):
     node: str | None = Field(default=None, min_length=1)
     storage_id: str | None = Field(default=None, min_length=1)
     cluster_id: str = "lab"
+    profile: LabProfileName = "pve-9-single-node-no-ceph"
     skip_reason: str | None = None
 
     @classmethod
@@ -80,6 +102,13 @@ class LabEnvironmentConfig(BaseModel):
                 ),
             )
 
+        raw_profile = env.get("PROXMOX_MCP_LAB_PROFILE", "pve-9-single-node-no-ceph")
+        if raw_profile not in LAB_PROFILE_NAMES:
+            return cls(
+                enabled=False,
+                skip_reason=f"Unknown Proxmox lab profile: {raw_profile}",
+            )
+
         return cls(
             enabled=True,
             api_endpoint=endpoint,
@@ -97,7 +126,37 @@ class LabEnvironmentConfig(BaseModel):
             node=env.get("PROXMOX_MCP_LAB_NODE"),
             storage_id=env.get("PROXMOX_MCP_LAB_STORAGE"),
             cluster_id=env.get("PROXMOX_MCP_LAB_CLUSTER_ID", "lab"),
+            profile=cast(LabProfileName, raw_profile),
         )
+
+    def profile_missing_prerequisites(self) -> tuple[str, ...]:
+        missing: list[str] = []
+        if (
+            self.profile
+            in {
+                "pve-9-single-node-no-ceph",
+                "pve-9-storage-local-local-lvm",
+                "pve-9-single-node-with-guests",
+                "pve-9-ceph-enabled",
+                "pve-9-ha-enabled",
+                "pve-9-multi-node",
+                "pve-9-pbs-enabled",
+            }
+            and self.node is None
+        ):
+            missing.append("Set PROXMOX_MCP_LAB_NODE for node-scoped storage profile tests")
+
+        if (
+            self.profile
+            in {
+                "pve-9-single-node-no-ceph",
+                "pve-9-storage-local-local-lvm",
+            }
+            and self.storage_id is None
+        ):
+            missing.append("Set PROXMOX_MCP_LAB_STORAGE for local storage profile tests")
+
+        return tuple(missing)
 
 
 def _env_bool(value: str | None, *, default: bool) -> bool:

@@ -129,6 +129,50 @@ def test_release_evidence_examples_match_validator_schema(tmp_path: Path) -> Non
     assert result.valid
 
 
+def test_release_evidence_examples_record_current_pve_9_lab_result() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    compatibility_report = json.loads(
+        (repo_root / "docs/release-evidence/compatibility-report.example.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    lab_evidence = json.loads(
+        (repo_root / "docs/release-evidence/lab-evidence.example.json").read_text(encoding="utf-8")
+    )
+
+    matrix = compatibility_report["matrix"]
+    pve_9_row = next(row for row in matrix if row["proxmox_version"] == "Proxmox VE 9.1.1")
+    assert pve_9_row["profile"] == "pve-9-single-node-no-ceph"
+    assert pve_9_row["evidence_status"] == "preview_lab_evidence"
+    profiles = {profile["name"]: profile for profile in compatibility_report["profiles"]}
+    assert profiles["pve-9-single-node-no-ceph"]["status"] == "preview"
+    assert (
+        "LXC lifecycle when no template exists"
+        in profiles["pve-9-single-node-no-ceph"]["expected_skips"]
+    )
+
+    lab = lab_evidence["lab"]
+    assert lab["proxmox_version"] == "9.1.1"
+    assert lab["profile"] == "pve-9-single-node-no-ceph"
+    assert lab["node"] == "test"
+    assert lab["storage_ids"] == ["local", "local-lvm"]
+    assert "username" not in lab
+    assert all(
+        "profile" not in row or not str(row["profile"]).startswith("pve-9-")
+        for row in matrix
+        if row["proxmox_version"] == "Proxmox VE 8.x"
+    )
+
+    runs = {run["name"]: run for run in lab_evidence["test_runs"]}
+    assert runs["read-only lab smoke"]["passed"] == 4
+    assert runs["read-only lab smoke"]["skipped"] == 1
+    assert runs["disposable VM mutation smoke"]["passed"] == 1
+    assert runs["registered MCP read tool smoke"]["passed"] == 4
+    assert runs["LXC smoke"]["status"] == "skipped"
+    assert runs["backup create/list smoke"]["passed"] == 2
+    assert runs["storage profile smoke"]["passed"] == 3
+
+
 def _write_complete_artifacts(
     path: Path,
     *,

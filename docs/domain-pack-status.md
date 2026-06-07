@@ -11,6 +11,8 @@ Validation:
 - Unit/contract tests: `python -m pytest tests/proxmox/test_domain_vm_lxc_pack.py`
 - Full domain regression: `python -m pytest tests/proxmox/test_domain_tools.py`
 - Read-only lab discovery: `python -m pytest tests/lab -m lab`
+- Registered disposable VM mutation evidence: `python -m pytest tests/lab/test_registered_vm_lifecycle_smoke.py -q`
+- LXC lab evidence: inventory passes on the current lab; template and lifecycle tests skip safely when no `vztmpl` template exists on `local`.
 
 Safety notes:
 
@@ -39,6 +41,7 @@ Validation:
 
 - Unit/contract tests: `python -m pytest tests/proxmox/test_domain_storage_pack.py`
 - Read-only lab discovery: `python -m pytest tests/lab -m lab`
+- Storage profile lab evidence: `python -m pytest tests/lab/test_storage_profiles.py -q` validates `local` directory content discovery and `local-lvm` LVM-thin metadata/status without claiming expansion or benchmarking.
 
 Safety notes:
 
@@ -68,6 +71,7 @@ Validation:
 
 - Unit/contract tests: `python -m pytest tests/proxmox/test_domain_backup_pack.py`
 - Read-only lab discovery: `python -m pytest tests/lab -m lab`
+- Backup create/list lab evidence: `python -m pytest tests/lab/test_backup_smoke.py -q` validates registered `run_vm_backup`, UPID task capture, backup content listing, and cleanup against a disposable VM. `verify_backup` remains guarded.
 
 Safety notes:
 

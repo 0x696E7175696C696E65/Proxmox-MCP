@@ -4,8 +4,9 @@
   "generated_at": "2026-06-06T00:00:00Z",
   "matrix": [
     {
-      "proxmox_version": "fresh Proxmox VE lab",
-      "topology": "single-node, no Ceph",
+      "proxmox_version": "Proxmox VE 9.1.1",
+      "topology": "single-node, no Ceph, no existing guests",
+      "profile": "pve-9-single-node-no-ceph",
       "evidence_status": "preview_lab_evidence",
       "evidence_artifacts": [
         "lab-evidence.json",
@@ -15,12 +16,46 @@
       ]
     },
     {
+      "proxmox_version": "Proxmox VE 9.1.1",
+      "topology": "single-node storage profile, local and local-lvm",
+      "profile": "pve-9-storage-local-local-lvm",
+      "evidence_status": "preview_lab_evidence",
+      "evidence_artifacts": [
+        "lab-evidence.json"
+      ]
+    },
+    {
       "proxmox_version": "Proxmox VE 8.x",
       "topology": "multi-node",
       "evidence_status": "not_yet_claimed",
       "evidence_artifacts": [
         "operator-lab-run-required"
       ]
+    }
+  ],
+  "profiles": [
+    {
+      "name": "pve-9-single-node-no-ceph",
+      "status": "preview",
+      "required_tests": [
+        "read-only lab smoke",
+        "registered MCP read tool smoke",
+        "registered disposable VM mutation smoke",
+        "backup create/list smoke",
+        "storage profile smoke"
+      ],
+      "expected_skips": [
+        "Ceph status when Ceph is not installed",
+        "LXC lifecycle when no template exists"
+      ]
+    },
+    {
+      "name": "pve-9-ceph-enabled",
+      "status": "not_yet_claimed",
+      "required_tests": [
+        "Ceph discovery smoke"
+      ],
+      "expected_skips": []
     }
   ],
   "known_limits": [

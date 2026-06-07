@@ -5,17 +5,72 @@
   "lab": {
     "endpoint": "https://pve.example.test:8006",
     "node": "test",
-    "topology": "single-node disposable lab",
-    "tls_verify": false
+    "topology": "single-node disposable lab, no Ceph, no existing guests",
+    "profile": "pve-9-single-node-no-ceph",
+    "proxmox_version": "9.1.1",
+    "storage_ids": [
+      "local",
+      "local-lvm"
+    ],
+    "tls_verify": false,
+    "auth_note": "Username/password ticket auth requires a realm-qualified username such as user@realm."
   },
   "test_runs": [
     {
       "name": "read-only lab smoke",
       "status": "passed",
-      "passed": 5,
+      "passed": 4,
       "skipped": 1,
       "failed": 0,
       "notes": "Ceph test skipped because Ceph was not installed in this lab."
+    },
+    {
+      "name": "registered MCP read tool smoke",
+      "status": "passed",
+      "passed": 4,
+      "skipped": 0,
+      "failed": 0,
+      "notes": "Registered list_nodes exercised auth, RBAC, policy denial, audit, and Proxmox HTTP client paths."
+    },
+    {
+      "name": "disposable VM mutation smoke",
+      "status": "passed",
+      "passed": 1,
+      "skipped": 0,
+      "failed": 0,
+      "notes": "Created, updated, waited on Proxmox task completion, and deleted a disposable VM."
+    },
+    {
+      "name": "registered disposable VM mutation smoke",
+      "status": "passed",
+      "passed": 1,
+      "skipped": 0,
+      "failed": 0,
+      "notes": "Registered update_vm_config changed a disposable VM description and confirmed this endpoint returns no UPID task reference."
+    },
+    {
+      "name": "LXC smoke",
+      "status": "skipped",
+      "passed": 1,
+      "skipped": 2,
+      "failed": 0,
+      "notes": "LXC inventory passed; template and lifecycle checks skipped because no LXC template was present on local storage."
+    },
+    {
+      "name": "backup create/list smoke",
+      "status": "passed",
+      "passed": 2,
+      "skipped": 0,
+      "failed": 0,
+      "notes": "Registered run_vm_backup returned a UPID, task tracking captured it, backup content appeared on local storage, and cleanup completed."
+    },
+    {
+      "name": "storage profile smoke",
+      "status": "passed",
+      "passed": 3,
+      "skipped": 0,
+      "failed": 0,
+      "notes": "local directory content discovery and local-lvm LVM-thin status were validated without claiming expansion or benchmark support."
     },
     {
       "name": "chaos gate",

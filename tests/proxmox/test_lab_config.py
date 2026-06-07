@@ -107,3 +107,54 @@ def test_lab_config_requires_explicit_insecure_tls_opt_in() -> None:
     assert config.enabled is False
     assert config.skip_reason is not None
     assert "ALLOW_INSECURE_TRANSPORT" in config.skip_reason
+
+
+def test_lab_config_parses_named_profile() -> None:
+    config = LabEnvironmentConfig.from_env(
+        {
+            "PROXMOX_MCP_LAB_ENABLED": "true",
+            "PROXMOX_MCP_LAB_API_ENDPOINT": "https://pve.example.test:8006",
+            "PROXMOX_MCP_LAB_USERNAME": "root@pam",
+            "PROXMOX_MCP_LAB_PASSWORD": "secret-value",
+            "PROXMOX_MCP_LAB_NODE": "pve-a",
+            "PROXMOX_MCP_LAB_STORAGE": "local",
+            "PROXMOX_MCP_LAB_PROFILE": "pve-9-single-node-no-ceph",
+        }
+    )
+
+    assert config.enabled is True
+    assert config.profile == "pve-9-single-node-no-ceph"
+    assert config.profile_missing_prerequisites() == ()
+
+
+def test_lab_config_reports_profile_prerequisites_without_credentials() -> None:
+    config = LabEnvironmentConfig.from_env(
+        {
+            "PROXMOX_MCP_LAB_ENABLED": "true",
+            "PROXMOX_MCP_LAB_API_ENDPOINT": "https://pve.example.test:8006",
+            "PROXMOX_MCP_LAB_USERNAME": "root@pam",
+            "PROXMOX_MCP_LAB_PASSWORD": "secret-value",
+            "PROXMOX_MCP_LAB_PROFILE": "pve-9-storage-local-local-lvm",
+        }
+    )
+
+    assert config.enabled is True
+    assert config.profile_missing_prerequisites() == (
+        "Set PROXMOX_MCP_LAB_NODE for node-scoped storage profile tests",
+        "Set PROXMOX_MCP_LAB_STORAGE for local storage profile tests",
+    )
+
+
+def test_lab_config_rejects_unknown_profile() -> None:
+    config = LabEnvironmentConfig.from_env(
+        {
+            "PROXMOX_MCP_LAB_ENABLED": "true",
+            "PROXMOX_MCP_LAB_API_ENDPOINT": "https://pve.example.test:8006",
+            "PROXMOX_MCP_LAB_USERNAME": "root@pam",
+            "PROXMOX_MCP_LAB_PASSWORD": "secret-value",
+            "PROXMOX_MCP_LAB_PROFILE": "pve-10-unknown",
+        }
+    )
+
+    assert config.enabled is False
+    assert config.skip_reason == "Unknown Proxmox lab profile: pve-10-unknown"

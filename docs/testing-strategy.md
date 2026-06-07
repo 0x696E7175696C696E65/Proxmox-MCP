@@ -89,6 +89,16 @@ Phase 1 lab tests are read-only and skip unless explicitly enabled. Configure:
 - `PROXMOX_MCP_LAB_ALLOW_INSECURE_TRANSPORT=true` if TLS verification is disabled in a disposable lab
 - `PROXMOX_MCP_LAB_NODE=pve-node-1` for node-scoped discovery
 - `PROXMOX_MCP_LAB_STORAGE=local` for storage-content discovery
+- `PROXMOX_MCP_LAB_PROFILE=pve-9-single-node-no-ceph` to record the active
+  compatibility profile. Supported profile names are documented in
+  `docs/proxmox-compatibility.md`.
+
+Username/password ticket-auth labs must use realm-qualified usernames such as
+`root@pam`. Disposable Proxmox VE 9.1.1 validation currently records a
+single-node profile with node `test`, storage `local` and `local-lvm`, read-only
+smoke coverage of `4 passed, 1 skipped`, and one disposable VM mutation smoke
+test. The skipped read-only check is Ceph-specific because Ceph is not installed
+in that lab profile.
 
 Run read-only lab smoke tests with:
 
@@ -102,9 +112,18 @@ Mutation and destructive lab tests require separate explicit opt-in:
 
 - `PROXMOX_MCP_LAB_MUTATIONS_ENABLED=true`
 - `PROXMOX_MCP_LAB_DESTRUCTIVE_ENABLED=true`
-- `PROXMOX_MCP_LAB_TEST_VMID=9000` or another disposable VMID
+- `PROXMOX_MCP_LAB_TEST_VMID=<explicit disposable VMID>` for VM mutation,
+  backup, and registered VM lifecycle tests
+- `PROXMOX_MCP_LAB_TEST_CTID=<explicit disposable CTID>` for LXC lifecycle
+  tests when an LXC template exists
 
-The destructive VM lifecycle smoke test creates, updates, verifies, and deletes the disposable VMID. It must only run on throwaway lab clusters.
+The destructive VM lifecycle smoke test creates, updates, verifies, and deletes
+the explicit disposable VMID. Cleanup refuses to delete an existing guest unless
+its `mcp-lab-*` ownership marker matches the harness.
+
+The current `pve-9-single-node-no-ceph` profile expects LXC template-dependent
+tests to skip when no `vztmpl` content exists on the configured storage. That
+skip is evidence of a prerequisite gap, not a failure.
 
 ### SSH Sandbox Tests
 

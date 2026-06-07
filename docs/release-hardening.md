@@ -21,8 +21,9 @@ Current lab-rollout evidence:
 - Security invariant suite: `54 passed`
 - `python -m pytest`: latest full local suite reported `310 passed, 7 skipped`; lab and PostgreSQL migration tests require explicit operator-provided endpoints.
 - Auth/secret/config/server focused suite: `50 passed`.
-- Release evidence schema suite: `5 passed`.
-- Chaos and lightweight load gates: `5 passed`; lab gates skipped safely because `PROXMOX_MCP_LAB_ENABLED=true` was not configured in the local environment.
+- Release evidence schema suite: `8 passed`.
+- Live Proxmox VE 9.1.1 `pve-9-single-node-no-ceph` lab evidence now covers read-only smoke, registered MCP read execution, registered disposable VM config update, backup create/list, and storage profile discovery. LXC template lifecycle is skip-safe because the current lab has no LXC templates on `local`.
+- Chaos and lightweight load gates: `5 passed`; lab gates skip safely when `PROXMOX_MCP_LAB_ENABLED=true` is not configured in the local environment.
 - Domain-pack contract tests cover VM/LXC, storage/ZFS/LVM/disk, network/firewall, backup, Ceph/HA, SSH/console, and observability runtime wiring.
 - Release hardening gates now include `tests/release/test_migration_gate.py`, `tests/deploy/test_kubernetes_manifest.py`, `tests/release/test_workflow_contracts.py`, `tests/chaos/`, and `tests/performance/`.
 - Compatibility evidence is tracked in `docs/proxmox-compatibility.md` and must be updated before tagging a release candidate.
@@ -40,7 +41,7 @@ Current lab-rollout evidence:
 | SIEM delivery | SIEM payload formatting plus durable retry/dead-letter queue exists | Queue redaction, retry, dead-letter, and audit-writer degradation tests | Audit DB remains authoritative; SIEM delivery degrades for read-only operations and retries durably |
 | Enterprise auth and secrets | Service tokens, OIDC RS256/JWKS verification, mTLS identity mapping, workload identity replay checks, and enterprise secret-provider adapters exist | Authenticator unit tests, fail-closed verifier tests, secret-provider routing tests, HTTPS config validation, and readiness tests for missing provider bootstrap configuration | Production deployments must select a real identity path and secret backend; missing configuration blocks readiness |
 | Guarded Proxmox tools | Guarded tools fail visibly instead of returning fake success | Contract, unit, and opt-in lab tests per promoted tool | Tool promotion checklist and evidence must be attached |
-| Compatibility | Disposable lab evidence exists for the current lab only | Version/topology matrix for tested Proxmox and optional Ceph/HA/PBS features | Release notes include compatibility report |
+| Compatibility | Preview evidence exists for `pve-9-single-node-no-ceph` and `pve-9-storage-local-local-lvm` only | Version/topology matrix for tested Proxmox and optional Ceph/HA/PBS features | Release notes include compatibility report; qualified reports cannot contain required skipped lab runs |
 | Release evidence | Evidence requirements are explicit and schema-checked for compatibility/lab artifacts | Release-candidate workflow fails when required evidence artifacts are missing, invalid, incomplete, or contain credential-shaped keys | `.github/workflows/release-candidate.yml` runs `scripts/validate_release_evidence.py`; examples live in `docs/release-evidence/` |
 | Chaos and load | Deterministic non-lab chaos/load gates exist; live lab gates remain opt-in | `tests/chaos/`, `tests/performance/`, and lab gates when credentials are configured | Hardening workflow runs executable pytest gates and fails closed when lab gates are enabled without required lab config |
 
