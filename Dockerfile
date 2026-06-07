@@ -5,12 +5,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN addgroup --system proxmox-mcp && adduser --system --ingroup proxmox-mcp proxmox-mcp
 
 COPY pyproject.toml README.md LICENSE /app/
 COPY src /app/src
 
-RUN pip install --no-cache-dir .
+RUN python -m pip install --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir .
 
 USER proxmox-mcp
 EXPOSE 8443
