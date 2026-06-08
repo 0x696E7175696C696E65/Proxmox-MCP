@@ -80,6 +80,10 @@ Mutating tools must support idempotency where Proxmox behavior allows it. Danger
 | `resize_vm_disk` | `vm.hardware.disk.resize` | high | true | proxmox_api |
 | `update_vm_hardware` | `vm.hardware.write` | high | true | proxmox_api |
 | `set_vm_cloud_init` | `vm.cloudinit.write` | medium | true | proxmox_api |
+| `attach_iso_to_vm` | `vm.media.attach` | medium | true | proxmox_api |
+| `detach_iso_from_vm` | `vm.media.detach` | medium | true | proxmox_api |
+| `prepare_vm_install_media` | `vm.media.prepare` | high | true | proxmox_api |
+| `create_vm_from_iso` | `vm.lifecycle.create` | high | true | proxmox_api |
 
 ## LXC Tools
 
@@ -103,6 +107,10 @@ Mutating tools must support idempotency where Proxmox behavior allows it. Danger
 | `restore_lxc` | `lxc.backup.restore` | high | true | proxmox_api |
 | `update_lxc_resources` | `lxc.resources.write` | medium | true | proxmox_api |
 | `enter_lxc_console` | `lxc.console.open` | high | true | hybrid |
+| `list_lxc_templates` | `lxc.template.read` | low | false | proxmox_api |
+| `download_lxc_template` | `lxc.template.download` | medium | true | proxmox_api |
+| `delete_lxc_template` | `lxc.template.delete` | high | true | proxmox_api |
+| `create_lxc_from_template` | `lxc.lifecycle.create` | high | true | proxmox_api |
 
 ## Storage Tools
 
@@ -111,6 +119,9 @@ Mutating tools must support idempotency where Proxmox behavior allows it. Danger
 | `list_storage` | `storage.inventory.read` | low | false | proxmox_api |
 | `get_storage_status` | `storage.status.read` | low | false | proxmox_api |
 | `get_storage_content` | `storage.content.read` | low | false | proxmox_api |
+| `list_iso_images` | `storage.iso.read` | low | false | proxmox_api |
+| `download_iso_from_url` | `storage.iso.download` | medium | true | proxmox_api |
+| `delete_iso_image` | `storage.iso.delete` | high | true | proxmox_api |
 | `create_storage` | `storage.config.create` | high | true | proxmox_api |
 | `update_storage` | `storage.config.write` | high | true | proxmox_api |
 | `delete_storage` | `storage.config.delete` | critical | true | proxmox_api |
@@ -216,6 +227,20 @@ Mutating tools must support idempotency where Proxmox behavior allows it. Danger
 | `migrate_ha_resource` | `ha.resource.migrate` | high | true | proxmox_api |
 | `set_ha_group` | `ha.group.write` | high | true | proxmox_api |
 | `list_ha_groups` | `ha.group.read` | low | false | proxmox_api |
+
+## Helper Script Tools
+
+| Tool | Permission | Risk | Dry Run | Connector |
+| --- | --- | --- | --- | --- |
+| `sync_helper_script_catalog` | `helper.catalog.read` | low | false | hybrid |
+| `search_helper_scripts` | `helper.catalog.read` | low | false | hybrid |
+| `get_helper_script_details` | `helper.catalog.read` | low | false | hybrid |
+| `preview_helper_script` | `helper.script.preview` | medium | true | hybrid |
+| `stage_helper_script` | `helper.script.stage` | high | true | ssh |
+| `execute_helper_script` | `helper.script.execute` | critical | true | ssh |
+| `get_helper_script_execution` | `helper.script.execution.read` | low | false | internal |
+| `cancel_helper_script_execution` | `helper.script.execution.cancel` | high | true | internal |
+| `run_helper_app_install` | `helper.script.execute` | critical | true | ssh |
 
 ## User And Permission Tools
 

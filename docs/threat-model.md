@@ -16,6 +16,8 @@ This threat model covers the MCP server, its data stores, its secret integration
 - MCP caller credentials and AI agent identities.
 - Audit logs and approval records.
 - Policy definitions and RBAC assignments.
+- External helper-script catalogs, pinned commits, staged script artifacts, and
+  helper execution evidence.
 
 ## Trust Boundaries
 
@@ -36,6 +38,7 @@ Critical trust boundaries:
 - MCP server to secret manager.
 - MCP server to Proxmox API.
 - MCP server to SSH endpoint.
+- MCP server to external helper-script repositories.
 - MCP server to SIEM and logging systems.
 - Operator approval UI or API to approval store.
 
@@ -49,6 +52,7 @@ Critical trust boundaries:
 - Compromised logging or observability sink.
 - Network attacker between the MCP server and Proxmox infrastructure.
 - Supply-chain attacker targeting dependencies or container images.
+- Supply-chain attacker targeting external Proxmox helper scripts.
 
 ## Abuse Cases And Mitigations
 
@@ -138,6 +142,22 @@ Mitigations:
 - Sign container images.
 - Use minimal runtime images.
 - Enforce CI checks before release.
+
+### External Helper Script Compromise
+
+A helper-script repository, fallback fork, raw script URL, or staged script
+artifact is compromised and used to execute unwanted host mutations.
+
+Mitigations:
+
+- Allowlist helper-script repositories.
+- Resolve moving refs to immutable commits before fetching script content.
+- Hash script content with SHA-256 before staging or execution.
+- Reject arbitrary helper URLs and path traversal script IDs.
+- Require approval and SSH command policy allowance for execution.
+- Record source repo, source commit, blob SHA, hash, fallback usage, and staged
+  path in audit evidence.
+- Validate helper execution in disposable labs before making broad support claims.
 
 ### Denial Of Service
 

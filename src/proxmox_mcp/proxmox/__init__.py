@@ -21,6 +21,14 @@ from proxmox_mcp.proxmox.domain_tools import (
     domain_tool_promotion_records,
     register_domain_completion_tools,
 )
+from proxmox_mcp.proxmox.helper_scripts import (
+    HelperScript,
+    HelperScriptCatalog,
+    HelperScriptCatalogResolver,
+    HelperScriptSourceError,
+    register_helper_script_tools,
+)
+from proxmox_mcp.proxmox.media_tools import register_media_tools
 from proxmox_mcp.proxmox.mutation_tools import (
     SAFE_MUTATION_TOOL_SPECS,
     register_safe_mutation_tools,
@@ -32,6 +40,10 @@ __all__ = [
     "DANGEROUS_TOOL_SPECS",
     "DOMAIN_COMPLETION_TOOL_SPECS",
     "DomainToolPromotionRecord",
+    "HelperScript",
+    "HelperScriptCatalog",
+    "HelperScriptCatalogResolver",
+    "HelperScriptSourceError",
     "InMemoryProxmoxApiClient",
     "ProxmoxApiCredential",
     "ProxmoxApiClient",
@@ -44,6 +56,8 @@ __all__ = [
     "register_read_only_tools",
     "register_dangerous_tools",
     "register_domain_completion_tools",
+    "register_helper_script_tools",
+    "register_media_tools",
     "register_safe_mutation_tools",
     "domain_tool_pack_records",
     "domain_tool_promotion_records",

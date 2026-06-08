@@ -22,7 +22,7 @@ Safety notes:
 
 ## Storage, ZFS, LVM, Volume, And Disk
 
-Status: implemented with Proxmox API live support for storage config and volume move/copy operations, SSH live support for explicit `zpool`, `pvesm`, `wipefs`, and bounded `fio` benchmark operations, and guarded behavior for ambiguous operations that do not yet have safe universal semantics.
+Status: implemented with Proxmox API live support for storage config, ISO content listing/download/delete, and volume move/copy operations, SSH live support for explicit `zpool`, `pvesm`, `wipefs`, and bounded `fio` benchmark operations, and guarded behavior for ambiguous operations that do not yet have safe universal semantics.
 
 Live command-backed tools:
 
@@ -40,6 +40,7 @@ Guarded or profile-gated:
 Validation:
 
 - Unit/contract tests: `python -m pytest tests/proxmox/test_domain_storage_pack.py`
+- ISO media tests: `python -m pytest tests/proxmox/test_media_tools.py`
 - Read-only lab discovery: `python -m pytest tests/lab -m lab`
 - Storage profile lab evidence: `python -m pytest tests/lab/test_storage_profiles.py -q` validates `local` directory content discovery and `local-lvm` LVM-thin metadata/status.
 - Storage mutation gate: `python -m pytest tests/lab/test_storage_mutation_smoke.py -q` passed in the 2026-06-07 `pve-9-storage-local-local-lvm` disposable lab for bounded benchmark preview evidence and guarded expansion evidence. Live expansion remains unpromoted.
@@ -117,6 +118,43 @@ Safety notes:
 
 - Interactive console usage is still bounded by SSH policy, recording, and session controls in the SSH subsystem.
 - Support bundle collection avoids shell chaining by default and uses a single allowlisted command.
+
+## Media, Templates, And Helper Scripts
+
+Status: implemented with native Proxmox API tools for ISO and LXC template
+workflows plus guarded helper-script catalog, staging, and execution tools.
+
+Native media/template tools:
+
+- `list_iso_images`, `download_iso_from_url`, `delete_iso_image`
+- `attach_iso_to_vm`, `detach_iso_from_vm`, `prepare_vm_install_media`
+- `list_lxc_templates`, `download_lxc_template`, `delete_lxc_template`
+- `create_vm_from_iso`, `create_lxc_from_template`
+
+Helper-script tools:
+
+- Catalog and preview: `sync_helper_script_catalog`, `search_helper_scripts`,
+  `get_helper_script_details`, `preview_helper_script`
+- Guarded SSH execution: `stage_helper_script`, `execute_helper_script`,
+  `run_helper_app_install`
+- Execution bookkeeping placeholders: `get_helper_script_execution`,
+  `cancel_helper_script_execution`
+
+Validation:
+
+- Unit/contract tests:
+  `python -m pytest tests/proxmox/test_media_tools.py tests/proxmox/test_helper_scripts.py tests/proxmox/test_setup_workflows.py`
+- Tool catalog contract:
+  `python -m pytest tests/tools/test_tool_coverage_contract.py`
+
+Safety notes:
+
+- Helper scripts are resolved from the allowlisted upstream community repo with
+  the project owner's fork as fallback.
+- Execution never uses a moving branch ref directly; script content is hashed
+  and staged under `/var/lib/proxmox-mcp/helpers/<sha>/`.
+- Default SSH policy still denies `bash`; operators must explicitly allow the
+  helper runner and approve high/critical helper execution.
 
 ## Observability Runtime Wiring
 

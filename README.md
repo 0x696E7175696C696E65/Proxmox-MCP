@@ -21,6 +21,8 @@ If you are evaluating the project as an end user, treat it as a controlled autom
 ## What This Project Enables
 
 - AI-native administration for Proxmox clusters, nodes, VMs, LXC containers, storage, networking, firewalls, backups, HA, Ceph, users, and permissions.
+- ISO, LXC template, and setup workflow helpers for common VM/LXC provisioning paths.
+- Community Proxmox helper-script discovery, preview, staging, and guarded execution using the upstream `community-scripts/ProxmoxVE` repository with the project owner's fork as a fallback source.
 - Controlled SSH operations for diagnostics, file transfer, interactive sessions, and shell workflows that are not fully covered by the Proxmox API.
 - Configurable dangerous-operation support with dry runs, risk scoring, impact analysis, approvals, target revalidation, and audit evidence.
 - Enterprise observability through structured logs, audit events, Prometheus metrics, OpenTelemetry traces, and SIEM-ready event streams.
@@ -41,6 +43,8 @@ Implemented:
 - Secret-provider abstraction with development, Vault, Bitwarden, 1Password, AWS Secrets Manager, and Azure Key Vault adapters.
 - Proxmox cluster credential resolution, in-memory Proxmox API test client, and token/password-auth Proxmox lab HTTP adapter.
 - Read-only Proxmox tools, safe mutations, dangerous operations, promoted domain-pack tools, and SSH tools.
+- Native media/template tools for ISO listing, HTTPS ISO download, VM ISO attachment, LXC template listing/download, and VM/LXC setup workflow previews.
+- Helper-script catalog, preview, staging, and execution tools with source allowlisting, commit pinning, SHA-256 hashing, fallback-source logging, and approval-gated SSH execution.
 - Controlled SSH execution, command policy, session tracking, SFTP/SCP operations, and output redaction.
 - Runtime observability wiring for Prometheus-style metrics, structured JSON logs, trace context, audit correlation, Alertmanager-backed recent alerts, Prometheus-backed resource trends, and SIEM/Loki payloads.
 - Durable shared-state foundations for approvals, idempotency, SSH sessions, SSH recordings, Proxmox task state, and SIEM retry/dead-letter delivery.
@@ -55,6 +59,7 @@ Evidence-backed status:
 - **Preview validated:** core MCP control plane, auth/RBAC/policy/approval/audit flows, read-only Proxmox discovery, safe mutations, dangerous-operation guardrails, controlled SSH, durable state, release evidence validation, and the current Proxmox VE 9.1.1 single-node storage lab profile.
 - **Lab qualified in the current disposable profile:** `pve-9-storage-local-local-lvm` on Proxmox VE 9.1.1 recorded `20 passed, 8 skipped` with disposable VM lifecycle, registered VM update, backup create/list, restore-precondition dry-run, bounded storage benchmark preview, and read-only node update preflight evidence.
 - **Profile-gated:** LXC lifecycle with templates, Ceph, HA, multi-node, PBS availability, backup verification, live storage expansion, and live node update orchestration.
+- **Newly guarded:** helper-script execution is available as a first-class tool path, but broad production use requires operator policy, explicit SSH command allowance for the helper runner, and disposable lab evidence for the scripts being used.
 - **Operator-qualified:** production deployment depends on environment-specific external auth, enterprise secret backend, TLS material, PostgreSQL TLS, Redis TLS, least-privilege Proxmox credentials, and release evidence for the enabled topology.
 
 Validation at merge time:
@@ -375,7 +380,7 @@ The detailed implementation roadmap lives in [`docs/roadmap.md`](docs/roadmap.md
 - [`docs/architecture.md`](docs/architecture.md): system architecture, module boundaries, and runtime flows.
 - [`docs/security-model.md`](docs/security-model.md): authentication, authorization, policy, approvals, and dangerous operations.
 - [`docs/threat-model.md`](docs/threat-model.md): assets, trust boundaries, abuse cases, and mitigations.
-- [`docs/tool-specification.md`](docs/tool-specification.md): 189-tool MCP catalog.
+- [`docs/tool-specification.md`](docs/tool-specification.md): 215-tool MCP catalog.
 - [`docs/mcp-schema.md`](docs/mcp-schema.md): request, response, error, dry-run, impact, and audit schemas.
 - [`docs/database-schema.md`](docs/database-schema.md): persistence model for sessions, policy, audit, approvals, credentials, resources, and SSH recordings.
 - [`docs/testing-strategy.md`](docs/testing-strategy.md): unit, integration, security, lab, SSH sandbox, chaos, and acceptance testing.

@@ -8,6 +8,9 @@
 - Store secret references, not raw secrets.
 - Produce audit evidence before and after every execution attempt.
 - Separate human identity, AI agent identity, Proxmox credential identity, and runtime session identity.
+- Treat external helper scripts as supply-chain artifacts that require source
+  allowlisting, commit pinning, content hashing, approval, and audit evidence
+  before execution.
 
 ## CI-Enforced Security Invariants
 
@@ -19,6 +22,9 @@ The security regression harness under `tests/security/` runs without live Proxmo
 - Approval tokens are scoped to actor, tenant, target, payload, operation, and risk, and are consumed once.
 - Secret-like values and TLS private key paths are sanitized before MCP error responses and audit metadata are recorded.
 - MCP, Proxmox, PostgreSQL, and Redis transport settings reject plaintext configurations.
+- Helper-script tools reject arbitrary URLs and path traversal, hash fetched
+  script content, and require SSH policy approval before a shell runner can
+  execute staged helper artifacts.
 
 These tests are not a substitute for lab validation, but they prevent regressions in the security control plane before any tool reaches live infrastructure.
 
@@ -127,6 +133,15 @@ Permissions are structured as `domain.resource.action`:
 - `user.permission.write`
 - `ssh.command.execute`
 - `ssh.file.upload`
+
+Helper-script permissions are separate from generic SSH permissions:
+
+- `helper.catalog.read`
+- `helper.script.preview`
+- `helper.script.stage`
+- `helper.script.execute`
+- `helper.script.execution.read`
+- `helper.script.execution.cancel`
 
 Resource scopes bind permissions to targets:
 

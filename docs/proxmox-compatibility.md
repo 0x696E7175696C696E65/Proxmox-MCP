@@ -18,6 +18,8 @@ This matrix records evidence, not marketing claims. A Proxmox version or topolog
 - Backup verification requires an exact PVE or PBS verification contract before `verify_backup` can be promoted.
 - Storage expansion is backend-specific; ZFS, LVM, LVM-thin, directory, NFS/SMB, and Ceph must be promoted independently.
 - Node update orchestration remains guarded until update, reboot, task polling, and rollback behavior are proven in a disposable lab.
+- Helper-script execution requires per-script or per-category disposable lab
+  evidence because scripts are external supply-chain artifacts.
 - Username/password ticket-auth labs should use realm-qualified usernames such as `root@pam`; plain usernames may fail authentication on Proxmox.
 
 ## Lab Profiles
@@ -31,6 +33,7 @@ This matrix records evidence, not marketing claims. A Proxmox version or topolog
 | `pve-9-ha-enabled` | `tests/lab/test_ha_profile_smoke.py` reads HA cluster status/resources | HA migration/failover until disposable tests exist | HA read-only preview |
 | `pve-9-multi-node` | `tests/lab/test_multi_node_profile_smoke.py` validates node count and cluster status | Destructive migration unless isolated | Multi-node preview |
 | `pve-9-pbs-enabled` | `tests/lab/test_pbs_profile_smoke.py` validates a configured PBS storage backend; `tests/lab/test_backup_verify_smoke.py` records verification prerequisites | Live backup verification before artifact evidence | Backup verification candidate |
+| `pve-9-media-helper` | ISO download/attach, LXC template download, helper catalog sync, helper fallback simulation, helper staging, and one approved disposable helper execution | Broad helper-script claims before per-category evidence | Media/template/helper preview |
 
 Profiles not listed as preview or qualified are `Not yet claimed`. A profile can
 move from preview to qualified only when required tests pass without required

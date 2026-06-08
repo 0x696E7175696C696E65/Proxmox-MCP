@@ -68,3 +68,22 @@ Restore paths must expose dry-run restore-preview evidence before promotion. A r
 
 Broader backend claims still require profile-specific lab evidence. `expand_storage`
 remains guarded until each backend has resize, rollback, and cleanup proof.
+
+## Helper Script Supply-Chain Contract
+
+Helper scripts are external code and must not be treated like native Proxmox API
+operations. A helper-script tool can be promoted only when it preserves these
+controls:
+
+- Source repositories are allowlisted. The primary source is
+  `https://github.com/community-scripts/ProxmoxVE`; the fallback source is
+  `https://github.com/0x696E7175696C696E65/ProxmoxVE`.
+- Moving refs are resolved to an immutable commit before content is fetched.
+- The exact script content is hashed with SHA-256 before staging or execution.
+- Tool parameters reference catalog `script_id` values, not arbitrary URLs.
+- Staged files are written under `/var/lib/proxmox-mcp/helpers/<sha>/`.
+- Execution is approval-gated and must pass the configured SSH command policy.
+- Audit evidence records source repo, source commit, blob SHA, content hash,
+  fallback usage, target node, and staged path.
+- Live support claims require disposable lab evidence for the specific script
+  category or workflow being promoted.

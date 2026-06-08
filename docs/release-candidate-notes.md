@@ -16,6 +16,11 @@ without relying on marketing language.
 
 - Registered MCP execution path with auth session injection, RBAC, policy, approvals, auditing, and risk metadata.
 - Proxmox read, VM/LXC mutation, backup create/list, storage discovery, SSH session, and console contracts that have passing unit and preview lab tests.
+- Native ISO/LXC template tools and VM/LXC setup workflow previews with unit
+  and contract coverage.
+- Helper-script catalog, preview, staging, and guarded execution paths with
+  source allowlisting, commit pinning, SHA-256 hashing, and fallback-source
+  logging.
 - HTTPS-only configuration validation for MCP transport, Proxmox API, PostgreSQL, Redis, and external observability/secret endpoints.
 
 ## Profile-Gated Capabilities
@@ -36,6 +41,8 @@ without relying on marketing language.
 - `expand_storage` remains guarded for live execution until each backend has disposable lab proof.
 - `apply_node_updates` remains guarded until update preflight, rollback, reboot/reconnect, and failure recovery evidence exist.
 - PBS, Ceph, HA, multi-node, and LXC lifecycle claims remain unqualified in the current single-node lab because their profile prerequisites were skipped or unavailable.
+- Broad helper-script execution claims remain profile-gated until selected
+  script categories have disposable lab evidence.
 
 ## Bounded Live Candidates
 

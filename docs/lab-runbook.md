@@ -85,7 +85,25 @@ The bootstrap path uses the Proxmox API and records the equivalent allowlisted
 `pveam update` / `pveam download` commands. It does not use `curl | bash` or
 unpinned helper scripts.
 
-## 7. Collect Evidence
+## 7. ISO, Media, And Helper Script Gates
+
+Media and helper-script expansion should be validated in this order:
+
+1. List ISO images and LXC templates on disposable storage.
+2. Download an ISO only from an `https://` URL without userinfo.
+3. Attach and detach ISO media on a disposable VM.
+4. Download one LXC template through the Proxmox API.
+5. Sync the helper-script catalog from `community-scripts/ProxmoxVE`; simulate
+   primary failure to confirm fallback to the project owner's fork.
+6. Preview and stage a helper script, confirming SHA-256 and staged path evidence.
+7. Execute only a selected low-risk helper script after explicit approval and
+   SSH policy configuration for the helper runner.
+
+Do not run helper scripts through generic `execute_ssh`. Helper-script execution
+must use `execute_helper_script` or `run_helper_app_install` so source repo,
+commit, hash, fallback usage, approval, and target metadata are audited.
+
+## 8. Collect Evidence
 
 Generate sanitized lab evidence from preflight and JUnit output:
 
@@ -106,7 +124,7 @@ python scripts/collect_release_evidence.py \
 python scripts/validate_release_evidence.py release-evidence
 ```
 
-## 8. Promotion Rules
+## 9. Promotion Rules
 
 - `verify_backup` remains guarded until a backend has actual PVE-local or PBS
   verification proof.
@@ -118,8 +136,10 @@ python scripts/validate_release_evidence.py release-evidence
   cleanup proof exists.
 - `apply_node_updates` remains guarded until update, reboot, reconnect,
   rollback, and failure recovery are proven.
+- Helper-script execution remains profile-gated until the exact script category
+  has source pinning, SHA-256, approval, SSH policy, and disposable lab evidence.
 
-## 9. Cleanup
+## 10. Cleanup
 
 Rerun the targeted smoke tests after interruption; shared resource helpers clean
 up matching `mcp-lab-*` VM/LXC resources. If manual cleanup is required, confirm

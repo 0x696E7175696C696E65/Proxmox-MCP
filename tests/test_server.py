@@ -13,6 +13,8 @@ from proxmox_mcp.proxmox import (
     DOMAIN_COMPLETION_TOOL_SPECS,
     READ_ONLY_TOOL_SPECS,
     SAFE_MUTATION_TOOL_SPECS,
+    register_helper_script_tools,
+    register_media_tools,
 )
 from proxmox_mcp.schemas.envelope import Actor, RequestOptions, Target, ToolRequest, ToolResponse
 from proxmox_mcp.server import app as app_module
@@ -382,11 +384,16 @@ async def test_build_server_registers_health_and_read_only_tools() -> None:
 
     tool_names = [tool.name for tool in tools]
     assert tool_names[0] == "health_check"
+    expected_registry = ToolRegistry()
+    register_media_tools(expected_registry)
+    register_helper_script_tools(expected_registry)
     assert set(tool_names[1:]) == {spec.name for spec in READ_ONLY_TOOL_SPECS} | {
         spec.name for spec in SAFE_MUTATION_TOOL_SPECS
     } | {spec.name for spec in DANGEROUS_TOOL_SPECS} | {
         spec.name for spec in DOMAIN_COMPLETION_TOOL_SPECS
-    } | {spec.name for spec in SSH_TOOL_SPECS}
+    } | {spec.name for spec in SSH_TOOL_SPECS} | {
+        definition.name for definition in expected_registry.definitions()
+    }
 
 
 def test_build_tool_context_accepts_resolved_authenticated_session() -> None:

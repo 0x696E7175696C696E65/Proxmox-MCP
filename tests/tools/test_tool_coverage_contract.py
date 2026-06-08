@@ -6,6 +6,8 @@ from pathlib import Path
 from proxmox_mcp.proxmox import (
     register_dangerous_tools,
     register_domain_completion_tools,
+    register_helper_script_tools,
+    register_media_tools,
     register_read_only_tools,
     register_safe_mutation_tools,
 )
@@ -21,6 +23,8 @@ def test_registered_tool_metadata_matches_tool_specification() -> None:
     register_safe_mutation_tools(registry)
     register_dangerous_tools(registry)
     register_domain_completion_tools(registry)
+    register_media_tools(registry)
+    register_helper_script_tools(registry)
     register_ssh_tools(registry)
 
     definitions = {definition.name: definition for definition in registry.definitions()}

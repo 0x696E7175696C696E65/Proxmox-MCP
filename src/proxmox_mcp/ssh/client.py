@@ -234,6 +234,13 @@ class AsyncSshClient:
         self._hosts = dict(hosts)
 
     async def execute(self, target: SshTarget, command: SshCommand) -> SshCommandResult:
+        if command.working_directory is not None:
+            raise SshClientError(
+                "SSH working_directory is not supported by this adapter",
+                error_code="SSH_COMMAND_FAILED",
+                retryable=False,
+            )
+
         connection_config = self._config_for(target)
         asyncssh = cast(_AsyncSshModule, import_module("asyncssh"))
         try:
@@ -249,7 +256,6 @@ class AsyncSshClient:
                     command.command,
                     check=False,
                     env=command.environment,
-                    cwd=command.working_directory,
                 )
         except TimeoutError as exc:
             raise SshClientError(

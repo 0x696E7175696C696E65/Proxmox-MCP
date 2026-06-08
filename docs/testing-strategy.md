@@ -147,6 +147,20 @@ Storage benchmark promotion evidence uses bounded `fio` execution with
 storage expansion remains guarded until backend-specific resize and rollback
 evidence exists.
 
+Media and helper-script tests cover ISO/template workflows and external script
+supply-chain controls:
+
+```shell
+python -m pytest \
+  tests/proxmox/test_media_tools.py \
+  tests/proxmox/test_helper_scripts.py \
+  tests/proxmox/test_setup_workflows.py
+```
+
+Live helper-script claims require a disposable lab run that records source repo,
+source commit, blob SHA, SHA-256, fallback usage, staged path, approval evidence,
+and SSH command policy configuration.
+
 Generate sanitized lab evidence from preflight and JUnit output:
 
 ```shell
