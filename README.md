@@ -44,7 +44,7 @@ Implemented:
 - Proxmox cluster credential resolution, in-memory Proxmox API test client, and token/password-auth Proxmox lab HTTP adapter.
 - Read-only Proxmox tools, safe mutations, dangerous operations, promoted domain-pack tools, and SSH tools.
 - Native media/template tools for ISO listing, HTTPS ISO download, VM ISO attachment, LXC template listing/download, and VM/LXC setup workflow previews.
-- Helper-script catalog, preview, staging, and execution tools with source allowlisting, commit pinning, SHA-256 hashing, fallback-source logging, and approval-gated SSH execution.
+- Helper-script catalog, preview, staging, and execution tools with source allowlisting, commit pinning, SHA-256 hashing, pinned shared-helper preparation, fallback-source logging, and approval-gated SSH execution.
 - Controlled SSH execution, command policy, session tracking, SFTP/SCP operations, and output redaction.
 - Runtime observability wiring for Prometheus-style metrics, structured JSON logs, trace context, audit correlation, Alertmanager-backed recent alerts, Prometheus-backed resource trends, and SIEM/Loki payloads.
 - Durable shared-state foundations for approvals, idempotency, SSH sessions, SSH recordings, Proxmox task state, and SIEM retry/dead-letter delivery.
@@ -58,8 +58,9 @@ Evidence-backed status:
 
 - **Preview validated:** core MCP control plane, auth/RBAC/policy/approval/audit flows, read-only Proxmox discovery, safe mutations, dangerous-operation guardrails, controlled SSH, durable state, release evidence validation, and the current Proxmox VE 9.1.1 single-node storage lab profile.
 - **Lab qualified in the current disposable profile:** `pve-9-storage-local-local-lvm` on Proxmox VE 9.1.1 recorded `20 passed, 8 skipped` with disposable VM lifecycle, registered VM update, backup create/list, restore-precondition dry-run, bounded storage benchmark preview, and read-only node update preflight evidence.
-- **Profile-gated:** LXC lifecycle with templates, Ceph, HA, multi-node, PBS availability, backup verification, live storage expansion, and live node update orchestration.
-- **Newly guarded:** helper-script execution is available as a first-class tool path, but broad production use requires operator policy, explicit SSH command allowance for the helper runner, and disposable lab evidence for the scripts being used.
+- **Helper-script smoke validated:** the guarded helper path successfully installed `ct/alpine.sh` from pinned `community-scripts/ProxmoxVE` commit `373b138fe0ee3b61fe1b0468bef7bc0e43b6bd5d` into disposable LXC `9101`, producing a running Alpine `3.23.4` container with SHA-256 pinned staged artifact evidence.
+- **Profile-gated:** reusable LXC-template lifecycle promotion, Ceph, HA, multi-node, PBS availability, backup verification, live storage expansion, and live node update orchestration.
+- **Guarded with live smoke evidence:** helper-script execution is available as a first-class tool path, but broad production use requires operator policy, explicit SSH command allowance for the helper runner, and disposable lab evidence for each script or script category being used.
 - **Operator-qualified:** production deployment depends on environment-specific external auth, enterprise secret backend, TLS material, PostgreSQL TLS, Redis TLS, least-privilege Proxmox credentials, and release evidence for the enabled topology.
 
 Validation at merge time:
@@ -70,9 +71,9 @@ Validation at merge time:
 - `python -m pytest`
 - Distribution readiness workflow: builds and validates Python sdist/wheel artifacts, smoke-installs the wheel, audits dependencies, and builds the Docker image.
 - Dedicated security invariant suite covering fail-closed guard behavior, approval replay protection, audit evidence, redaction boundaries, and encrypted transport enforcement.
-- Current local and lab verification should be rerun before each release candidate; the latest run reported `397 passed, 9 skipped`, including the gated disposable lab profile that was enabled for qualification.
+- Current local verification should be rerun before each release candidate; the latest full local run reported `398 passed, 29 skipped`, with live Proxmox lab gates intentionally skipped unless explicitly enabled.
 - Release evidence validation now schema-checks compatibility profiles, release summary fields, lab artifacts, artifact hashes, required profile tests, tool promotion evidence, and credential-shaped key rejection.
-- Live disposable Proxmox VE 9.1.1 lab evidence currently covers the `pve-9-storage-local-local-lvm` preview profile. Ceph, HA, multi-node, PBS verification, LXC lifecycle without a template, live storage expansion, and live node updates remain unqualified in this lab.
+- Live disposable Proxmox VE 9.1.1 lab evidence currently covers the `pve-9-storage-local-local-lvm` preview profile and one guarded helper-script Alpine LXC install. Ceph, HA, multi-node, PBS verification, reusable native LXC-template promotion, live storage expansion, and live node updates remain unqualified in this lab.
 - MCP communication audit: local runtime test negotiated `TLSv1.3` with `TLS_AES_256_GCM_SHA384`, FastMCP client access succeeded over HTTPS, and plaintext HTTP to the MCP port returned no response bytes.
 - Network transport policy: MCP ingress is HTTPS-only, Proxmox API endpoints require `https://`, PostgreSQL must request TLS, Redis must use `rediss://`, and SSH remains encrypted by protocol.
 
