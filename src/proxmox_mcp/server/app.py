@@ -37,6 +37,7 @@ from proxmox_mcp.schemas.envelope import (
     ToolResponse,
 )
 from proxmox_mcp.security import ApprovalConsumer, SecurityPlaneGuard
+from proxmox_mcp.server.auth_middleware import attach_service_token_middleware
 from proxmox_mcp.server.health import (
     DependencyChecker,
     ProductionStateDependencyChecker,
@@ -44,6 +45,7 @@ from proxmox_mcp.server.health import (
     build_readiness_payload,
     default_dependency_checkers,
 )
+from proxmox_mcp.server.runtime import RuntimeBundle, build_runtime
 from proxmox_mcp.server.tls import resolve_tls_config
 from proxmox_mcp.ssh import (
     InMemorySshRecordingStore,
@@ -304,10 +306,38 @@ def _register_http_routes(
     _ = live, ready, metrics
 
 
-def run(settings: Settings | None = None) -> None:
+def build_server_from_runtime(bundle: RuntimeBundle) -> FastMCP:
+    return build_server(
+        settings=bundle.settings,
+        audit_writer=bundle.audit_writer,
+        audit_repository=bundle.audit_repository,
+        approval_store=bundle.approval_store,
+        idempotency_store=bundle.idempotency_store,
+        proxmox_task_store=bundle.proxmox_task_store,
+        ssh_session_store=bundle.ssh_session_store,
+        ssh_recording_store=bundle.ssh_recording_store,
+        proxmox_client=bundle.proxmox_client,
+        ssh_client=bundle.ssh_client,
+        authenticated_session_resolver=bundle.authenticated_session_resolver,
+        dependency_checkers=bundle.dependency_checkers,
+    )
+
+
+def run(settings: Settings | None = None, *, mode: str | None = None) -> None:
     settings = Settings() if settings is None else settings
+    effective_mode = mode
+    if effective_mode is None:
+        effective_mode = "homelab" if settings.durable_state_enabled else "dev"
+
+    if effective_mode == "homelab":
+        bundle = build_runtime(settings)
+        app = build_server_from_runtime(bundle)
+    else:
+        app = build_server(settings)
+
+    attach_service_token_middleware(app, settings=settings)
     tls_config = resolve_tls_config(settings.tls)
-    build_server(settings).run(
+    app.run(
         transport="http",
         host=settings.server_host,
         port=settings.server_port,

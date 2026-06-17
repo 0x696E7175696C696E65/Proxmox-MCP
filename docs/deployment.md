@@ -85,6 +85,19 @@ through orchestrator secrets. AWS Secrets Manager requires an AWS region and
 should use workload identity or instance role credentials rather than static
 long-lived keys.
 
+## Homelab Assembly
+
+Homelab deployments use `build_runtime()` to wire durable PostgreSQL stores,
+file-backed development secrets, service-token HTTP middleware, and a configured
+Proxmox cluster client. See [`docs/quickstart-homelab.md`](quickstart-homelab.md).
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.homelab.yml up --build
+proxmox-mcp serve --mode homelab
+proxmox-mcp validate-config
+proxmox-mcp doctor
+```
+
 ## Docker Deployment
 
 The Docker image should:

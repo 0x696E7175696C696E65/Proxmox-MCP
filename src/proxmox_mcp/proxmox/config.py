@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 from proxmox_mcp.secrets import CredentialRef, SecretManager, SecretUnavailableError
 
-ClusterEnvironment = Literal["development", "test", "staging", "production"]
+ClusterEnvironment = Literal["development", "test", "staging", "homelab", "production"]
 ClusterStatus = Literal["active", "disabled"]
 ProxmoxAuthType = Literal["api_token", "username_password"]
 

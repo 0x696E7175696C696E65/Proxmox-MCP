@@ -16,6 +16,13 @@ def _steps(workflow: dict[str, Any], job_name: str) -> list[dict[str, Any]]:
     return cast(list[dict[str, Any]], job["steps"])
 
 
+def test_ci_workflow_uses_least_privilege_permissions() -> None:
+    workflow = _workflow(".github/workflows/ci.yml")
+    permissions = cast(dict[str, str], workflow["permissions"])
+
+    assert permissions == {"contents": "read"}
+
+
 def test_ci_runs_secret_scan_and_manifest_contracts() -> None:
     workflow = _workflow(".github/workflows/ci.yml")
     runtime_steps = _steps(workflow, "runtime-checks")

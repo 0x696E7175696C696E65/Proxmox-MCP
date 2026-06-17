@@ -7,6 +7,9 @@ on:
       - main
       - master
 
+permissions:
+  contents: read
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -64,10 +67,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Manifest and release gate validation
-        run: python -m pytest tests/deploy/test_kubernetes_manifest.py tests/release/test_workflow_contracts.py -q
+        run: python -m pytest tests/deploy/test_kubernetes_manifest.py tests/release/test_workflow_contracts.py tests/release/test_migration_gate.py -q
 
       - name: Test
         run: python -m pytest
+
+      - name: Emit CI success summary
+        if: success()
+        run: python scripts/emit_ci_summary.py --output release-evidence/ci-success.json --workflow ci --status success
+
+      - name: Emit migration validation summary
+        if: success()
+        run: python scripts/emit_ci_summary.py --output release-evidence/migration-validation.json --workflow ci --status success --detail gate=sqlite
 
       - name: Security scan
         run: pip-audit
@@ -75,7 +86,7 @@ jobs:
       - name: Build Docker image
         run: |
           if [ -f Dockerfile ]; then
-            docker build -t proxmox-mcp:ci .
+            docker build -t enterprise-proxmox-mcp:ci .
           else
             echo "Skipping Docker build; Dockerfile not found."
           fi

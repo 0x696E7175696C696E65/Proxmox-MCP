@@ -1,0 +1,34 @@
+services:
+  proxmox-mcp:
+    environment:
+      PROXMOX_MCP_ENVIRONMENT: homelab
+      PROXMOX_MCP_AUTH_MODE: service_token
+      PROXMOX_MCP_EXTERNAL_AUTH_ENABLED: "true"
+      PROXMOX_MCP_DURABLE_STATE_ENABLED: "true"
+      PROXMOX_MCP_CREDENTIAL_PROVIDER: development
+      PROXMOX_MCP_SECRETS_FILE: /run/proxmox-mcp/secrets/secrets.json
+      PROXMOX_MCP_SERVICE_TOKEN: ${PROXMOX_MCP_SERVICE_TOKEN:?set a service token}
+      PROXMOX_MCP_DEFAULT_ACTOR__USER_ID: ${PROXMOX_MCP_DEFAULT_ACTOR__USER_ID:-operator}
+      PROXMOX_MCP_DEFAULT_ACTOR__AGENT_ID: ${PROXMOX_MCP_DEFAULT_ACTOR__AGENT_ID:-homelab-agent}
+      PROXMOX_MCP_CLUSTER__CLUSTER_ID: ${PROXMOX_MCP_CLUSTER__CLUSTER_ID:-homelab}
+      PROXMOX_MCP_CLUSTER__NAME: ${PROXMOX_MCP_CLUSTER__NAME:-Homelab Proxmox}
+      PROXMOX_MCP_CLUSTER__API_ENDPOINT: ${PROXMOX_MCP_CLUSTER__API_ENDPOINT:?set Proxmox API endpoint}
+      PROXMOX_MCP_CLUSTER__TLS_VERIFY: ${PROXMOX_MCP_CLUSTER__TLS_VERIFY:-true}
+      PROXMOX_MCP_CLUSTER__ENVIRONMENT: homelab
+      PROXMOX_MCP_CLUSTER__CREDENTIAL_REF__PROVIDER: development
+      PROXMOX_MCP_CLUSTER__CREDENTIAL_REF__PATH: ${PROXMOX_MCP_CLUSTER__CREDENTIAL_REF__PATH:-clusters/homelab/proxmox-api}
+      PROXMOX_MCP_CLUSTER__CREDENTIAL_REF__PURPOSE: proxmox_api
+    command: ["proxmox-mcp", "serve", "--mode", "homelab"]
+    volumes:
+      - ./secrets.local.json:/run/proxmox-mcp/secrets/secrets.json:ro
+
+  grafana:
+    profiles: ["observability"]
+    image: grafana/grafana:11.5.2
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - ./deploy/grafana/proxmox-mcp-dashboard.json:/etc/grafana/provisioning/dashboards/proxmox-mcp-dashboard.json:ro

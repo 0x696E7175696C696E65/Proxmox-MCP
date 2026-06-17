@@ -34,13 +34,15 @@ These tests are not a substitute for lab validation, but they prevent regression
 
 The MCP server authenticates callers before exposing tool execution. Implemented caller identity modes:
 
-- Static service token for single-tenant deployments.
+- Static service token for single-tenant and homelab deployments (`Authorization: Bearer` middleware).
+- OAuth or OIDC bearer tokens validated against RS256/JWKS material.
+- mTLS client-certificate identity mapping.
+- Signed workload identity tokens with audience, expiry, and replay checks.
 
-Planned enterprise caller identity integrations:
-
-- OAuth or OIDC bearer tokens.
-- mTLS for trusted internal automation networks.
-- Signed workload identity tokens for agent platforms.
+Homelab deployments should use `PROXMOX_MCP_AUTH_MODE=service_token` with
+`PROXMOX_MCP_EXTERNAL_AUTH_ENABLED=true`. Enterprise gateways may terminate OIDC
+or mTLS upstream and inject authenticated sessions through the server resolver
+hook.
 
 ### Proxmox Authentication
 

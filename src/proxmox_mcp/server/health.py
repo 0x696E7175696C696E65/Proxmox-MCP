@@ -311,6 +311,62 @@ class MigrationDependencyChecker:
         )
 
 
+class AlembicMigrationDependencyChecker:
+    async def check(self, settings: Settings) -> DependencyCheck:
+        try:
+            current_revision, head_revision = await asyncio.to_thread(
+                _read_alembic_revisions,
+                settings.database_url.get_secret_value(),
+            )
+        except Exception as exc:  # pragma: no cover - driver-specific failures
+            return DependencyCheck(
+                name="migrations",
+                required=True,
+                status="unavailable",
+                detail=exc.__class__.__name__,
+            )
+
+        if current_revision != head_revision:
+            return DependencyCheck(
+                name="migrations",
+                required=True,
+                status="unavailable",
+                detail=f"database at {current_revision!r}, head is {head_revision!r}",
+            )
+
+        return DependencyCheck(
+            name="migrations",
+            required=True,
+            status="ok",
+            detail="database schema matches alembic head",
+        )
+
+
+def _read_alembic_revisions(database_url: str) -> tuple[str | None, str]:
+    from alembic.config import Config
+    from alembic.runtime.migration import MigrationContext
+    from alembic.script import ScriptDirectory
+    from sqlalchemy import create_engine
+
+    config = Config("alembic.ini")
+    config.set_main_option("sqlalchemy.url", database_url)
+    script = ScriptDirectory.from_config(config)
+    head_revision = script.get_current_head()
+    if head_revision is None:
+        raise RuntimeError("Alembic head revision is not configured")
+
+    sync_url = database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    engine = create_engine(sync_url)
+    try:
+        with engine.connect() as connection:
+            context = MigrationContext.configure(connection)
+            current_revision = context.get_current_revision()
+    finally:
+        engine.dispose()
+
+    return current_revision, head_revision
+
+
 @dataclass(frozen=True, slots=True)
 class ConfiguredUrlDependencyChecker:
     name: str

@@ -18,6 +18,7 @@ dist/
 .proxmox-mcp-secrets.*
 lab-secrets/
 secrets.local/
+secrets.local.json
 
 # Local TLS certificates and private key material.
 .certs/

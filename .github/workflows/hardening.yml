@@ -11,6 +11,10 @@ on:
         description: Run lab-only SSH, chaos, and performance gates
         required: false
         default: "false"
+      run_compose_smoke:
+        description: Run homelab Docker Compose smoke test
+        required: false
+        default: "false"
   schedule:
     - cron: "17 3 * * *"
 
@@ -164,3 +168,39 @@ jobs:
         run: python -m pip install --upgrade pip '.[dev]'
       - name: Run non-lab chaos and load gates
         run: python -m pytest tests/chaos tests/performance -q
+      - name: Emit hardening summary
+        if: success()
+        run: python scripts/emit_ci_summary.py --output release-evidence/hardening-summary.json --workflow hardening --status success
+
+  compose-smoke:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.run_compose_smoke == 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare homelab env
+        run: |
+          cp .env.example .env
+          cp secrets.local.json.example secrets.local.json
+          openssl req -x509 -newkey rsa:2048 -sha256 -days 1 -nodes \
+            -keyout certs/local/tls.key -out certs/local/tls.crt \
+            -subj "/CN=localhost"
+          mkdir -p certs/local/postgres certs/local/redis
+          cp certs/local/tls.crt certs/local/postgres/tls.crt
+          cp certs/local/tls.key certs/local/postgres/tls.key
+          cp certs/local/tls.crt certs/local/redis/tls.crt
+          cp certs/local/tls.key certs/local/redis/tls.key
+          cp certs/local/tls.crt certs/local/redis/ca.crt
+          {
+            echo "PROXMOX_MCP_SERVICE_TOKEN=ci-smoke-token"
+            echo "PROXMOX_MCP_POSTGRES_PASSWORD=postgres"
+            echo "PROXMOX_MCP_DATABASE_URL=postgresql+asyncpg://proxmox_mcp:postgres@postgres:5432/proxmox_mcp?ssl=require"
+            echo "PROXMOX_MCP_CLUSTER__API_ENDPOINT=https://127.0.0.1:8006"
+          } >> .env
+      - name: Compose smoke test
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.homelab.yml config
+          python scripts/emit_ci_summary.py --output release-evidence/compose-smoke.json --workflow hardening --status success --detail mode=config-only
+      - uses: actions/upload-artifact@v4
+        with:
+          name: compose-smoke
+          path: release-evidence/compose-smoke.json

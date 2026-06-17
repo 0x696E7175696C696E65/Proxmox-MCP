@@ -14,6 +14,11 @@ from proxmox_mcp.config import (
 REDACTED = "**********"
 
 
+def test_service_token_auth_requires_token_configuration() -> None:
+    with pytest.raises(ValueError, match="SERVICE_TOKEN"):
+        Settings(auth_mode="service_token")
+
+
 def test_settings_have_safe_defaults() -> None:
     settings = Settings()
 
