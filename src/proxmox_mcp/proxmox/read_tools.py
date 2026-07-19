@@ -161,11 +161,27 @@ READ_ONLY_TOOL_SPECS: tuple[ReadOnlyToolSpec, ...] = (
 )
 
 
+def _read_only_description(spec: ReadOnlyToolSpec) -> str:
+    path_fields = _template_fields(spec.endpoint_template)
+    identity = (
+        f" Provide {', '.join(path_fields)} via target (e.g. target.node, target.vmid, "
+        "target.storage_id) or parameters."
+        if path_fields
+        else ""
+    )
+    return (
+        f"Read-only {spec.category} discovery ({spec.permission}). Calls Proxmox API "
+        f"GET {spec.endpoint_template} and returns the raw Proxmox payload under "
+        f"result.data.{identity} Never mutates state."
+    )
+
+
 def register_read_only_tools(registry: ToolRegistry) -> None:
     for spec in READ_ONLY_TOOL_SPECS:
         registry.register(
             ToolDefinition(
                 name=spec.name,
+                description=_read_only_description(spec),
                 category=spec.category,
                 permission=spec.permission,
                 risk="low",

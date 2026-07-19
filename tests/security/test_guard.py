@@ -87,6 +87,7 @@ def make_session(
 def make_delete_definition() -> ToolDefinition:
     return ToolDefinition(
         name="delete_vm",
+        description="Delete a VM (test definition).",
         category="vm",
         permission="vm.delete",
         risk="high",

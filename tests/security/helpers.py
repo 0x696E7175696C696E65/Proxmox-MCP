@@ -107,6 +107,7 @@ def make_context(
 def make_delete_definition(handler: Handler) -> ToolDefinition:
     return ToolDefinition(
         name="delete_vm",
+        description="Delete a VM (test definition).",
         category="vm",
         permission="vm.delete",
         risk="high",

@@ -39,6 +39,11 @@ async def health_check_handler(
 
 HEALTH_CHECK_DEFINITION = ToolDefinition(
     name="health_check",
+    description=(
+        "Internal liveness probe. Returns the server status, service name, "
+        "environment, and configured port. Takes no parameters and never touches "
+        "Proxmox; safe to call at any time."
+    ),
     category="internal",
     permission="internal.health.read",
     risk="low",

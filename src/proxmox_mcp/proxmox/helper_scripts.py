@@ -230,6 +230,11 @@ def register_helper_script_tools(
     registry.register(
         ToolDefinition(
             name="sync_helper_script_catalog",
+            description=(
+                "Fetch/refresh the community-scripts helper catalog from the pinned upstream repo "
+                "(with the maintainer fork as fallback). Read-only. Returns catalog metadata and "
+                "the resolved commit."
+            ),
             category="helpers",
             permission="helper.catalog.read",
             risk="low",
@@ -243,6 +248,10 @@ def register_helper_script_tools(
     registry.register(
         ToolDefinition(
             name="search_helper_scripts",
+            description=(
+                "Read-only: search the helper-script catalog. Requires parameters.query. Returns "
+                "matching scripts with script_id, name, and pinned sha256."
+            ),
             category="helpers",
             permission="helper.catalog.read",
             risk="low",
@@ -256,6 +265,10 @@ def register_helper_script_tools(
     registry.register(
         ToolDefinition(
             name="get_helper_script_details",
+            description=(
+                "Read-only: return metadata for one helper script. Requires parameters.script_id "
+                "(e.g. ct/alpine.sh), including its pinned sha256 and detected risk hints."
+            ),
             category="helpers",
             permission="helper.catalog.read",
             risk="low",
@@ -269,6 +282,11 @@ def register_helper_script_tools(
     registry.register(
         ToolDefinition(
             name="preview_helper_script",
+            description=(
+                "Preview the resolved, pinned content of a helper script without executing it. "
+                "Requires parameters.script_id. Dry-run only; returns the script body, sha256, and "
+                "risk hints so you can review before staging/executing."
+            ),
             category="helpers",
             permission="helper.script.preview",
             risk="medium",
@@ -282,6 +300,11 @@ def register_helper_script_tools(
     registry.register(
         ToolDefinition(
             name="stage_helper_script",
+            description=(
+                "High-risk: upload a pinned helper script to the target node over controlled SSH "
+                "without running it. Requires parameters.script_id and parameters.sha256 (content "
+                "pin). Dry-run by default; approval required. Target: SSH host."
+            ),
             category="helpers",
             permission="helper.script.stage",
             risk="high",
@@ -295,6 +318,12 @@ def register_helper_script_tools(
     registry.register(
         ToolDefinition(
             name="execute_helper_script",
+            description=(
+                "CRITICAL: stage and run a pinned community helper script on the target node over "
+                "controlled SSH. Requires parameters.script_id and parameters.sha256 (pins the "
+                "exact reviewed content); optional mode, environment (allowlisted var_* keys), and "
+                "timeout_seconds. Dry-run by default; approval required. Target: SSH host."
+            ),
             category="helpers",
             permission="helper.script.execute",
             risk="critical",
@@ -308,6 +337,11 @@ def register_helper_script_tools(
     registry.register(
         ToolDefinition(
             name="get_helper_script_execution",
+            description=(
+                "Look up a prior helper-script execution by parameters.execution_id. NOTE: "
+                "execution persistence is not yet backed by a durable worker store, so this "
+                "returns a 'not_persisted' status rather than live execution state."
+            ),
             category="helpers",
             permission="helper.script.execution.read",
             risk="low",
@@ -321,6 +355,11 @@ def register_helper_script_tools(
     registry.register(
         ToolDefinition(
             name="cancel_helper_script_execution",
+            description=(
+                "High-risk: request cancellation of a running helper-script execution by "
+                "parameters.execution_id. NOTE: not yet backed by a durable execution store — "
+                "currently reports 'not_persisted' and does not halt a running script."
+            ),
             category="helpers",
             permission="helper.script.execution.cancel",
             risk="high",
@@ -334,6 +373,12 @@ def register_helper_script_tools(
     registry.register(
         ToolDefinition(
             name="run_helper_app_install",
+            description=(
+                "CRITICAL: high-level install of a community helper app on the target node over "
+                "controlled SSH. Provide parameters.query or parameters.script_id; live runs "
+                "require an exact script_id and sha256 pin. Optional mode, environment, "
+                "timeout_seconds. Dry-run by default; approval required. Target: SSH host."
+            ),
             category="helpers",
             permission="helper.script.execute",
             risk="critical",

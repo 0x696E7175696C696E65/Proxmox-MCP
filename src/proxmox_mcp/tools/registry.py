@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from time import perf_counter
 from typing import Literal, Protocol, cast
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 
 from proxmox_mcp.audit.events import AuditEvent, AuditTarget
 from proxmox_mcp.observability import MetricsSink, MetricStatus, TraceSpan, structured_log
@@ -47,13 +48,14 @@ _RISK_SCORES: dict[RiskLevel, int] = {
 
 
 class FastMCPToolRegistrar(Protocol):
-    def tool(self, *, name: str) -> Callable[[FastMCPTool], FastMCPTool]: ...
+    def add_tool(self, tool: object) -> object: ...
 
 
 class ToolDefinition(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     name: str = Field(min_length=1)
+    description: str = Field(min_length=1)
     category: str = Field(min_length=1)
     permission: str = Field(min_length=1)
     risk: RiskLevel
@@ -501,8 +503,52 @@ class ToolRegistry:
         app: FastMCPToolRegistrar,
         context_factory: ContextFactory,
     ) -> None:
+        from fastmcp.tools import FunctionTool
+
         for definition in self.definitions():
-            app.tool(name=definition.name)(self._build_fastmcp_handler(definition, context_factory))
+            app.add_tool(
+                FunctionTool(
+                    name=definition.name,
+                    description=definition.description,
+                    parameters=self.fastmcp_input_schema(definition),
+                    output_schema=None,
+                    fn=self._build_fastmcp_handler(definition, context_factory),
+                )
+            )
+
+    def fastmcp_input_schema(self, definition: ToolDefinition) -> dict[str, object]:
+        """Build the per-tool MCP input schema an agent sees.
+
+        The surface is ``{target, parameters, options}`` where ``parameters`` is the
+        tool's own parameter model, so the schema documents the exact keys a tool
+        needs instead of an opaque request envelope. ``actor`` is derived from the
+        authenticated session and is intentionally not part of the agent surface.
+        """
+        parameters_type: object = (
+            definition.parameters_model
+            if definition.parameters_model is not None
+            else dict[str, object]
+        )
+        target_field: tuple[object, object] = (
+            (Target | None, None) if definition.connector == "internal" else (Target, ...)
+        )
+        input_model = create_model(
+            f"{self._pascal_case(definition.name)}Input",
+            __config__=ConfigDict(extra="forbid"),
+            **cast(
+                dict[str, object],
+                {
+                    "target": target_field,
+                    "parameters": (parameters_type, Field(default_factory=dict)),
+                    "options": (RequestOptions, Field(default_factory=RequestOptions)),
+                },
+            ),
+        )
+        return input_model.model_json_schema()
+
+    @staticmethod
+    def _pascal_case(value: str) -> str:
+        return "".join(part.capitalize() for part in re.split(r"[._]", value) if part)
 
     async def _complete_idempotency(
         self,
@@ -532,10 +578,10 @@ class ToolRegistry:
         context_factory: ContextFactory,
     ) -> FastMCPTool:
         async def registered_tool(
-            request: FastMCPRequest = None,
+            **kwargs: object,
         ) -> ToolResponse | ToolErrorResponse:
             try:
-                tool_request = self._coerce_request(definition, request)
+                tool_request = self._coerce_request(definition, kwargs)
             except Exception as exc:
                 request_id = self._new_validation_request().request_id
                 return ToolErrorResponse(
@@ -552,7 +598,7 @@ class ToolRegistry:
             context = context_factory(tool_request)
             return await self.execute(definition.name, tool_request, context)
 
-        return registered_tool
+        return cast(FastMCPTool, registered_tool)
 
     def _coerce_request(
         self,
@@ -565,7 +611,16 @@ class ToolRegistry:
         if isinstance(request, ToolRequest):
             return request
 
-        normalized_request = dict(request)
+        normalized_request = {
+            key: value for key, value in dict(request).items() if value is not None
+        }
+        if "actor" not in normalized_request:
+            normalized_request["actor"] = {"user_id": "mcp-client", "agent_id": "mcp-client"}
+        if "target" not in normalized_request and definition.connector == "internal":
+            normalized_request["target"] = {
+                "resource_type": definition.category,
+                "resource_id": definition.name,
+            }
         if definition.dry_run:
             options = normalized_request.get("options")
             if options is None:

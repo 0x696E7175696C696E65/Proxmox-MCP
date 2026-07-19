@@ -292,11 +292,32 @@ DANGEROUS_TOOL_SPECS: tuple[DangerousToolSpec, ...] = (
 )
 
 
+def _dangerous_description(spec: DangerousToolSpec) -> str:
+    hazards: list[str] = []
+    if spec.data_loss_possible:
+        hazards.append("possible data loss")
+    if spec.network_disruption_possible:
+        hazards.append("network disruption")
+    if spec.quorum_risk:
+        hazards.append("cluster quorum risk")
+    hazard_text = f" Hazards: {', '.join(hazards)}." if hazards else ""
+    path_params = sorted(spec.path_parameter_fields)
+    param_hint = f" Required parameters: {', '.join(path_params)}." if path_params else ""
+    return (
+        f"DESTRUCTIVE {spec.risk}-risk {spec.category} operation ({spec.permission}). "
+        f"Sends {spec.method} {spec.endpoint_template} to Proxmox. Requires approval and is "
+        f"dry-run by default (returns an impact preview); the target is revalidated before "
+        f"execution. Identify the target via target.node/target.vmid/target.storage_id."
+        f"{param_hint}{hazard_text}"
+    )
+
+
 def register_dangerous_tools(registry: ToolRegistry) -> None:
     for spec in DANGEROUS_TOOL_SPECS:
         registry.register(
             ToolDefinition(
                 name=spec.name,
+                description=_dangerous_description(spec),
                 category=spec.category,
                 permission=spec.permission,
                 risk=spec.risk,

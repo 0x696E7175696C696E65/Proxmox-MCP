@@ -19,6 +19,7 @@ def make_definition(
 ) -> ToolDefinition:
     return ToolDefinition(
         name=name,
+        description=f"{name} (test definition).",
         category="vm",
         permission=permission,
         risk=risk,

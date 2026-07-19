@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
-from typing import cast
+from typing import Any, cast
 
 from proxmox_mcp.audit.writer import InMemoryAuditWriter
 from proxmox_mcp.auth import ActorIdentity, AuthenticatedSession
@@ -49,12 +49,17 @@ class RecordingFastMCP:
     def __init__(self) -> None:
         self.tools: dict[str, RegisteredTool] = {}
 
-    def tool(self, *, name: str) -> Callable[[RegisteredTool], RegisteredTool]:
-        def decorate(handler: RegisteredTool) -> RegisteredTool:
-            self.tools[name] = handler
-            return handler
+    def add_tool(self, tool: object) -> object:
+        tool_obj = cast(Any, tool)
+        name = cast(str, tool_obj.name)
+        fn = cast(Callable[..., Awaitable[object]], tool_obj.fn)
 
-        return decorate
+        async def shim(payload: object = None, **kwargs: object) -> object:
+            data = dict(payload) if isinstance(payload, dict) else kwargs
+            return await fn(**data)
+
+        self.tools[name] = cast(RegisteredTool, shim)
+        return tool
 
 
 def make_session() -> AuthenticatedSession:

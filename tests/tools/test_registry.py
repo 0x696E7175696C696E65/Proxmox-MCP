@@ -1,6 +1,6 @@
 import json
 from collections.abc import Awaitable, Callable
-from typing import cast
+from typing import Any, cast
 
 import pytest
 from pydantic import BaseModel, ConfigDict
@@ -28,15 +28,32 @@ RegisteredTool = Callable[[FastMCPRequest], Awaitable[ToolResponse | ToolErrorRe
 
 
 class RecordingFastMCP:
+    """Test double for FastMCP that records tools registered via ``add_tool``.
+
+    ``self.tools[name]`` is a shim that accepts either a single request-shaped dict
+    (the historical call style) or flat keyword arguments and dispatches to the
+    tool's handler, returning the raw ToolResponse/ToolErrorResponse.
+    """
+
     def __init__(self) -> None:
         self.tools: dict[str, RegisteredTool] = {}
+        self.registered: dict[str, object] = {}
 
-    def tool(self, *, name: str) -> Callable[[RegisteredTool], RegisteredTool]:
-        def decorate(handler: RegisteredTool) -> RegisteredTool:
-            self.tools[name] = handler
-            return handler
+    def add_tool(self, tool: object) -> object:
+        tool_obj = cast(Any, tool)
+        name = cast(str, tool_obj.name)
+        fn = cast(Callable[..., Awaitable[object]], tool_obj.fn)
+        self.registered[name] = tool
 
-        return decorate
+        async def shim(
+            payload: FastMCPRequest = None,
+            **kwargs: object,
+        ) -> ToolResponse | ToolErrorResponse:
+            data = dict(payload) if isinstance(payload, dict) else kwargs
+            return cast(ToolResponse | ToolErrorResponse, await fn(**data))
+
+        self.tools[name] = shim
+        return tool
 
 
 class FakeIdempotencyStore:
@@ -115,6 +132,7 @@ async def echo_handler(
 def make_definition(name: str = "example.echo") -> ToolDefinition:
     return ToolDefinition(
         name=name,
+        description="Echo the provided value (test definition).",
         category="example",
         permission="example.echo",
         risk="low",
@@ -211,6 +229,7 @@ async def test_registry_blocks_duplicate_live_idempotency_key() -> None:
     registry.register(
         ToolDefinition(
             name="example.live",
+            description="Example live tool (test definition).",
             category="example",
             permission="example.live",
             risk="medium",
@@ -281,6 +300,7 @@ async def test_registry_wraps_handler_errors_in_error_envelope() -> None:
     registry.register(
         ToolDefinition(
             name="example.failing",
+            description="Example failing tool (test definition).",
             category="example",
             permission="example.failing",
             risk="medium",
@@ -316,7 +336,7 @@ async def test_registry_registers_definitions_with_fastmcp_style_apps() -> None:
 
     assert list(app.tools) == ["example.echo"]
     assert "unimplemented.tool" not in app.tools
-    response = await app.tools["example.echo"](make_request())
+    response = await app.tools["example.echo"]({"parameters": {"value": "ok"}})
 
     assert isinstance(response, ToolResponse)
     assert response.status == "success"
@@ -351,6 +371,7 @@ async def test_registry_guard_can_require_approval_without_executing_handler() -
     registry.register(
         ToolDefinition(
             name="example.guarded",
+            description="Example guarded tool (test definition).",
             category="example",
             permission="example.guarded",
             risk="critical",
@@ -387,6 +408,7 @@ async def test_registry_requires_guard_for_non_internal_tools() -> None:
     registry.register(
         ToolDefinition(
             name="vm.status",
+            description="Example vm status tool (test definition).",
             category="vm",
             permission="vm.read",
             risk="low",
@@ -427,6 +449,7 @@ async def test_registry_blocks_approval_default_without_guard() -> None:
     registry.register(
         ToolDefinition(
             name="internal.guarded",
+            description="Example internal guarded tool (test definition).",
             category="internal",
             permission="internal.guarded",
             risk="high",
@@ -470,6 +493,7 @@ async def test_registry_validates_parameters_before_guard_evaluation() -> None:
     registry.register(
         ToolDefinition(
             name="example.validated",
+            description="Example validated tool (test definition).",
             category="example",
             permission="example.validated",
             risk="low",

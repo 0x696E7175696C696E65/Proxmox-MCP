@@ -521,12 +521,60 @@ _COMMAND_TEMPLATES: dict[str, str] = {
 }
 
 
+def _domain_description(spec: DomainToolSpec) -> str:
+    path_fields = tuple(
+        sorted(
+            set(_template_fields(spec.endpoint_template or ""))
+            | set(_template_fields(spec.command_template or ""))
+        )
+    )
+    target_fields = [field for field in path_fields if field in _TARGET_BACKED_FIELDS]
+    required = [field for field in path_fields if field not in _TARGET_BACKED_FIELDS]
+    hints = ""
+    if target_fields:
+        hints += f" Identify the target via {', '.join('target.' + f for f in target_fields)}."
+    if required:
+        hints += f" Required parameters: {', '.join(required)}."
+    approval = " Requires approval by default." if _approval_default_for(spec) else ""
+    status = _promotion_status_for(spec)
+    channel = "controlled SSH" if spec.connector == "ssh" else spec.connector
+    if status == "guarded_not_implemented":
+        return (
+            f"GUARDED {spec.risk}-risk {spec.category} operation ({spec.permission}). A dry-run "
+            f"returns a planned-change preview, but live execution returns NOT_IMPLEMENTED until a "
+            f"backend-specific contract and lab evidence exist.{hints}{approval}"
+        )
+    if status == "external_source_required":
+        return (
+            f"{spec.category.capitalize()} telemetry ({spec.permission}). Returns data only when "
+            f"an external source (Prometheus/Alertmanager/audit store) is configured; otherwise "
+            f"returns EXTERNAL_SOURCE_REQUIRED.{hints}"
+        )
+    if not spec.dry_run:
+        return (
+            f"Read-only {spec.category} discovery ({spec.permission}) via {channel}. Returns the "
+            f"result payload under result.result.{hints} Never mutates state."
+        )
+    target_desc = (
+        f"Proxmox API {spec.method} {spec.endpoint_template}"
+        if spec.connector == "proxmox_api"
+        else f"controlled SSH ({spec.command_template or 'guarded command'})"
+        if spec.connector in {"ssh", "hybrid"}
+        else channel
+    )
+    return (
+        f"{spec.risk.capitalize()}-risk {spec.category} operation ({spec.permission}) via "
+        f"{target_desc}. Dry-run by default — set options.dry_run=false to apply.{hints}{approval}"
+    )
+
+
 def register_domain_completion_tools(registry: ToolRegistry) -> None:
     for spec in DOMAIN_COMPLETION_TOOL_SPECS:
         spec = _resolve_execution_spec(spec)
         registry.register(
             ToolDefinition(
                 name=spec.name,
+                description=_domain_description(spec),
                 category=spec.category,
                 permission=spec.permission,
                 risk=spec.risk,

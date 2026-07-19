@@ -70,6 +70,10 @@ def register_media_tools(registry: ToolRegistry) -> None:
     registry.register(
         ToolDefinition(
             name="list_iso_images",
+            description=(
+                "Read-only: list ISO images available on a storage. Provide target.node and "
+                "target.storage_id. Returns the storage content items; never mutates state."
+            ),
             category="storage",
             permission="storage.iso.read",
             risk="low",
@@ -83,6 +87,10 @@ def register_media_tools(registry: ToolRegistry) -> None:
     registry.register(
         ToolDefinition(
             name="list_lxc_templates",
+            description=(
+                "Read-only: list LXC container templates (vztmpl) on a storage. Provide "
+                "target.node and target.storage_id. Never mutates state."
+            ),
             category="lxc",
             permission="lxc.template.read",
             risk="low",
@@ -96,6 +104,12 @@ def register_media_tools(registry: ToolRegistry) -> None:
     registry.register(
         ToolDefinition(
             name="download_iso_from_url",
+            description=(
+                "Medium-risk: instruct the Proxmox node to download an ISO from an https URL into "
+                "a storage. Requires parameters.url and parameters.filename (must end in .iso); "
+                "optional parameters.checksum + parameters.checksum_algorithm (supply both or "
+                "neither). Dry-run by default; approval required. Target: node + storage_id."
+            ),
             category="storage",
             permission="storage.iso.download",
             risk="medium",
@@ -109,6 +123,11 @@ def register_media_tools(registry: ToolRegistry) -> None:
     registry.register(
         ToolDefinition(
             name="download_lxc_template",
+            description=(
+                "Medium-risk: download an LXC template into a storage. Requires "
+                "parameters.template (an aplinfo template name). Dry-run by default; approval "
+                "required. Target: node + storage_id."
+            ),
             category="lxc",
             permission="lxc.template.download",
             risk="medium",
@@ -122,6 +141,11 @@ def register_media_tools(registry: ToolRegistry) -> None:
     registry.register(
         ToolDefinition(
             name="attach_iso_to_vm",
+            description=(
+                "Medium-risk: attach an ISO as a CD-ROM drive to a VM. Requires "
+                "parameters.filename (.iso); optional parameters.device (drive bay, default "
+                "ide2). Dry-run by default. Target: node + vmid + storage_id."
+            ),
             category="vm",
             permission="vm.media.attach",
             risk="medium",
@@ -135,6 +159,11 @@ def register_media_tools(registry: ToolRegistry) -> None:
     registry.register(
         ToolDefinition(
             name="detach_iso_from_vm",
+            description=(
+                "Medium-risk: eject the CD-ROM/ISO from a VM drive bay. Optional "
+                "parameters.device selects the drive (default ide2). Dry-run by default. "
+                "Target: node + vmid."
+            ),
             category="vm",
             permission="vm.media.detach",
             risk="medium",
@@ -148,6 +177,10 @@ def register_media_tools(registry: ToolRegistry) -> None:
     registry.register(
         ToolDefinition(
             name="delete_iso_image",
+            description=(
+                "High-risk: delete an ISO image from a storage. Requires parameters.filename. "
+                "Dry-run by default; approval required. Target: node + storage_id."
+            ),
             category="storage",
             permission="storage.iso.delete",
             risk="high",
@@ -161,6 +194,10 @@ def register_media_tools(registry: ToolRegistry) -> None:
     registry.register(
         ToolDefinition(
             name="delete_lxc_template",
+            description=(
+                "High-risk: delete an LXC template from a storage. Requires parameters.filename. "
+                "Dry-run by default; approval required. Target: node + storage_id."
+            ),
             category="lxc",
             permission="lxc.template.delete",
             risk="high",
@@ -174,6 +211,11 @@ def register_media_tools(registry: ToolRegistry) -> None:
     registry.register(
         ToolDefinition(
             name="prepare_vm_install_media",
+            description=(
+                "High-risk composite: download and stage install media so a VM can boot from it. "
+                "Requires parameters.url and parameters.filename (.iso). Dry-run by default; "
+                "approval required. Target: node + storage_id."
+            ),
             category="vm",
             permission="vm.media.prepare",
             risk="high",
@@ -187,6 +229,12 @@ def register_media_tools(registry: ToolRegistry) -> None:
     registry.register(
         ToolDefinition(
             name="create_vm_from_iso",
+            description=(
+                "High-risk composite: create a VM and attach an ISO to boot the installer. "
+                "Requires parameters.url and parameters.filename (.iso); optional parameters "
+                "vmid, name, cores, memory. Dry-run by default; approval required. "
+                "Target: node + storage_id."
+            ),
             category="vm",
             permission="vm.lifecycle.create",
             risk="high",
@@ -200,6 +248,13 @@ def register_media_tools(registry: ToolRegistry) -> None:
     registry.register(
         ToolDefinition(
             name="create_lxc_from_template",
+            description=(
+                "High-risk composite: create an LXC container from a template. Requires "
+                "parameters.template, parameters.hostname, and parameters.password_secret_ref; "
+                "optional cores, memory, rootfs_size_gb. A dry-run returns a plan; live execution "
+                "is currently guarded (returns NOT_IMPLEMENTED) pending secret-resolution wiring. "
+                "Target: node + storage_id."
+            ),
             category="lxc",
             permission="lxc.lifecycle.create",
             risk="high",

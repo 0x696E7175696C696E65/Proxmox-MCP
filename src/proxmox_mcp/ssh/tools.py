@@ -254,11 +254,61 @@ SSH_TOOL_SPECS: tuple[SshToolSpec, ...] = (
 )
 
 
+_SSH_TOOL_DESCRIPTIONS: dict[str, str] = {
+    "execute_ssh": (
+        "CRITICAL: run a single command on a node over SSH, subject to the command allow/deny "
+        "policy. Requires parameters.command; optional environment (allowlisted vars), "
+        "timeout_seconds (bounded by the policy maximum), and redaction_profile. Dry-run by "
+        "default. Target: SSH host."
+    ),
+    "execute_ssh_interactive": (
+        "CRITICAL: run a command against an existing SSH session (requires "
+        "parameters.session_id), subject to the command policy. Commands execute one-shot — "
+        "shell state (cwd/env) does not persist between calls. Target: SSH host."
+    ),
+    "open_ssh_session": (
+        "High-risk: open a tracked SSH session and reserve a recording. Requires "
+        "parameters.reason (justification). Returns a session_id for interactive execution and "
+        "close. Target: SSH host."
+    ),
+    "close_ssh_session": (
+        "Close a tracked SSH session by parameters.session_id. Target: SSH host."
+    ),
+    "upload_file": (
+        "High-risk: upload file content to an absolute remote path over SFTP. Requires "
+        "parameters.remote_path and parameters.content; optional mode, overwrite. Dry-run by "
+        "default. Target: SSH host."
+    ),
+    "download_file": (
+        "Medium-risk: read a remote file's contents over SFTP. Requires parameters.remote_path; "
+        "optional max_bytes. Returns the file content. Target: SSH host."
+    ),
+    "sftp_list": (
+        "Read-only: list entries under an absolute remote directory over SFTP. Requires "
+        "parameters.remote_path. Target: SSH host."
+    ),
+    "sftp_mkdir": (
+        "Medium-risk: create a remote directory over SFTP. Requires parameters.remote_path; "
+        "optional parents. Dry-run by default. Target: SSH host."
+    ),
+    "sftp_delete": (
+        "CRITICAL: delete an absolute remote path over SFTP. Requires parameters.remote_path. "
+        "Dry-run by default; approval required. Target: SSH host."
+    ),
+    "scp_copy": (
+        "High-risk: copy a file between two absolute remote paths over SCP. Requires "
+        "parameters.source_path and parameters.destination_path; optional overwrite. Dry-run by "
+        "default. Target: SSH host."
+    ),
+}
+
+
 def register_ssh_tools(registry: ToolRegistry) -> None:
     for spec in SSH_TOOL_SPECS:
         registry.register(
             ToolDefinition(
                 name=spec.name,
+                description=_SSH_TOOL_DESCRIPTIONS[spec.name],
                 category=spec.category,
                 permission=spec.permission,
                 risk=spec.risk,

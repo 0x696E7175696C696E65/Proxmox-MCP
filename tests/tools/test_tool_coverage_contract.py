@@ -16,7 +16,7 @@ from proxmox_mcp.tools.internal import register_internal_tools
 from proxmox_mcp.tools.registry import ToolRegistry
 
 
-def test_registered_tool_metadata_matches_tool_specification() -> None:
+def _full_registry() -> ToolRegistry:
     registry = ToolRegistry()
     register_internal_tools(registry)
     register_read_only_tools(registry)
@@ -26,6 +26,11 @@ def test_registered_tool_metadata_matches_tool_specification() -> None:
     register_media_tools(registry)
     register_helper_script_tools(registry)
     register_ssh_tools(registry)
+    return registry
+
+
+def test_registered_tool_metadata_matches_tool_specification() -> None:
+    registry = _full_registry()
 
     definitions = {definition.name: definition for definition in registry.definitions()}
 
@@ -36,6 +41,51 @@ def test_registered_tool_metadata_matches_tool_specification() -> None:
         assert definition.risk == row.risk
         assert definition.dry_run is row.dry_run
         assert definition.connector == row.connector
+
+
+def test_every_registered_tool_has_a_meaningful_description() -> None:
+    registry = _full_registry()
+
+    for definition in registry.definitions():
+        description = definition.description.strip()
+        # Descriptions are the only thing an MCP client sees to choose a tool, so they
+        # must be more than a name echo.
+        assert len(description) >= 25, (
+            f"{definition.name} description is too short: {description!r}"
+        )
+        assert description.lower() != definition.name.replace("_", " ").lower()
+        # Mention what the tool touches so agents can disambiguate similar names.
+        assert (
+            definition.permission.split(".", maxsplit=1)[0] in description.lower()
+            or definition.category in description.lower()
+            or "ssh" in description.lower()
+        ), f"{definition.name} description lacks a domain hint: {description!r}"
+
+
+def test_every_tool_exposes_a_per_tool_input_schema() -> None:
+    registry = _full_registry()
+
+    for definition in registry.definitions():
+        schema = registry.fastmcp_input_schema(definition)
+        properties = schema.get("properties", {})
+        assert isinstance(properties, dict)
+        # The agent-facing surface is {target, parameters, options} rather than an
+        # opaque request envelope.
+        assert "parameters" in properties, definition.name
+        assert "options" in properties
+
+        if definition.parameters_model is None:
+            continue
+
+        # Tools with a parameter model must surface that model as a concrete named schema
+        # (a $ref into $defs) instead of a bare object, so callers see the exact keys.
+        parameters_schema = properties["parameters"]
+        ref = parameters_schema.get("$ref")
+        assert ref is not None, f"{definition.name} parameters must reference a concrete schema"
+        def_name = ref.split("/")[-1]
+        assert def_name in schema.get("$defs", {}), (
+            f"{definition.name} parameters $ref does not resolve"
+        )
 
 
 class ToolSpecRow:

@@ -213,11 +213,34 @@ SAFE_MUTATION_TOOL_SPECS: tuple[MutationToolSpec, ...] = (
 )
 
 
+def _mutation_description(spec: MutationToolSpec) -> str:
+    required = sorted(spec.required_payload_fields)
+    optional = sorted(spec.payload_fields - spec.required_payload_fields)
+    param_hint = ""
+    if required:
+        param_hint += f" Required parameters: {', '.join(required)}."
+    if optional:
+        param_hint += f" Optional parameters: {', '.join(optional)}."
+    approval = " Approval is required by default." if spec.downtime_seconds is not None else ""
+    downtime = (
+        f" May cause up to ~{spec.downtime_seconds}s of downtime."
+        if spec.downtime_seconds is not None
+        else ""
+    )
+    return (
+        f"{spec.risk.capitalize()}-risk {spec.category} mutation ({spec.permission}). "
+        f"Sends {spec.method} {spec.endpoint_template} to Proxmox. Dry-run by default — "
+        f"set options.dry_run=false to apply. Identify the target via target.node/target.vmid."
+        f"{param_hint}{approval}{downtime}"
+    )
+
+
 def register_safe_mutation_tools(registry: ToolRegistry) -> None:
     for spec in SAFE_MUTATION_TOOL_SPECS:
         registry.register(
             ToolDefinition(
                 name=spec.name,
+                description=_mutation_description(spec),
                 category=spec.category,
                 permission=spec.permission,
                 risk=spec.risk,
