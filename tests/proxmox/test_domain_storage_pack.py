@@ -69,6 +69,42 @@ def make_context(
     )
 
 
+async def test_create_nfs_storage_injects_nfs_type() -> None:
+    registry = make_registry()
+    request = make_request(
+        parameters={"payload": {"storage": "nfsvol", "server": "10.0.0.1", "export": "/exports"}}
+    )
+
+    response = await registry.execute("create_nfs_storage", request, make_context(request))
+
+    assert isinstance(response, ToolResponse)
+    result = cast(dict[str, object], response.result)
+    payload = cast(dict[str, object], result["payload"])
+    assert payload["type"] == "nfs"
+
+
+async def test_create_smb_storage_injects_cifs_type() -> None:
+    registry = make_registry()
+    request = make_request(parameters={"payload": {"storage": "smbvol", "server": "10.0.0.2"}})
+
+    response = await registry.execute("create_smb_storage", request, make_context(request))
+
+    assert isinstance(response, ToolResponse)
+    result = cast(dict[str, object], response.result)
+    payload = cast(dict[str, object], result["payload"])
+    assert payload["type"] == "cifs"
+
+
+def test_parse_fio_write_throughput_reads_bytes_and_kib() -> None:
+    from proxmox_mcp.proxmox.domain_tools import _parse_fio_write_throughput
+
+    assert _parse_fio_write_throughput('{"jobs": [{"write": {"bw_bytes": 5242880}}]}') == 5_242_880
+    # Older fio reports bandwidth in KiB/s under "bw".
+    assert _parse_fio_write_throughput('{"jobs": [{"write": {"bw": 1024}}]}') == 1024 * 1024
+    assert _parse_fio_write_throughput("not-json") is None
+    assert _parse_fio_write_throughput('{"jobs": []}') is None
+
+
 def test_storage_pack_promotion_records_identify_live_and_guarded_tools() -> None:
     records = {record.name: record for record in domain_tool_pack_records("storage")}
 
@@ -259,8 +295,12 @@ async def test_benchmark_storage_dry_run_returns_bounded_cleanup_plan() -> None:
     assert benchmark_plan["result_schema"] == [
         "throughput_bytes_per_second",
         "duration_seconds",
+        "max_bytes",
         "artifact_path",
         "cleanup_status",
+        "exit_status",
+        "stdout",
+        "stderr",
         "command_hash",
     ]
 

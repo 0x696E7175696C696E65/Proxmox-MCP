@@ -69,6 +69,18 @@ def make_context(
     )
 
 
+async def test_create_bridge_injects_bridge_type() -> None:
+    registry = make_registry()
+    request = make_request(parameters={"payload": {"iface": "vmbr20"}})
+
+    response = await registry.execute("create_bridge", request, make_context(request))
+
+    assert isinstance(response, ToolResponse)
+    result = cast(dict[str, object], response.result)
+    payload = cast(dict[str, object], result["payload"])
+    assert payload["type"] == "bridge"
+
+
 def test_network_firewall_pack_has_precise_identifier_contracts() -> None:
     records = {record.name: record for record in domain_tool_pack_records("network_firewall")}
 

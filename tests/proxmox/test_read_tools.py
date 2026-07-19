@@ -165,6 +165,51 @@ async def test_list_vms_adds_qemu_query_default() -> None:
     assert client.requests[-1].params == {"type": "qemu"}
 
 
+async def test_metrics_tools_project_to_their_named_fields() -> None:
+    registry = make_registry()
+    request = make_request(node=None, resource_type="cluster", resource_id="resources")
+    writer = InMemoryAuditWriter()
+    resource = {
+        "vmid": 100,
+        "type": "qemu",
+        "node": "pve-1",
+        "cpu": 0.5,
+        "maxcpu": 4,
+        "mem": 1024,
+        "maxmem": 4096,
+        "netin": 10,
+        "netout": 20,
+    }
+    client = InMemoryProxmoxApiClient({"/cluster/resources": [resource]})
+
+    cpu = await registry.execute("get_cpu_metrics", request, make_context(request, client, writer))
+    ram = await registry.execute("get_ram_metrics", request, make_context(request, client, writer))
+    net = await registry.execute(
+        "get_network_metrics", request, make_context(request, client, writer)
+    )
+
+    assert isinstance(cpu, ToolResponse)
+    assert isinstance(ram, ToolResponse)
+    assert isinstance(net, ToolResponse)
+    cpu_result = cpu.result
+    ram_result = ram.result
+    net_result = net.result
+    assert isinstance(cpu_result, dict)
+    assert isinstance(ram_result, dict)
+    assert isinstance(net_result, dict)
+    # Each metric tool now returns only the fields its name promises (plus identity),
+    # instead of the identical full /cluster/resources blob.
+    assert cpu_result["data"] == [
+        {"vmid": 100, "type": "qemu", "node": "pve-1", "cpu": 0.5, "maxcpu": 4}
+    ]
+    assert ram_result["data"] == [
+        {"vmid": 100, "type": "qemu", "node": "pve-1", "mem": 1024, "maxmem": 4096}
+    ]
+    assert net_result["data"] == [
+        {"vmid": 100, "type": "qemu", "node": "pve-1", "netin": 10, "netout": 20}
+    ]
+
+
 async def test_list_vms_rejects_type_filter_override() -> None:
     registry = make_registry()
     request = make_request(

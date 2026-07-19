@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import shlex
 from collections.abc import Awaitable, Callable
@@ -521,7 +522,39 @@ _COMMAND_TEMPLATES: dict[str, str] = {
 }
 
 
+# Several domain tools overlap simpler, typed tools registered elsewhere. Until the
+# catalog is consolidated, spell out the relationship so an agent can pick correctly.
+_DISAMBIGUATION_NOTES: dict[str, str] = {
+    "snapshot_vm": (
+        " Overlaps create_vm_snapshot (same endpoint); prefer create_vm_snapshot for its "
+        "typed snapname/description schema."
+    ),
+    "snapshot_lxc": (
+        " Overlaps create_lxc_snapshot (same endpoint); prefer create_lxc_snapshot for its "
+        "typed schema."
+    ),
+    "backup_vm": " Overlaps run_vm_backup and backup_lxc (all POST /nodes/{node}/vzdump).",
+    "backup_lxc": " Overlaps run_vm_backup and backup_vm (all POST /nodes/{node}/vzdump).",
+    "restore_vm": (
+        " Overlaps restore_vm_backup (both POST /nodes/{node}/qemu); different permission only."
+    ),
+    "restore_vm_backup": (
+        " Overlaps restore_vm (both POST /nodes/{node}/qemu); different permission only."
+    ),
+    "restore_lxc": (
+        " Overlaps restore_lxc_backup (both POST /nodes/{node}/lxc); different permission only."
+    ),
+    "restore_lxc_backup": (
+        " Overlaps restore_lxc (both POST /nodes/{node}/lxc); different permission only."
+    ),
+}
+
+
 def _domain_description(spec: DomainToolSpec) -> str:
+    return _domain_description_base(spec) + _DISAMBIGUATION_NOTES.get(spec.name, "")
+
+
+def _domain_description_base(spec: DomainToolSpec) -> str:
     path_fields = tuple(
         sorted(
             set(_template_fields(spec.endpoint_template or ""))
@@ -832,6 +865,18 @@ def _default_payload_for(spec: DomainToolSpec) -> dict[str, object]:
         return {"enable": 1}
     if spec.name == "force_migrate_vm":
         return {"force": 1}
+    # Type-specific create tools inject the storage/interface type their name promises,
+    # so `create_nfs_storage` cannot silently create a different backend.
+    if spec.name == "create_nfs_storage":
+        return {"type": "nfs"}
+    if spec.name == "create_smb_storage":
+        return {"type": "cifs"}
+    if spec.name == "create_bridge":
+        return {"type": "bridge"}
+    if spec.name == "create_bond":
+        return {"type": "bond"}
+    if spec.name == "create_vlan":
+        return {"type": "vlan"}
     return {}
 
 
@@ -1753,8 +1798,12 @@ def _storage_benchmark_plan_for(payload: dict[str, object]) -> dict[str, object]
         "result_schema": [
             "throughput_bytes_per_second",
             "duration_seconds",
+            "max_bytes",
             "artifact_path",
             "cleanup_status",
+            "exit_status",
+            "stdout",
+            "stderr",
             "command_hash",
         ],
     }
@@ -1784,11 +1833,40 @@ def _storage_benchmark_result_for(
         "max_bytes": payload["max_bytes"],
         "artifact_path": payload["artifact_path"],
         "cleanup_status": "unlink_requested",
+        "throughput_bytes_per_second": _parse_fio_write_throughput(result.stdout),
+        "exit_status": result.exit_status,
         "stdout": result.stdout,
-        "stderr": "",
+        "stderr": result.stderr,
         "redacted": False,
         "command_hash": command_hash,
     }
+
+
+def _parse_fio_write_throughput(stdout: str) -> int | None:
+    """Extract write throughput (bytes/sec) from fio ``--output-format=json`` output.
+
+    Returns None when the output cannot be parsed, so the tool honors the
+    ``throughput_bytes_per_second`` field its plan advertises instead of leaving
+    callers to parse raw fio JSON themselves.
+    """
+    try:
+        report = json.loads(stdout)
+    except (ValueError, TypeError):
+        return None
+    jobs = report.get("jobs") if isinstance(report, dict) else None
+    if not isinstance(jobs, list) or not jobs:
+        return None
+    write = jobs[0].get("write") if isinstance(jobs[0], dict) else None
+    if not isinstance(write, dict):
+        return None
+    # fio reports bw_bytes (bytes/s) on modern builds and bw (KiB/s) on older ones.
+    bw_bytes = write.get("bw_bytes")
+    if isinstance(bw_bytes, int | float) and bw_bytes > 0:
+        return int(bw_bytes)
+    bw_kib = write.get("bw")
+    if isinstance(bw_kib, int | float) and bw_kib > 0:
+        return int(bw_kib * 1024)
+    return None
 
 
 def _safe_artifact_label(value: str) -> str:

@@ -35,6 +35,13 @@ class ReadOnlyToolSpec:
     endpoint_template: str
     query_defaults: dict[str, object] = dataclass_field(default_factory=_empty_query_defaults)
     allowed_query_params: frozenset[str] = frozenset({"limit", "start"})
+    # When set, list responses are projected to these fields plus identity fields, so a
+    # metric-specific tool returns only the metric it names instead of the full blob.
+    projection: frozenset[str] | None = None
+
+
+# Identity fields always preserved when a projection is applied.
+_PROJECTION_IDENTITY_FIELDS = frozenset({"id", "type", "node", "name", "status", "vmid", "storage"})
 
 
 def _spec(
@@ -45,6 +52,7 @@ def _spec(
     *,
     query_defaults: dict[str, object] | None = None,
     allowed_query_params: frozenset[str] | None = None,
+    projection: frozenset[str] | None = None,
 ) -> ReadOnlyToolSpec:
     return ReadOnlyToolSpec(
         name=name,
@@ -55,6 +63,7 @@ def _spec(
         allowed_query_params=frozenset({"limit", "start"})
         if allowed_query_params is None
         else allowed_query_params,
+        projection=projection,
     )
 
 
@@ -142,6 +151,7 @@ READ_ONLY_TOOL_SPECS: tuple[ReadOnlyToolSpec, ...] = (
         "monitoring.cpu.read",
         "/cluster/resources",
         query_defaults={"type": "qemu"},
+        projection=frozenset({"cpu", "maxcpu"}),
     ),
     _spec(
         "get_ram_metrics",
@@ -149,6 +159,7 @@ READ_ONLY_TOOL_SPECS: tuple[ReadOnlyToolSpec, ...] = (
         "monitoring.ram.read",
         "/cluster/resources",
         query_defaults={"type": "qemu"},
+        projection=frozenset({"mem", "maxmem"}),
     ),
     _spec(
         "get_network_metrics",
@@ -156,6 +167,7 @@ READ_ONLY_TOOL_SPECS: tuple[ReadOnlyToolSpec, ...] = (
         "monitoring.network.read",
         "/cluster/resources",
         query_defaults={"type": "qemu"},
+        projection=frozenset({"netin", "netout"}),
     ),
     _spec("get_ceph_metrics", "monitoring", "monitoring.ceph.read", "/nodes/{node}/ceph/status"),
 )
@@ -169,10 +181,14 @@ def _read_only_description(spec: ReadOnlyToolSpec) -> str:
         if path_fields
         else ""
     )
+    if spec.projection is not None:
+        fields = ", ".join(sorted(spec.projection))
+        payload_desc = f"and returns per-resource {fields} (plus identity fields) under result.data"
+    else:
+        payload_desc = "and returns the raw Proxmox payload under result.data"
     return (
         f"Read-only {spec.category} discovery ({spec.permission}). Calls Proxmox API "
-        f"GET {spec.endpoint_template} and returns the raw Proxmox payload under "
-        f"result.data.{identity} Never mutates state."
+        f"GET {spec.endpoint_template} {payload_desc}.{identity} Never mutates state."
     )
 
 
@@ -218,9 +234,22 @@ def _build_read_only_handler(
                 retryable=exc.retryable,
             ) from exc
 
-        return {"data": data}
+        return {"data": _project_data(spec, data)}
 
     return handler
+
+
+def _project_data(spec: ReadOnlyToolSpec, data: object) -> object:
+    if spec.projection is None or not isinstance(data, list):
+        return data
+    keep = _PROJECTION_IDENTITY_FIELDS | spec.projection
+    projected: list[object] = []
+    for item in data:
+        if isinstance(item, dict):
+            projected.append({key: value for key, value in item.items() if key in keep})
+        else:
+            projected.append(item)
+    return projected
 
 
 def _format_endpoint(spec: ReadOnlyToolSpec, request: ToolRequest) -> str:
