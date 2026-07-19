@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import shlex
 from collections.abc import Sequence
 from dataclasses import dataclass
 from hashlib import sha256
@@ -23,7 +24,7 @@ FALLBACK_HELPER_REPO = "https://github.com/0x696E7175696C696E65/ProxmoxVE"
 _HELPER_DIRS = ("ct", "vm", "install", "tools", "misc", "turnkey")
 _SAFE_SCRIPT_ID = re.compile(r"^(ct|vm|install|tools|misc|turnkey)/[A-Za-z0-9_.@+/-]+\.sh$")
 _SAFE_HELPER_ENV_KEY = re.compile(r"^(?:TERM|mode|var_[A-Za-z0-9_]{1,80})$")
-_SAFE_HELPER_ENV_VALUE = re.compile(r"^[A-Za-z0-9_.:/@+;=,-]{0,256}$")
+_SAFE_HELPER_ENV_VALUE = re.compile(r"^[A-Za-z0-9_.:/@+=,-]{0,256}$")
 _REMOTE_SOURCE = re.compile(
     r"source\s+<\(\s*(?:curl|wget)\s+[^)]*?"
     r"(https://raw\.githubusercontent\.com/[^)\s]+)\s*\)"
@@ -531,6 +532,18 @@ async def _execute_script(
     }
     if request.options.dry_run:
         return payload
+    # Live execution must be pinned to the exact reviewed content: require the caller to
+    # supply the sha256 (already verified against the fetched script above), matching the
+    # guarantee run_helper_app_install enforces.
+    if parameters.sha256 is None:
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message=(
+                "execute_helper_script requires an explicit sha256 pin for live execution; "
+                "preview the script first and pass its sha256"
+            ),
+            retryable=False,
+        )
     if context.ssh_client is None:
         raise ToolExecutionError(
             error_code="SSH_CONNECTION_FAILED",
@@ -775,7 +788,11 @@ def _helper_command(
         command_environment["mode"] = mode
     if not command_environment:
         return command
-    env_parts = " ".join(f"{key}={value}" for key, value in sorted(command_environment.items()))
+    # Quote values so a validated value can never break out of its assignment into an
+    # injected shell command, independent of the SSH command policy configuration.
+    env_parts = " ".join(
+        f"{key}={shlex.quote(str(value))}" for key, value in sorted(command_environment.items())
+    )
     return f"env {env_parts} {command}"
 
 

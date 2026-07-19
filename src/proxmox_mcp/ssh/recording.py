@@ -193,6 +193,12 @@ def _recording_from_model(record: SshRecordingRecord) -> SshRecording:
     )
 
 
+def redact_secrets(value: str, redaction_profile: str = "default") -> str:
+    """Public secret redaction used both for stored recordings and for output
+    returned to callers through MCP, so redaction is not recording-only."""
+    return _redact(value, redaction_profile)
+
+
 def _redact(value: str, redaction_profile: str) -> str:
     if redaction_profile == "none":
         return value

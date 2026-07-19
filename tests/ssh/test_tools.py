@@ -165,6 +165,50 @@ async def test_execute_ssh_live_records_command_reference_in_result_and_audit() 
     assert writer.events[-1].metadata["ssh_exit_status"] == 0
 
 
+async def test_execute_ssh_redacts_secrets_in_returned_output() -> None:
+    registry = make_registry()
+    request = make_request(parameters={"command": "zpool status -x"}, dry_run=False)
+    writer = InMemoryAuditWriter()
+    client = InMemorySshClient(
+        command_results={
+            "zpool status -x": SshCommandResult(
+                exit_status=0,
+                stdout="ok token=super-secret",
+                stderr="password=hunter2",
+                duration_ms=3,
+            )
+        }
+    )
+
+    response = await registry.execute("execute_ssh", request, make_context(request, client, writer))
+
+    assert isinstance(response, ToolResponse)
+    result = cast(dict[str, object], response.result)
+    # The returned output — not just the stored recording — is redacted.
+    assert result["stdout"] == "ok token=[REDACTED]"
+    assert result["stderr"] == "password=[REDACTED]"
+    assert result["redacted"] is True
+
+
+async def test_file_tools_reject_path_traversal() -> None:
+    registry = make_registry()
+    writer = InMemoryAuditWriter()
+    client = InMemorySshClient(files={"/srv/proxmox-mcp/report.txt": "data"})
+    request = make_request(
+        tool="download_file",
+        parameters={"remote_path": "/srv/proxmox-mcp/../../etc/shadow"},
+        dry_run=False,
+    )
+
+    response = await registry.execute(
+        "download_file", request, make_context(request, client, writer)
+    )
+
+    assert isinstance(response, ToolErrorResponse)
+    assert response.error.code == "INVALID_REQUEST"
+    assert client.downloads == []
+
+
 async def test_open_ssh_session_enforces_per_actor_node_limit() -> None:
     registry = make_registry()
     session_manager = SshSessionManager(max_sessions_per_actor_node=1)

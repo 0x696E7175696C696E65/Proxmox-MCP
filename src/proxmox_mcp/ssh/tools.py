@@ -20,6 +20,7 @@ from proxmox_mcp.ssh.policy import (
     ExecuteSshParameters,
     command_from_parameters,
 )
+from proxmox_mcp.ssh.recording import redact_secrets
 from proxmox_mcp.ssh.sessions import SshSessionLimitError, SshSessionNotFoundError
 from proxmox_mcp.tools.context import ToolExecutionContext
 from proxmox_mcp.tools.registry import ToolDefinition, ToolExecutionError, ToolRegistry
@@ -47,6 +48,7 @@ class SshCommandExecutionResult(BaseModel):
     exit_status: int | None = None
     stdout: str = ""
     stderr: str = ""
+    redacted: bool = False
     duration_ms: int = 0
     session_id: str | None = None
     recording_ref: str | None = None
@@ -74,6 +76,7 @@ class SshFileTransferResult(BaseModel):
     destination_path: str | None = None
     bytes_transferred: int | None = Field(default=None, ge=0)
     content: str | None = None
+    redacted: bool = False
     entries: list[dict[str, object]] = Field(default_factory=_empty_entries)
 
 
@@ -104,6 +107,7 @@ class DownloadFileParameters(BaseModel):
 
     remote_path: str = Field(min_length=1)
     max_bytes: int = Field(default=65536, ge=1, le=1048576)
+    redaction_profile: Literal["default", "none"] = "default"
 
 
 class SftpPathParameters(BaseModel):
@@ -419,8 +423,11 @@ async def _handle_execute(
         "command_hash": command_hash,
         "policy_allowed": True,
         "exit_status": result.exit_status,
-        "stdout": result.stdout,
-        "stderr": result.stderr,
+        # Redact returned output with the same profile used for the stored recording,
+        # so redaction_profile protects what the caller receives, not just the recording.
+        "stdout": redact_secrets(result.stdout, parameters.redaction_profile),
+        "stderr": redact_secrets(result.stderr, parameters.redaction_profile),
+        "redacted": parameters.redaction_profile != "none",
         "duration_ms": result.duration_ms,
         "session_id": session_id,
         "recording_ref": recording.recording_ref,
@@ -534,7 +541,8 @@ async def _handle_download(
         "operation": "download",
         "remote_path": parameters.remote_path,
         "bytes_transferred": len(content),
-        "content": content,
+        "content": redact_secrets(content, parameters.redaction_profile),
+        "redacted": parameters.redaction_profile != "none",
     }
 
 
@@ -778,6 +786,19 @@ def _validate_remote_path(path: str) -> None:
         raise ToolExecutionError(
             error_code="INVALID_REQUEST",
             message="Remote path must be absolute",
+        )
+    # Reject traversal and non-normalized paths so an absolute-looking path cannot
+    # escape upward (e.g. /var/lib/vz/../../etc/shadow) once resolved on the host.
+    segments = path.split("/")
+    if ".." in segments or "." in segments:
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="Remote path must not contain '.' or '..' segments",
+        )
+    if "//" in path:
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="Remote path must be normalized (no empty segments)",
         )
 
 

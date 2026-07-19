@@ -338,6 +338,59 @@ async def test_stage_helper_script_uploads_pinned_artifact_to_controlled_path() 
     assert ssh_client.uploads
 
 
+async def test_execute_helper_script_requires_sha256_pin_for_live_execution() -> None:
+    resolver = FakeCatalogResolver()
+    registry = make_registry(resolver)
+    ssh_client = InMemorySshClient()
+    request = make_request(
+        parameters={"script_id": "vm/debian-vm.sh", "mode": "generated"},
+        dry_run=False,
+    )
+
+    response = await registry.execute(
+        "execute_helper_script",
+        request,
+        make_context(
+            request,
+            ssh_client=ssh_client,
+            ssh_policy=SshCommandPolicy(
+                allowed_executables=frozenset({"env"}),
+                denied_executables=frozenset(),
+                max_timeout_seconds=900,
+            ),
+        ),
+    )
+
+    assert isinstance(response, ToolErrorResponse)
+    assert response.error.code == "INVALID_REQUEST"
+    assert "sha256 pin" in response.error.message
+    assert ssh_client.executions == []
+
+
+async def test_execute_helper_script_rejects_env_value_with_shell_metacharacter() -> None:
+    resolver = FakeCatalogResolver()
+    registry = make_registry(resolver)
+    ssh_client = InMemorySshClient()
+    request = make_request(
+        parameters={
+            "script_id": "vm/debian-vm.sh",
+            "environment": {"var_ctid": "9101;reboot"},
+        },
+        dry_run=False,
+    )
+
+    response = await registry.execute(
+        "execute_helper_script",
+        request,
+        make_context(request, ssh_client=ssh_client, ssh_policy=SshCommandPolicy()),
+    )
+
+    assert isinstance(response, ToolErrorResponse)
+    assert response.error.code == "INVALID_REQUEST"
+    assert "unsupported characters" in response.error.message
+    assert ssh_client.executions == []
+
+
 async def test_execute_helper_script_requires_policy_to_allow_bash() -> None:
     resolver = FakeCatalogResolver()
     registry = make_registry(resolver)
@@ -427,9 +480,19 @@ async def test_execute_helper_script_runs_when_policy_explicitly_allows_bash() -
     resolver = FakeCatalogResolver()
     registry = make_registry(resolver)
     ssh_client = InMemorySshClient()
+
+    # Live execution requires an explicit sha256 pin; obtain it from a preview first.
+    preview_request = make_request(parameters={"script_id": "vm/debian-vm.sh"})
+    preview = await registry.execute(
+        "preview_helper_script", preview_request, make_context(preview_request)
+    )
+    assert isinstance(preview, ToolResponse)
+    pinned_sha = cast(str, cast(dict[str, object], preview.result)["sha256"])
+
     request = make_request(
         parameters={
             "script_id": "vm/debian-vm.sh",
+            "sha256": pinned_sha,
             "mode": "generated",
             "environment": {
                 "TERM": "xterm",

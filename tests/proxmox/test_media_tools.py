@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import cast
 
+import pytest
+
 from proxmox_mcp.audit.writer import InMemoryAuditWriter
 from proxmox_mcp.config import Settings
 from proxmox_mcp.proxmox import InMemoryProxmoxApiClient, register_media_tools
@@ -114,6 +116,32 @@ async def test_download_iso_from_url_dry_run_rejects_insecure_or_userinfo_urls()
     assert isinstance(response, ToolErrorResponse)
     assert response.error.code == "INVALID_REQUEST"
     assert "https URL without userinfo" in response.error.message
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://169.254.169.254/latest/meta-data/iam/",
+        "https://127.0.0.1/debian.iso",
+        "https://localhost/debian.iso",
+        "https://10.0.0.5/debian.iso",
+        "https://192.168.1.10/debian.iso",
+        "https://[::1]/debian.iso",
+        "https://pve.internal/debian.iso",
+    ],
+)
+async def test_download_iso_from_url_rejects_ssrf_hosts(url: str) -> None:
+    registry = make_registry()
+    request = make_request(parameters={"url": url, "filename": "debian.iso"}, dry_run=True)
+
+    response = await registry.execute(
+        "download_iso_from_url",
+        request,
+        make_context(request, InMemoryProxmoxApiClient()),
+    )
+
+    assert isinstance(response, ToolErrorResponse)
+    assert response.error.code == "INVALID_REQUEST"
 
 
 async def test_download_lxc_template_live_uses_aplinfo_endpoint() -> None:

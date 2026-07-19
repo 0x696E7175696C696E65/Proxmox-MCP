@@ -106,6 +106,9 @@ class SshConnectionConfig:
     port: int = 22
     client_keys: tuple[str, ...] = ()
     known_hosts: str | None = None
+    # asyncssh treats known_hosts=None as "accept any server key" (MITM-prone). Require
+    # an explicit opt-in before connecting without a pinned known_hosts file.
+    allow_unknown_hosts: bool = False
 
 
 class InMemorySshClient:
@@ -242,6 +245,13 @@ class AsyncSshClient:
             )
 
         connection_config = self._config_for(target)
+        if connection_config.known_hosts is None and not connection_config.allow_unknown_hosts:
+            raise SshClientError(
+                "SSH host key verification requires a known_hosts source; set "
+                "allow_unknown_hosts to override for disposable environments",
+                error_code="SSH_CONNECTION_FAILED",
+                retryable=False,
+            )
         asyncssh = cast(_AsyncSshModule, import_module("asyncssh"))
         try:
             connection = await asyncssh.connect(

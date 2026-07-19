@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import re
 from typing import Literal
 from urllib.parse import quote, urlparse
@@ -725,12 +726,56 @@ def _vmid(request: ToolRequest) -> int:
     return request.target.vmid
 
 
+_BLOCKED_DOWNLOAD_HOSTNAMES = frozenset({"localhost", "metadata", "metadata.google.internal"})
+
+
 def _validate_https_url(value: str) -> None:
     parsed = urlparse(value)
     if parsed.scheme != "https" or parsed.username is not None or parsed.password is not None:
         raise ToolExecutionError(
             error_code="INVALID_REQUEST",
             message="download URL must be an https URL without userinfo",
+            retryable=False,
+        )
+    host = parsed.hostname
+    if not host:
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="download URL must include a host",
+            retryable=False,
+        )
+    _reject_ssrf_download_host(host)
+
+
+def _reject_ssrf_download_host(host: str) -> None:
+    """Block the Proxmox node from being steered at internal/metadata endpoints.
+
+    Rejects loopback/private/link-local IP literals and known-internal hostnames. Note:
+    this does not resolve DNS, so a public name pointing at a private address (DNS
+    rebinding) is out of scope and should be constrained by an operator allowlist.
+    """
+    normalized = host.lower().rstrip(".")
+    if normalized in _BLOCKED_DOWNLOAD_HOSTNAMES or normalized.endswith((".local", ".internal")):
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="download URL host is not permitted",
+            retryable=False,
+        )
+    try:
+        address = ipaddress.ip_address(normalized)
+    except ValueError:
+        return
+    if (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_reserved
+        or address.is_multicast
+        or address.is_unspecified
+    ):
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="download URL host resolves to a non-routable or internal address",
             retryable=False,
         )
 
