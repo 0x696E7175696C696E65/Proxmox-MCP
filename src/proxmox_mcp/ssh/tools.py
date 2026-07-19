@@ -502,7 +502,7 @@ async def _handle_close_session(
 
 async def _handle_upload(request: ToolRequest, context: ToolExecutionContext) -> dict[str, object]:
     parameters = UploadFileParameters.model_validate(request.parameters)
-    _validate_remote_path(parameters.remote_path)
+    _enforce_remote_path(context, parameters.remote_path)
     if request.options.dry_run:
         return {
             "dry_run": True,
@@ -533,7 +533,7 @@ async def _handle_download(
     request: ToolRequest, context: ToolExecutionContext
 ) -> dict[str, object]:
     parameters = DownloadFileParameters.model_validate(request.parameters)
-    _validate_remote_path(parameters.remote_path)
+    _enforce_remote_path(context, parameters.remote_path)
     try:
         content = await _ssh_client(context).download(
             _target_for(request),
@@ -554,7 +554,7 @@ async def _handle_download(
 
 async def _handle_list(request: ToolRequest, context: ToolExecutionContext) -> dict[str, object]:
     parameters = SftpPathParameters.model_validate(request.parameters)
-    _validate_remote_path(parameters.remote_path)
+    _enforce_remote_path(context, parameters.remote_path)
     try:
         entries = await _ssh_client(context).list_dir(
             _target_for(request),
@@ -572,7 +572,7 @@ async def _handle_list(request: ToolRequest, context: ToolExecutionContext) -> d
 
 async def _handle_mkdir(request: ToolRequest, context: ToolExecutionContext) -> dict[str, object]:
     parameters = SftpMkdirParameters.model_validate(request.parameters)
-    _validate_remote_path(parameters.remote_path)
+    _enforce_remote_path(context, parameters.remote_path)
     if request.options.dry_run:
         return {
             "dry_run": True,
@@ -597,7 +597,7 @@ async def _handle_mkdir(request: ToolRequest, context: ToolExecutionContext) -> 
 
 async def _handle_delete(request: ToolRequest, context: ToolExecutionContext) -> dict[str, object]:
     parameters = SftpPathParameters.model_validate(request.parameters)
-    _validate_remote_path(parameters.remote_path)
+    _enforce_remote_path(context, parameters.remote_path)
     if request.options.dry_run:
         return {
             "dry_run": True,
@@ -621,8 +621,8 @@ async def _handle_delete(request: ToolRequest, context: ToolExecutionContext) ->
 
 async def _handle_copy(request: ToolRequest, context: ToolExecutionContext) -> dict[str, object]:
     parameters = ScpCopyParameters.model_validate(request.parameters)
-    _validate_remote_path(parameters.source_path)
-    _validate_remote_path(parameters.destination_path)
+    _enforce_remote_path(context, parameters.source_path)
+    _enforce_remote_path(context, parameters.destination_path)
     if request.options.dry_run:
         return {
             "dry_run": True,
@@ -780,6 +780,28 @@ def _actor_for(context: ToolExecutionContext, request: ToolRequest) -> Actor:
         agent_id=session.identity.agent_id,
         tenant_id=session.identity.tenant_id,
     )
+
+
+def _enforce_remote_path(context: ToolExecutionContext, path: str) -> None:
+    """Validate a remote path and, when an operator has configured file roots, require
+    the path to stay under one of them. This is the operator control that turns SFTP/SCP
+    from any-absolute-path into a bounded jail without breaking the permissive default."""
+    _validate_remote_path(path)
+    policy = context.ssh_command_policy
+    roots = policy.allowed_file_roots if policy is not None else frozenset()
+    if roots and not _path_under_roots(path, roots):
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="Remote path is outside the allowed SSH file roots",
+        )
+
+
+def _path_under_roots(path: str, roots: frozenset[str]) -> bool:
+    for root in roots:
+        normalized_root = root.rstrip("/")
+        if path == normalized_root or path.startswith(f"{normalized_root}/"):
+            return True
+    return False
 
 
 def _validate_remote_path(path: str) -> None:

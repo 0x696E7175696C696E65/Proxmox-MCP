@@ -68,6 +68,9 @@ class SshCommandPolicy:
     allowed_environment: frozenset[str] = _DEFAULT_ALLOWED_ENVIRONMENT
     allow_shell_metacharacters: bool = False
     max_timeout_seconds: int = 300
+    # Optional jail for SFTP/SCP tools: when non-empty, every file path must resolve
+    # under one of these absolute roots. Empty (default) imposes no root restriction.
+    allowed_file_roots: frozenset[str] = frozenset()
 
     def evaluate(self, command: SshCommand) -> SshCommandPolicyDecision:
         executable = _executable_for(command.command)

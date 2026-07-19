@@ -209,6 +209,35 @@ async def test_file_tools_reject_path_traversal() -> None:
     assert client.downloads == []
 
 
+async def test_file_root_jail_confines_sftp_writes() -> None:
+    registry = make_registry()
+    writer = InMemoryAuditWriter()
+    client = InMemorySshClient()
+    policy = SshCommandPolicy(allowed_file_roots=frozenset({"/srv/proxmox-mcp"}))
+
+    inside = make_request(
+        tool="upload_file",
+        parameters={"remote_path": "/srv/proxmox-mcp/ok.txt", "content": "x"},
+        dry_run=True,
+    )
+    allowed = await registry.execute(
+        "upload_file", inside, make_context(inside, client, writer, policy=policy)
+    )
+    assert isinstance(allowed, ToolResponse)
+
+    outside = make_request(
+        tool="upload_file",
+        parameters={"remote_path": "/etc/systemd/system/evil.service", "content": "x"},
+        dry_run=True,
+    )
+    denied = await registry.execute(
+        "upload_file", outside, make_context(outside, client, writer, policy=policy)
+    )
+    assert isinstance(denied, ToolErrorResponse)
+    assert denied.error.code == "INVALID_REQUEST"
+    assert "allowed SSH file roots" in denied.error.message
+
+
 async def test_open_ssh_session_records_reason_in_audit() -> None:
     registry = make_registry()
     writer = InMemoryAuditWriter()
