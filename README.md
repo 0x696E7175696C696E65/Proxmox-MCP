@@ -37,6 +37,7 @@ The release posture is intentionally conservative: the README and docs should de
 Implemented:
 
 - FastMCP server factory with registry-driven tool registration.
+- Self-describing tools: every registered tool exposes a required `description` and a per-tool `{target, parameters, options}` input schema (built from its own parameter model) to MCP clients, contract-tested for presence and specificity.
 - Standard MCP request, response, error, dry-run, impact, approval, and audit envelopes.
 - Authentication models, service-token authentication, OIDC RS256/JWKS validation, mTLS client-certificate identity mapping, signed workload identity validation, RBAC evaluation, policy decisions, risk scoring, and approval validation.
 - Durable audit persistence with SQLAlchemy models and Alembic migration.
@@ -159,6 +160,10 @@ The security model is built around these invariants:
 - Deny policies always override allow policies.
 - SSH access is separate from Proxmox API access.
 - Secrets are referenced through secret backends and never returned through MCP tools.
+- SSH command and file output is redacted before it is returned through MCP, not only in the stored recording.
+- SSH remote paths reject `.`/`..`/empty segments, and host-key verification fails closed unless `allow_unknown_hosts` is explicitly set.
+- Helper-script live execution requires an explicit SHA-256 content pin bound to the reviewed script.
+- Server-side ISO/template downloads reject loopback, private, link-local, and known-internal hosts (SSRF guard).
 - Mutating actions require audit evidence before and after execution.
 - Destructive actions can be enabled, denied, or approval-gated by environment.
 - Dry-run and impact-analysis paths are first-class behavior, not UI-only features.

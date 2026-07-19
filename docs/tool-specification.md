@@ -5,12 +5,19 @@
 Every MCP tool must declare:
 
 - `name`: stable MCP tool name.
+- `description`: a non-empty, human-and-agent-readable summary of what the tool does, which target/parameters it needs, and any guarded or destructive behavior. Contract-tested for presence and specificity.
 - `category`: operational domain.
 - `permission`: required permission string.
 - `risk`: `low`, `medium`, `high`, or `critical`.
 - `dry_run`: whether the tool can preview changes.
 - `approval_default`: whether approval is required by default.
 - `connector`: `proxmox_api`, `ssh`, or `hybrid`.
+
+Each tool is registered with FastMCP carrying its `description` and a per-tool input
+schema of the form `{target, parameters, options}`, where `parameters` is the tool's
+own parameter model (so an MCP client sees the exact keys a tool needs rather than an
+opaque request envelope). `actor` is derived from the authenticated session and is not
+part of the agent-facing input surface.
 
 Mutating tools must support idempotency where Proxmox behavior allows it. Dangerous tools must support impact analysis and approval metadata.
 
