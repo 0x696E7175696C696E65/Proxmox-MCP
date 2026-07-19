@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import cast
 
 from proxmox_mcp.proxmox import (
     register_dangerous_tools,
@@ -69,6 +70,7 @@ def test_every_tool_exposes_a_per_tool_input_schema() -> None:
         schema = registry.fastmcp_input_schema(definition)
         properties = schema.get("properties", {})
         assert isinstance(properties, dict)
+        properties = cast(dict[str, object], properties)
         # The agent-facing surface is {target, parameters, options} rather than an
         # opaque request envelope.
         assert "parameters" in properties, definition.name
@@ -80,12 +82,15 @@ def test_every_tool_exposes_a_per_tool_input_schema() -> None:
         # Tools with a parameter model must surface that model as a concrete named schema
         # (a $ref into $defs) instead of a bare object, so callers see the exact keys.
         parameters_schema = properties["parameters"]
-        ref = parameters_schema.get("$ref")
-        assert ref is not None, f"{definition.name} parameters must reference a concrete schema"
-        def_name = ref.split("/")[-1]
-        assert def_name in schema.get("$defs", {}), (
-            f"{definition.name} parameters $ref does not resolve"
+        assert isinstance(parameters_schema, dict)
+        ref = cast(dict[str, object], parameters_schema).get("$ref")
+        assert isinstance(ref, str), (
+            f"{definition.name} parameters must reference a concrete schema"
         )
+        def_name = ref.split("/")[-1]
+        defs = schema.get("$defs", {})
+        assert isinstance(defs, dict)
+        assert def_name in defs, f"{definition.name} parameters $ref does not resolve"
 
 
 class ToolSpecRow:

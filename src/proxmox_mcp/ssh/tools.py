@@ -788,7 +788,7 @@ def _enforce_remote_path(context: ToolExecutionContext, path: str) -> None:
     from any-absolute-path into a bounded jail without breaking the permissive default."""
     _validate_remote_path(path)
     policy = context.ssh_command_policy
-    roots = policy.allowed_file_roots if policy is not None else frozenset()
+    roots = policy.allowed_file_roots if policy is not None else frozenset[str]()
     if roots and not _path_under_roots(path, roots):
         raise ToolExecutionError(
             error_code="INVALID_REQUEST",

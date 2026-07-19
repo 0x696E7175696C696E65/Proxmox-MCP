@@ -96,7 +96,9 @@ async def test_create_smb_storage_injects_cifs_type() -> None:
 
 
 def test_parse_fio_write_throughput_reads_bytes_and_kib() -> None:
-    from proxmox_mcp.proxmox.domain_tools import _parse_fio_write_throughput
+    from proxmox_mcp.proxmox.domain_tools import (
+        _parse_fio_write_throughput,  # pyright: ignore[reportPrivateUsage]
+    )
 
     assert _parse_fio_write_throughput('{"jobs": [{"write": {"bw_bytes": 5242880}}]}') == 5_242_880
     # Older fio reports bandwidth in KiB/s under "bw".

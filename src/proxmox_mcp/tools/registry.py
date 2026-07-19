@@ -4,9 +4,12 @@ import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from time import perf_counter
-from typing import Literal, Protocol, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
+
+if TYPE_CHECKING:
+    from fastmcp.tools import FunctionTool
 
 from proxmox_mcp.audit.events import AuditEvent, AuditTarget
 from proxmox_mcp.observability import MetricsSink, MetricStatus, TraceSpan, structured_log
@@ -48,7 +51,7 @@ _RISK_SCORES: dict[RiskLevel, int] = {
 
 
 class FastMCPToolRegistrar(Protocol):
-    def add_tool(self, tool: object) -> object: ...
+    def add_tool(self, tool: FunctionTool) -> object: ...
 
 
 class ToolDefinition(BaseModel):
@@ -536,7 +539,7 @@ class ToolRegistry:
             f"{self._pascal_case(definition.name)}Input",
             __config__=ConfigDict(extra="forbid"),
             **cast(
-                dict[str, object],
+                dict[str, Any],
                 {
                     "target": target_field,
                     "parameters": (parameters_type, Field(default_factory=dict)),

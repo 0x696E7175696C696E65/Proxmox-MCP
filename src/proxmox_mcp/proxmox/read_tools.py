@@ -244,9 +244,10 @@ def _project_data(spec: ReadOnlyToolSpec, data: object) -> object:
         return data
     keep = _PROJECTION_IDENTITY_FIELDS | spec.projection
     projected: list[object] = []
-    for item in data:
+    for item in cast(list[object], data):
         if isinstance(item, dict):
-            projected.append({key: value for key, value in item.items() if key in keep})
+            item_fields = cast(dict[str, object], item)
+            projected.append({key: value for key, value in item_fields.items() if key in keep})
         else:
             projected.append(item)
     return projected

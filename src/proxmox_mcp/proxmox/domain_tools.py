@@ -1850,21 +1850,27 @@ def _parse_fio_write_throughput(stdout: str) -> int | None:
     callers to parse raw fio JSON themselves.
     """
     try:
-        report = json.loads(stdout)
+        report: object = json.loads(stdout)
     except (ValueError, TypeError):
         return None
-    jobs = report.get("jobs") if isinstance(report, dict) else None
+    if not isinstance(report, dict):
+        return None
+    jobs = cast(dict[str, object], report).get("jobs")
     if not isinstance(jobs, list) or not jobs:
         return None
-    write = jobs[0].get("write") if isinstance(jobs[0], dict) else None
+    first = cast(list[object], jobs)[0]
+    if not isinstance(first, dict):
+        return None
+    write = cast(dict[str, object], first).get("write")
     if not isinstance(write, dict):
         return None
+    write_fields = cast(dict[str, object], write)
     # fio reports bw_bytes (bytes/s) on modern builds and bw (KiB/s) on older ones.
-    bw_bytes = write.get("bw_bytes")
-    if isinstance(bw_bytes, int | float) and bw_bytes > 0:
+    bw_bytes = write_fields.get("bw_bytes")
+    if isinstance(bw_bytes, int | float) and not isinstance(bw_bytes, bool) and bw_bytes > 0:
         return int(bw_bytes)
-    bw_kib = write.get("bw")
-    if isinstance(bw_kib, int | float) and bw_kib > 0:
+    bw_kib = write_fields.get("bw")
+    if isinstance(bw_kib, int | float) and not isinstance(bw_kib, bool) and bw_kib > 0:
         return int(bw_kib * 1024)
     return None
 

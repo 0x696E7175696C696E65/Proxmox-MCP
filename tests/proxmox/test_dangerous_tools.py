@@ -55,7 +55,7 @@ class RecordingFastMCP:
         fn = cast(Callable[..., Awaitable[object]], tool_obj.fn)
 
         async def shim(payload: object = None, **kwargs: object) -> object:
-            data = dict(payload) if isinstance(payload, dict) else kwargs
+            data = cast(dict[str, object], payload) if isinstance(payload, dict) else kwargs
             return await fn(**data)
 
         self.tools[name] = cast(RegisteredTool, shim)
