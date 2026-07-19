@@ -318,6 +318,20 @@ async def test_execute_helper_script_rejects_unapproved_environment_key() -> Non
     assert "var_*" in response.error.message
 
 
+async def test_cancel_helper_script_execution_fails_visibly_on_live() -> None:
+    resolver = FakeCatalogResolver()
+    registry = make_registry(resolver)
+    request = make_request(parameters={"execution_id": "exec-1"}, dry_run=False)
+
+    response = await registry.execute(
+        "cancel_helper_script_execution", request, make_context(request)
+    )
+
+    # A live cancel that cannot stop anything must fail visibly, not report success.
+    assert isinstance(response, ToolErrorResponse)
+    assert response.error.code == "NOT_IMPLEMENTED"
+
+
 async def test_stage_helper_script_uploads_pinned_artifact_to_controlled_path() -> None:
     resolver = FakeCatalogResolver()
     registry = make_registry(resolver)

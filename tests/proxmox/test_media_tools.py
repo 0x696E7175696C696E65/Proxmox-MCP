@@ -97,6 +97,43 @@ async def test_list_iso_images_reads_storage_content_iso_entries() -> None:
     assert client.requests[-1].params == {"content": "iso"}
 
 
+async def test_detach_iso_from_vm_does_not_require_filename() -> None:
+    registry = make_registry()
+    request = make_request(
+        resource_type="vm",
+        resource_id="100",
+        vmid=100,
+        parameters={"device": "ide2"},
+        dry_run=True,
+    )
+
+    response = await registry.execute(
+        "detach_iso_from_vm", request, make_context(request, InMemoryProxmoxApiClient())
+    )
+
+    assert isinstance(response, ToolResponse)
+    result = cast(dict[str, object], response.result)
+    assert result["payload"] == {"ide2": "none,media=cdrom"}
+
+
+async def test_detach_iso_from_vm_rejects_phantom_filename_parameter() -> None:
+    registry = make_registry()
+    request = make_request(
+        resource_type="vm",
+        resource_id="100",
+        vmid=100,
+        parameters={"device": "ide2", "filename": "debian.iso"},
+        dry_run=True,
+    )
+
+    response = await registry.execute(
+        "detach_iso_from_vm", request, make_context(request, InMemoryProxmoxApiClient())
+    )
+
+    assert isinstance(response, ToolErrorResponse)
+    assert response.error.code == "INVALID_REQUEST"
+
+
 async def test_download_iso_from_url_dry_run_rejects_insecure_or_userinfo_urls() -> None:
     registry = make_registry()
     request = make_request(

@@ -438,12 +438,14 @@ async def _handle_open_session(
     request: ToolRequest,
     context: ToolExecutionContext,
 ) -> dict[str, object]:
-    _ = OpenSshSessionParameters.model_validate(request.parameters)
+    parameters = OpenSshSessionParameters.model_validate(request.parameters)
     store = _recording_store(context)
     target = _target_for(request)
     actor = _actor_for(context, request)
     try:
-        session = await _open_session(context, actor=actor, target=target, interactive=True)
+        session = await _open_session(
+            context, actor=actor, target=target, interactive=parameters.interactive
+        )
         recording = await store.reserve_session_recording(
             request_id=request.request_id,
             session_id=session.session_id,
@@ -456,10 +458,14 @@ async def _handle_open_session(
             retryable=True,
         ) from exc
 
+    # Record the caller-supplied justification and interactivity so the required
+    # `reason` is actually captured in the audit trail instead of discarded.
     context.audit_metadata.update(
         {
             "ssh_session_id": session.session_id,
             "ssh_recording_ref": session.recording_ref,
+            "ssh_session_reason": parameters.reason,
+            "ssh_session_interactive": parameters.interactive,
         }
     )
     return {

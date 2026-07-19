@@ -209,6 +209,24 @@ async def test_file_tools_reject_path_traversal() -> None:
     assert client.downloads == []
 
 
+async def test_open_ssh_session_records_reason_in_audit() -> None:
+    registry = make_registry()
+    writer = InMemoryAuditWriter()
+    client = InMemorySshClient()
+    request = make_request(
+        tool="open_ssh_session", parameters={"reason": "diagnose disk"}, dry_run=False
+    )
+
+    response = await registry.execute(
+        "open_ssh_session", request, make_context(request, client, writer)
+    )
+
+    assert isinstance(response, ToolResponse)
+    # The required justification is captured in the audit trail rather than discarded.
+    assert writer.events[-1].metadata["ssh_session_reason"] == "diagnose disk"
+    assert writer.events[-1].metadata["ssh_session_interactive"] is True
+
+
 async def test_open_ssh_session_enforces_per_actor_node_limit() -> None:
     registry = make_registry()
     session_manager = SshSessionManager(max_sessions_per_actor_node=1)

@@ -42,6 +42,13 @@ class VmIsoParameters(BaseModel):
     device: str = "ide2"
 
 
+class DetachVmIsoParameters(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Detach only needs the drive bay; no filename is required to eject media.
+    device: str = "ide2"
+
+
 class PrepareVmInstallMediaParameters(DownloadIsoParameters):
     device: str = "ide2"
 
@@ -171,7 +178,7 @@ def register_media_tools(registry: ToolRegistry) -> None:
             dry_run=True,
             approval_default=False,
             connector="proxmox_api",
-            parameters_model=VmIsoParameters,
+            parameters_model=DetachVmIsoParameters,
             handler=_detach_iso_from_vm,
         )
     )
@@ -367,7 +374,7 @@ async def _attach_iso_to_vm(
 async def _detach_iso_from_vm(
     request: ToolRequest, context: ToolExecutionContext
 ) -> dict[str, object]:
-    parameters = VmIsoParameters.model_validate(request.parameters)
+    parameters = DetachVmIsoParameters.model_validate(request.parameters)
     node = _node(request)
     vmid = _vmid(request)
     _validate_device(parameters.device)

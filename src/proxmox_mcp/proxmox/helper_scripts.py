@@ -664,9 +664,21 @@ async def _cancel_not_persisted(
 ) -> dict[str, object]:
     parameters = HelperExecutionLookupParameters.model_validate(request.parameters)
     _ = context
+    # A live cancel that silently does nothing is worse than a visible failure: fail
+    # closed so an operator is never told a runaway script was stopped when it was not.
+    if not request.options.dry_run:
+        raise ToolExecutionError(
+            error_code="NOT_IMPLEMENTED",
+            message=(
+                "Helper cancellation is not yet backed by a durable execution worker store; "
+                "no running script was stopped"
+            ),
+            details={"execution_id": parameters.execution_id},
+            retryable=False,
+        )
     return {
         "execution_id": parameters.execution_id,
-        "dry_run": request.options.dry_run,
+        "dry_run": True,
         "status": "not_persisted",
         "message": "Helper cancellation requires a durable execution worker store.",
     }
