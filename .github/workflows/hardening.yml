@@ -115,9 +115,28 @@ jobs:
           name: sbom
           path: sbom.spdx.json
 
-  lab-gates:
+  lab-preflight:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' || inputs.run_lab == 'true'
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - name: Check lab secret availability
+        id: check
+        env:
+          LAB_API_ENDPOINT: ${{ secrets.PROXMOX_MCP_LAB_API_ENDPOINT }}
+        run: |
+          if [ -n "$LAB_API_ENDPOINT" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping Proxmox lab gates; PROXMOX_MCP_LAB_API_ENDPOINT secret is not configured."
+          fi
+
+  lab-gates:
+    runs-on: ubuntu-latest
+    needs: lab-preflight
+    if: needs.lab-preflight.outputs.configured == 'true'
     env:
       PROXMOX_MCP_LAB_ENABLED: ${{ secrets.PROXMOX_MCP_LAB_ENABLED }}
       PROXMOX_MCP_LAB_API_ENDPOINT: ${{ secrets.PROXMOX_MCP_LAB_API_ENDPOINT }}
