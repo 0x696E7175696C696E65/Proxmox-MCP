@@ -47,7 +47,13 @@ COPY --from=build /usr/local /usr/local
 COPY --from=build /app /app
 COPY --from=webbuild /web/dist /app/web/dist
 
-RUN python -c "import importlib.metadata as m; assert tuple(map(int, m.version('setuptools').split('.')[:2])) >= (83, 0); assert tuple(map(int, m.version('msgpack').split('.')[:2])) >= (1, 2)" \
+RUN rm -rf \
+      /usr/local/lib/python3.*/site-packages/pip \
+      /usr/local/lib/python3.*/site-packages/pip-*.dist-info \
+      /usr/local/bin/pip \
+      /usr/local/bin/pip3 \
+      /usr/local/bin/pip3.* \
+    && python -c "import importlib.metadata as m; assert tuple(map(int, m.version('setuptools').split('.')[:2])) >= (83, 0); assert tuple(map(int, m.version('msgpack').split('.')[:2])) >= (1, 2)" \
     && ! find /usr/local \( -name 'setuptools-70*' -o -name 'msgpack-1.1*' \) 2>/dev/null | grep -q .
 
 USER proxmox-mcp
