@@ -5,6 +5,29 @@ RUN npm install
 COPY web/ ./
 RUN npm run build
 
+FROM python:3.13-slim AS build
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml README.md LICENSE alembic.ini /app/
+COPY src /app/src
+COPY migrations /app/migrations
+
+RUN python -m pip install --upgrade pip "setuptools>=83.0.0" wheel \
+    && pip install --no-cache-dir . \
+    && pip install --no-cache-dir "psycopg[binary]>=3.2" \
+    && pip install --no-cache-dir --force-reinstall --upgrade "setuptools>=83.0.0" "msgpack>=1.2.1" \
+    && rm -rf /root/.cache /tmp/pip-* \
+    && python -c "import importlib.metadata as m; assert tuple(map(int, m.version('setuptools').split('.')[:2])) >= (83, 0); assert tuple(map(int, m.version('msgpack').split('.')[:2])) >= (1, 2)"
+
 FROM python:3.13-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -16,23 +39,16 @@ WORKDIR /app
 
 RUN apt-get update \
     && apt-get upgrade -y \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && addgroup --system proxmox-mcp && adduser --system --ingroup proxmox-mcp proxmox-mcp \
+    && rm -rf /usr/local/lib/python3.*/ensurepip /root/.cache
 
-RUN addgroup --system proxmox-mcp && adduser --system --ingroup proxmox-mcp proxmox-mcp
-
-COPY pyproject.toml README.md LICENSE alembic.ini /app/
-COPY src /app/src
-COPY migrations /app/migrations
+COPY --from=build /usr/local /usr/local
+COPY --from=build /app /app
 COPY --from=webbuild /web/dist /app/web/dist
 
-RUN python -m pip install --upgrade pip "setuptools>=83.0.0" wheel \
-    && pip install --no-cache-dir . \
-    && pip install --no-cache-dir "psycopg[binary]>=3.2" \
-    && pip install --no-cache-dir --force-reinstall --upgrade "setuptools>=83.0.0" "msgpack>=1.2.1" \
-    && rm -rf /root/.cache /tmp/pip-* \
-    && rm -rf /usr/local/lib/python3.*/ensurepip \
-    && python -c "import importlib.metadata as m; assert tuple(map(int, m.version('setuptools').split('.')[:2])) >= (83, 0); assert tuple(map(int, m.version('msgpack').split('.')[:2])) >= (1, 2)" \
-    && ! find /usr/local /usr/lib \( -name 'setuptools-70*' -o -name 'msgpack-1.1*' \) 2>/dev/null | grep -q .
+RUN python -c "import importlib.metadata as m; assert tuple(map(int, m.version('setuptools').split('.')[:2])) >= (83, 0); assert tuple(map(int, m.version('msgpack').split('.')[:2])) >= (1, 2)" \
+    && ! find /usr/local \( -name 'setuptools-70*' -o -name 'msgpack-1.1*' \) 2>/dev/null | grep -q .
 
 USER proxmox-mcp
 EXPOSE 8443

@@ -20,3 +20,6 @@ def test_dockerfile_applies_base_security_updates_before_install() -> None:
     assert 'python -m pip install --upgrade pip "setuptools>=83.0.0" wheel' in dockerfile
     assert '"msgpack>=1.2.1"' in dockerfile
     assert "ensurepip" in dockerfile
+    assert "FROM python:3.13-slim AS build" in dockerfile
+    assert "FROM python:3.13-slim AS runtime" in dockerfile
+    assert "COPY --from=build /usr/local /usr/local" in dockerfile

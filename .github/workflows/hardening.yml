@@ -69,18 +69,36 @@ jobs:
           context: .
           push: false
           load: true
-          tags: enterprise-proxmox-mcp:ci
+          tags: enterprise-proxmox-mcp:ci-${{ github.sha }}
+
+      - name: Verify runtime package versions
+        run: |
+          image="enterprise-proxmox-mcp:ci-${{ github.sha }}"
+          docker run --rm --entrypoint python "$image" -c "import importlib.metadata as m; print('setuptools', m.version('setuptools')); print('msgpack', m.version('msgpack'))"
+          docker run --rm --entrypoint sh "$image" -c "find /usr/local -iname '*setuptools*' -o -iname '*msgpack*' 2>/dev/null | sort"
+
+      - name: Scan image (table)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: enterprise-proxmox-mcp:ci-${{ github.sha }}
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+          ignore-unfixed: "true"
+          scanners: vuln
+          cache-dir: ${{ github.workspace }}/.cache/trivy-fresh
+
       - name: Scan image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: enterprise-proxmox-mcp:ci
+          image-ref: enterprise-proxmox-mcp:ci-${{ github.sha }}
           format: sarif
           output: trivy-image-results.sarif
           severity: CRITICAL,HIGH
           exit-code: "1"
           ignore-unfixed: "true"
-          # Avoid noisy scanners that do not map to runtime packages we ship.
           scanners: vuln
+          cache-dir: ${{ github.workspace }}/.cache/trivy-fresh
       - uses: actions/upload-artifact@v4
         if: always()
         with:
