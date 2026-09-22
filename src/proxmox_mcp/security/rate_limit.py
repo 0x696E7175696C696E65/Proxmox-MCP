@@ -4,6 +4,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from threading import Lock
 from time import monotonic
+from typing import cast
 
 
 def _empty_failure_buckets() -> dict[str, deque[float]]:
@@ -58,7 +59,7 @@ FAILED_ADMIN_STEP_UP_LIMITER = SlidingWindowRateLimiter(max_failures=5, window_s
 def client_ip_from_scope(scope: dict[str, object]) -> str:
     client = scope.get("client")
     if isinstance(client, tuple) and client:
-        host_obj: object = client[0]
-        if isinstance(host_obj, str) and host_obj:
-            return host_obj
+        first = cast(object, client[0])
+        if isinstance(first, str) and first:
+            return first
     return "unknown"
