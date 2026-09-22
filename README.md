@@ -1,254 +1,138 @@
-# Enterprise Proxmox MCP Server
+# Enterprise Proxmox MCP
 
 [![CI](https://github.com/0x696E7175696C696E65/Proxmox-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/0x696E7175696C696E65/Proxmox-MCP/actions/workflows/ci.yml)
+[![Distribution](https://github.com/0x696E7175696C696E65/Proxmox-MCP/actions/workflows/distribution.yml/badge.svg)](https://github.com/0x696E7175696C696E65/Proxmox-MCP/actions/workflows/distribution.yml)
+[![Hardening](https://github.com/0x696E7175696C696E65/Proxmox-MCP/actions/workflows/hardening.yml/badge.svg)](https://github.com/0x696E7175696C696E65/Proxmox-MCP/actions/workflows/hardening.yml)
 ![Python](https://img.shields.io/badge/python-3.13%2B-blue)
 ![MCP](https://img.shields.io/badge/MCP-FastMCP-green)
 ![Status](https://img.shields.io/badge/status-public_preview-yellow)
 ![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
-Enterprise Proxmox MCP is a security-first Model Context Protocol server for AI-assisted Proxmox VE administration. It gives agents a controlled way to inspect and operate Proxmox through API and SSH paths while preserving authentication, RBAC, policy enforcement, approvals, audit trails, and operational safeguards.
+**Security-first MCP server for AI-assisted Proxmox VE.** Agents get a controlled API + SSH tool surface; operators get an Admin WebUI with multi-host switch, live audit, health, and dangerous-op approvals.
 
-This is not a thin Proxmox wrapper and it is not marketed as finished enterprise GA software. It is an actively developed, evidence-backed public preview for homelabs, research environments, MSP evaluation, datacenter automation experiments, and advanced AI operations where safety controls matter as much as tool coverage.
+<p align="center">
+  <img src="docs/screenshots/01-overview.png" alt="Proxmox MCP Admin WebUI overview" width="920" />
+  <br />
+  <em>Ops cockpit — gateway health, managing host, approvals status, and recent activity (privacy mode).</em>
+</p>
 
-If you are evaluating the project as an end user, treat it as a controlled automation gateway:
+Public preview for homelabs, lab validation, MSP evaluation, and research. Not certified unattended production control — start read-only, keep mutations dry-run / approval-gated, and qualify against your own topology.
 
-- Start with read-only discovery tools.
-- Use dry-run responses and impact previews before mutation.
-- Keep dangerous operations approval-gated.
-- Run disposable lab validation before connecting to important infrastructure.
-- Promote capabilities only when your own topology has matching evidence.
+## Features
 
-## What This Project Enables
+| Area | What you get |
+|------|----------------|
+| **MCP tool catalog** | 200+ registered tools across cluster, nodes, VMs, LXC, storage, network, firewall, backup, Ceph, HA, users, helpers, and SSH — contract-tested against [`docs/tool-specification.md`](docs/tool-specification.md) |
+| **Admin WebUI** | Bundled SPA at `/admin`: overview, tools browser, audit stream, health/doctor, approvals, servers, secrets, config, runtime |
+| **Multi-host catalog** | Manage multiple Proxmox endpoints; one active host at a time with probe / activate and phased restart overlay |
+| **Approvals pipeline** | Dangerous ops mint a pending request → admin step-up decide → one-time token → agent retry → single consume |
+| **Live settings** | Hot-apply policy and dangerous-ops toggles into the running guard; cluster/secret changes clearly mark restart |
+| **Fail-closed security** | AuthN (service token / OIDC / mTLS / workload identity primitives), RBAC, policy, risk scoring, CSRF + step-up on sensitive admin actions |
+| **Audit & redaction** | Durable audit events, privacy mode in the UI, MCP/SSH output sanitization at the security boundary |
+| **Durable runtime** | PostgreSQL + Redis (TLS-enforced URLs), Alembic migrations, idempotency, circuit breakers, SSH session/recording stores |
+| **Secrets** | Development file store plus Vault, Bitwarden, 1Password, AWS Secrets Manager, and Azure Key Vault adapters |
+| **Ship path** | Docker / Compose homelab stack, operator CLI, CI + distribution + hardening (Trivy) gates |
 
-- AI-native administration for Proxmox clusters, nodes, VMs, LXC containers, storage, networking, firewalls, backups, HA, Ceph, users, and permissions.
-- ISO, LXC template, and setup workflow helpers for common VM/LXC provisioning paths.
-- Community Proxmox helper-script discovery, preview, staging, and guarded execution using the upstream `community-scripts/ProxmoxVE` repository with the project owner's fork as a fallback source.
-- Controlled SSH operations for diagnostics, file transfer, interactive sessions, and shell workflows that are not fully covered by the Proxmox API.
-- Configurable dangerous-operation support with dry runs, risk scoring, impact analysis, approvals, target revalidation, and audit evidence.
-- Enterprise observability through structured logs, audit events, Prometheus metrics, correlated trace context, and SIEM-ready event streams.
-- Secret-provider integration through development, HashiCorp Vault KV v2, Bitwarden-style item fields, 1Password-style item fields, AWS Secrets Manager JSON secrets, and Azure Key Vault JSON secrets.
+### Evaluate safely
 
-## Current Status
+1. Start with **read-only** discovery tools.
+2. Prefer **dry-run** and impact previews before mutation.
+3. Keep high/critical tools **approval-gated**.
+4. Qualify on a **disposable lab** before real clusters.
+5. Promote guarded tools only with matching evidence ([`docs/tool-promotion-framework.md`](docs/tool-promotion-framework.md)).
 
-The project is currently an evidence-backed public preview. The control plane, registered tool catalog, security model, deployment scaffolding, and lab validation harness are implemented on `main`. Broader enterprise readiness still depends on topology-specific qualification, production deployment proof, and backend-specific promotion of guarded operations.
+## Admin WebUI
 
-The release posture is intentionally conservative: the README and docs should describe only what deterministic tests, registered MCP-path checks, opt-in lab gates, and sanitized release evidence support.
+Privacy-masked screenshots (IPs and credential paths censored). Full set: [`docs/screenshots/`](docs/screenshots/README.md).
 
-Implemented:
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/screenshots/05-servers.png" alt="Servers host catalog" />
+      <p align="center"><sub><b>Servers</b> — multi-host catalog; one active target</sub></p>
+    </td>
+    <td width="50%">
+      <img src="docs/screenshots/06-tools.png" alt="MCP tools browser" />
+      <p align="center"><sub><b>Tools</b> — risk filters and low/medium invoke</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/screenshots/07-audit.png" alt="Live audit stream" />
+      <p align="center"><sub><b>Audit</b> — live MCP and admin events</sub></p>
+    </td>
+    <td width="50%">
+      <img src="docs/screenshots/08-health.png" alt="Health and doctor" />
+      <p align="center"><sub><b>Health</b> — dependency matrix + doctor</sub></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/screenshots/11-approvals.png" alt="Approvals policy and queue" />
+      <p align="center"><sub><b>Approvals</b> — policy + pending queue</sub></p>
+    </td>
+    <td width="50%">
+      <img src="docs/screenshots/10-runtime.png" alt="Runtime restart controls" />
+      <p align="center"><sub><b>Runtime</b> — process state and step-up restart</sub></p>
+    </td>
+  </tr>
+</table>
 
-- FastMCP server factory with registry-driven tool registration.
-- Self-describing tools: every registered tool exposes a required `description` and a per-tool `{target, parameters, options}` input schema (built from its own parameter model) to MCP clients, contract-tested for presence and specificity.
-- Standard MCP request, response, error, dry-run, impact, approval, and audit envelopes.
-- Authentication models, service-token authentication, OIDC RS256/JWKS validation, mTLS client-certificate identity mapping, signed workload identity validation, RBAC evaluation, policy decisions, risk scoring, and approval validation.
-- Durable audit persistence with SQLAlchemy models and Alembic migration.
-- Secret-provider abstraction with development, Vault, Bitwarden, 1Password, AWS Secrets Manager, and Azure Key Vault adapters.
-- Proxmox cluster credential resolution, in-memory Proxmox API test client, and token/password-auth Proxmox lab HTTP adapter.
-- Read-only Proxmox tools, safe mutations, dangerous operations, promoted domain-pack tools, and SSH tools.
-- Native media/template tools for ISO listing, HTTPS ISO download, VM ISO attachment, LXC template listing/download, and VM/LXC setup workflow previews.
-- Helper-script catalog, preview, staging, and execution tools with source allowlisting, commit pinning, SHA-256 hashing, pinned shared-helper preparation, fallback-source logging, and approval-gated SSH execution.
-- Controlled SSH execution, command policy, session tracking, SFTP/SCP operations, and output redaction.
-- Runtime observability wiring for Prometheus-style metrics, structured JSON logs, trace context, audit correlation, Alertmanager-backed recent alerts, Prometheus-backed resource trends, and SIEM/Loki payloads.
-- Durable shared-state foundations for approvals, idempotency, SSH sessions, SSH recordings, Proxmox task state, and SIEM retry/dead-letter delivery.
-- Reliability primitives for retries, circuit breakers, idempotency, and resumable Proxmox task references.
-- Docker, Docker Compose, Kubernetes, Grafana dashboard, hardening workflow, and release hardening runbook.
-- Contract tests that verify the registered tool catalog against [`docs/tool-specification.md`](docs/tool-specification.md).
-- Profile-driven lab gates for single-node, storage, LXC-template, Ceph, HA, multi-node, and PBS validation tracks.
-- Homelab runtime assembly via `build_runtime()` with durable PostgreSQL stores, file-backed secrets, Proxmox HTTP client wiring, and service-token HTTP middleware.
-- Operator CLI for `serve`, `validate-config`, `doctor`, `migrate`, and `tools list`.
-- Docker Compose homelab overlay, bootstrap scripts, `.env.example`, and [`docs/quickstart-homelab.md`](docs/quickstart-homelab.md).
-- Alembic migration readiness checks and Proxmox API circuit breakers in the homelab runtime path.
-
-Evidence-backed status:
-
-- **Preview validated:** core MCP control plane, auth/RBAC/policy/approval/audit flows, read-only Proxmox discovery, safe mutations, dangerous-operation guardrails, controlled SSH, durable state, release evidence validation, and the current Proxmox VE 9.1.1 single-node storage lab profile.
-- **Lab qualified in the current disposable profile:** `pve-9-storage-local-local-lvm` on Proxmox VE 9.1.1 recorded `20 passed, 8 skipped` with disposable VM lifecycle, registered VM update, backup create/list, restore-precondition dry-run, bounded storage benchmark preview, and read-only node update preflight evidence.
-- **Helper-script smoke validated:** the guarded helper path successfully installed `ct/alpine.sh` from pinned `community-scripts/ProxmoxVE` commit `373b138fe0ee3b61fe1b0468bef7bc0e43b6bd5d` into disposable LXC `9101`, producing a running Alpine `3.23.4` container with SHA-256 pinned staged artifact evidence.
-- **Profile-gated:** reusable LXC-template lifecycle promotion, Ceph, HA, multi-node, PBS availability, backup verification, live storage expansion, and live node update orchestration.
-- **Guarded with live smoke evidence:** helper-script execution is available as a first-class tool path, but broad production use requires operator policy, explicit SSH command allowance for the helper runner, and disposable lab evidence for each script or script category being used.
-- **Operator-qualified:** production deployment depends on environment-specific external auth, enterprise secret backend, TLS material, PostgreSQL TLS, Redis TLS, least-privilege Proxmox credentials, and release evidence for the enabled topology.
-
-Validation at merge time:
-
-- `python -m ruff format .`
-- `python -m ruff check .`
-- `python -m pyright`
-- `python -m pytest`
-- Distribution readiness workflow: builds and validates Python sdist/wheel artifacts, smoke-installs the wheel, audits dependencies, and builds the Docker image.
-- Dedicated security invariant suite covering fail-closed guard behavior, approval replay protection, audit evidence, redaction boundaries, and encrypted transport enforcement.
-- Migration gate on every PR; CI and hardening workflows emit sanitized `ci-success.json`, `migration-validation.json`, and `hardening-summary.json` artifacts.
-- Current local verification should be rerun before each release candidate; the latest full local run reported `414 passed, 29 skipped`, with live Proxmox lab gates intentionally skipped unless explicitly enabled.
-- Release evidence validation now schema-checks compatibility profiles, release summary fields, lab artifacts, artifact hashes, required profile tests, tool promotion evidence, and credential-shaped key rejection.
-- Live disposable Proxmox VE 9.1.1 lab evidence currently covers the `pve-9-storage-local-local-lvm` preview profile and one guarded helper-script Alpine LXC install. Ceph, HA, multi-node, PBS verification, reusable native LXC-template promotion, live storage expansion, and live node updates remain unqualified in this lab.
-- MCP communication audit: local runtime test negotiated `TLSv1.3` with `TLS_AES_256_GCM_SHA384`, FastMCP client access succeeded over HTTPS, and plaintext HTTP to the MCP port returned no response bytes.
-- Network transport policy: MCP ingress is HTTPS-only, Proxmox API endpoints require `https://`, PostgreSQL must request TLS, Redis must use `rediss://`, and SSH remains encrypted by protocol.
-
-Important caveat: the codebase is preview-ready for development, homelab evaluation, and lab validation—not certified for unattended production control of real Proxmox clusters. Homelab mode (`proxmox-mcp serve --mode homelab`) wires durable state, service-token auth, and a configured Proxmox cluster, but you should still start with read-only tools and disposable validation. Ambiguous or backend-specific operations, such as generic storage expansion, backup verification, and node update orchestration, remain guarded with `NOT_IMPLEMENTED` until they have exact contracts, lab evidence, and release gates. Bounded storage benchmarking is supported only through the controlled domain-tool path and should not be treated as a broad storage-backend guarantee. External observability tools return `external_source_required` unless Alertmanager or Prometheus backends are configured. Multi-replica deployment claims have durable foundations, but still require operator configuration and release evidence before qualification. Enterprise OIDC, mTLS, and workload-identity auth primitives exist in code; homelab deployments use in-process Bearer service-token auth, while production gateways can still supply verified sessions through the `authenticated_session_resolver` hook and Redis-backed replay cache for workload identities.
-
-## Architecture
+## How it works
 
 ```mermaid
 flowchart TD
-  aiAgent["AI Agent"] --> mcpTransport["MCP Transport"]
-  mcpTransport --> toolRouter["Tool Router"]
-  toolRouter --> authLayer["Auth Layer"]
-  authLayer --> sessionManager["Session Manager"]
-  sessionManager --> rbacEngine["RBAC Engine"]
-  rbacEngine --> policyEngine["Policy Engine"]
-  policyEngine --> riskEngine["Risk And Approval Engine"]
-  riskEngine --> auditLogger["Audit Logger"]
-  auditLogger --> proxmoxApi["Proxmox API Modules"]
-  auditLogger --> sshEngine["Controlled SSH Module"]
-  proxmoxApi --> proxmoxCluster["Proxmox VE Cluster"]
-  sshEngine --> proxmoxCluster
-  authLayer --> secretManager["Secret Manager"]
-  secretManager --> secretBackends["External Secret Backends"]
-  auditLogger --> postgres["PostgreSQL"]
-  policyEngine --> redis["Redis"]
-  proxmoxApi --> observability["Metrics And Traces"]
-  sshEngine --> observability
+  agent["AI Agent / MCP Client"] --> mcp["HTTPS MCP + FastMCP"]
+  admin["Operator browser"] --> webui["Admin WebUI /admin"]
+  mcp --> guard["Auth · RBAC · Policy · Risk · Approvals"]
+  webui --> adminApi["Admin API · CSRF · step-up"]
+  guard --> tools["Proxmox API + SSH tools"]
+  adminApi --> stores["Config · Hosts · Approvals · Audit"]
+  tools --> pve["Proxmox VE"]
+  stores --> pg["PostgreSQL"]
+  guard --> redis["Redis"]
+  tools --> audit["Audit + metrics"]
 ```
 
-Every tool call is expected to pass through a consistent control plane before it can touch Proxmox:
-
-```mermaid
-sequenceDiagram
-  participant Agent as AI Agent
-  participant MCP as MCP Server
-  participant Auth as Auth And RBAC
-  participant Policy as Policy Engine
-  participant Risk as Risk Engine
-  participant Audit as Audit Log
-  participant Connector as API Or SSH Connector
-  participant PVE as Proxmox VE
-
-  Agent->>MCP: Invoke MCP tool
-  MCP->>Auth: Verify caller, session, and permissions
-  Auth->>Policy: Evaluate allow, deny, approval rules
-  Policy->>Risk: Score impact and dangerous operation status
-  Risk->>Audit: Record pre-execution decision
-  Audit->>Connector: Execute approved operation
-  Connector->>PVE: API or controlled SSH call
-  PVE-->>Connector: Result
-  Connector-->>Audit: Exit code, status, output metadata
-  Audit-->>MCP: Audited response context
-  MCP-->>Agent: Structured MCP response
-```
-
-## Safety Model
-
-Dangerous operations are supported, but they are never treated as ordinary tool calls.
+Every mutating tool call is expected to pass auth → RBAC → policy → risk/approval → audit before touching Proxmox or SSH.
 
 ```mermaid
 flowchart LR
-  request["Tool Request"] --> rbac["RBAC Check"]
-  rbac --> policy["Policy Decision"]
-  policy --> deny{"Denied?"}
-  deny -->|"Yes"| blocked["Return Policy Denied"]
-  deny -->|"No"| risk["Risk Score"]
-  risk --> approval{"Approval Required?"}
-  approval -->|"Yes"| pending["Create Approval Request"]
-  approval -->|"No"| dryRun{"Dry Run?"}
-  dryRun -->|"Yes"| preview["Return Impact Preview"]
-  dryRun -->|"No"| execute["Execute Operation"]
-  pending --> executeApproved["Execute After Valid Approval"]
-  execute --> audit["Write Audit Result"]
-  executeApproved --> audit
+  req["Tool request"] --> rbac["RBAC"]
+  rbac --> policy["Policy"]
+  policy --> risk["Risk"]
+  risk --> need{"Approval?"}
+  need -->|yes| queue["Mint pending"]
+  queue --> decide["Admin step-up decide"]
+  decide --> token["One-time token"]
+  token --> retry["Agent retry + consume"]
+  need -->|no| dry{"Dry-run?"}
+  dry -->|yes| preview["Impact preview"]
+  dry -->|no| run["Execute"]
+  retry --> run
+  run --> audit["Audit"]
 ```
 
-The security model is built around these invariants:
+## Status
 
-- Deny policies always override allow policies.
-- SSH access is separate from Proxmox API access.
-- Secrets are referenced through secret backends and never returned through MCP tools.
-- SSH command and file output is redacted before it is returned through MCP, not only in the stored recording.
-- SSH remote paths reject `.`/`..`/empty segments, and host-key verification fails closed unless `allow_unknown_hosts` is explicitly set.
-- Helper-script live execution requires an explicit SHA-256 content pin bound to the reviewed script.
-- Server-side ISO/template downloads reject loopback, private, link-local, and known-internal hosts (SSRF guard).
-- Mutating actions require audit evidence before and after execution.
-- Destructive actions can be enabled, denied, or approval-gated by environment.
-- Dry-run and impact-analysis paths are first-class behavior, not UI-only features.
+**Public preview** on `main`: control plane, tool catalog, Admin WebUI, approvals/runtime pipelines, Compose/K8s scaffolding, and disposable lab harness are implemented. Broader enterprise claims stay topology- and evidence-gated.
 
-## Tool Coverage
+| Tier | Meaning |
+|------|---------|
+| **Preview validated** | MCP control plane, auth/RBAC/policy/approval/audit, read + safe mutate, dangerous-op guards, SSH, durable state, current PVE 9.1.1 single-node storage lab profile |
+| **Lab qualified** | `pve-9-storage-local-local-lvm` disposable VM/backup/storage-benchmark/read-only update preflight evidence |
+| **Profile-gated** | Ceph, HA, multi-node, PBS verify, reusable LXC-template promotion, live storage expansion, live node updates |
+| **Operator-qualified** | Production TLS, external auth, enterprise secrets, least-privilege Proxmox creds, release evidence for *your* topology |
 
-The MCP catalog in [`docs/tool-specification.md`](docs/tool-specification.md) is registered and contract-tested across these domains:
+Guarded placeholders (`verify_backup`, broad `expand_storage`, live node-update orchestration, and similar) fail closed with `NOT_IMPLEMENTED` until promoted. Details: [`docs/domain-pack-status.md`](docs/domain-pack-status.md), [`docs/proxmox-compatibility.md`](docs/proxmox-compatibility.md).
 
-- Cluster status, membership, quorum, replication, and tasks
-- Node services, packages, hardware, logs, power, and networking
-- VM create, clone, lifecycle, migration, snapshots, restore, and hardware changes
-- LXC create, clone, lifecycle, snapshots, restore, and resource changes
-- Storage management for ZFS, LVM, LVM-thin, NFS, SMB, Ceph, and directory storage
-- Bridges, bonds, VLANs, SDN, VXLAN, and Linux network validation
-- Datacenter, node, and guest firewall rules, aliases, and IP sets
-- Backups, restores, verification, retention, and scheduled jobs
-- Ceph pools, OSDs, MONs, MGRs, health, and rebalancing
-- HA resources and groups
-- Users, groups, roles, and permissions
-- Monitoring, diagnostics, support bundles, SMART, ZFS, and Ceph metrics
-- Controlled SSH command execution, interactive sessions, SFTP, SCP, upload, and download
+Merge gates: Ruff, Pyright, pytest, distribution (sdist/wheel/image), hardening (Trivy), migration validation, security invariant suite.
 
-Tool implementation tiers:
+## Quick start
 
-- **Implemented read paths:** inventory, configuration, status, metrics, logs, Ceph, HA, users, permissions, storage, networking, firewall, and backup discovery tools backed by Proxmox API paths.
-- **Implemented domain pack paths:** VM/LXC lifecycle and restore, storage/ZFS/LVM/disk, network/firewall, backup/retention, Ceph/HA, SSH console/diagnostics, and support bundle operations with pack-specific contract tests.
-- **Implemented safe mutation paths:** VM/LXC lifecycle operations, snapshots, backups, and non-destructive config updates with dry-run behavior and impact metadata.
-- **Implemented dangerous paths:** destructive VM/LXC/storage/Ceph/user/networking operations with critical/high risk metadata, approval defaults, target revalidation where applicable, and audit metadata.
-- **Implemented SSH paths:** command execution, policy denial, session open/close, interactive execution contract, durable LXC console session references, SFTP/SCP file flows, recording references, and redaction.
-- **Guarded placeholders:** tools whose safe live behavior is backend-specific or not yet backed by a concrete operation fail visibly with `NOT_IMPLEMENTED` instead of returning placeholder success.
+### Homelab Compose (recommended)
 
-Operational references:
-
-- [`docs/testing-strategy.md`](docs/testing-strategy.md) describes the skip-safe Proxmox lab harness.
-- [`docs/tool-promotion-framework.md`](docs/tool-promotion-framework.md) defines promotion criteria for guarded tools.
-- [`docs/domain-pack-status.md`](docs/domain-pack-status.md) records domain-pack support, validation, and safety notes.
-
-## Public Preview Checklist
-
-Before cutting or sharing a preview release, attach evidence for:
-
-- CI, distribution, hardening, migration, SBOM, and Trivy gates.
-- `docs/release-evidence/compatibility-report.example.json`, `docs/release-evidence/lab-evidence.example.json`, and generated artifact-manifest schema/hash validation.
-- The exact Proxmox lab profile being claimed in [`docs/proxmox-compatibility.md`](docs/proxmox-compatibility.md).
-- Guarded-tool status for `verify_backup`, `expand_storage`, and node update orchestration.
-- Bounded benchmark evidence for `benchmark_storage`, including runtime/size caps, `mcp-lab-*` artifact paths, and cleanup proof.
-- Production configuration review covering TLS, external auth, secret backend, PostgreSQL TLS, Redis TLS, and operator-provided credentials.
-
-## Runtime Modules
-
-The runtime is organized around a shared tool registry and execution context:
-
-```mermaid
-flowchart TD
-  settings["proxmox_mcp.config"] --> runtime["proxmox_mcp.server.runtime"]
-  runtime --> server["proxmox_mcp.server"]
-  auditEvents["proxmox_mcp.audit.events"] --> auditWriter["proxmox_mcp.audit.writer"]
-  auditWriter --> server
-  settings --> database["proxmox_mcp.persistence.database"]
-  settings --> redisClient["proxmox_mcp.persistence.redis"]
-  server --> registry["Tool Registry"]
-  registry --> proxmoxTools["Proxmox API Tools"]
-  registry --> sshTools["Controlled SSH Tools"]
-  registry --> internalTools["Internal Tools"]
-  registry --> fastmcp["FastMCP App"]
-```
-
-Homelab mode uses `build_runtime()` to assemble durable stores, the Proxmox HTTP client, service-token auth middleware, and readiness dependency checkers before registering tools with FastMCP.
-
-## Operator CLI
-
-| Command | Purpose |
-|---------|---------|
-| `proxmox-mcp serve --mode dev` | In-memory development server (default when durable state is off) |
-| `proxmox-mcp serve --mode homelab` | Durable Postgres/Redis runtime with configured Proxmox cluster |
-| `proxmox-mcp validate-config` | Load settings and run readiness validation rules |
-| `proxmox-mcp doctor` | Validate config and probe PostgreSQL, Redis, and Proxmox API reachability |
-| `proxmox-mcp migrate` | Apply Alembic migrations to the configured database |
-| `proxmox-mcp tools list` | Print registered tools; use `--status live` or `--status guarded` to filter |
-
-## Quick Start
-
-### Homelab stack (recommended for first run)
-
-Run a local Docker Compose stack with TLS, PostgreSQL, Redis, service-token auth, and file-backed Proxmox credentials. Full walkthrough: [`docs/quickstart-homelab.md`](docs/quickstart-homelab.md).
+TLS + PostgreSQL + Redis + service-token auth + file-backed Proxmox secrets. Full guide: [`docs/quickstart-homelab.md`](docs/quickstart-homelab.md).
 
 ```powershell
 git clone https://github.com/0x696E7175696C696E65/Proxmox-MCP.git
@@ -256,243 +140,103 @@ cd Proxmox-MCP
 powershell -ExecutionPolicy Bypass -File scripts/bootstrap-homelab.ps1
 ```
 
-Edit `.env` and `secrets.local.json` with your service token, database password, and Proxmox API token. Then validate and start:
+Edit `.env` and `secrets.local.json`, then:
 
 ```powershell
 python -m pip install -e ".[dev]"
 proxmox-mcp validate-config
 proxmox-mcp doctor
-proxmox-mcp migrate
 docker compose -f docker-compose.yml -f docker-compose.homelab.yml up --build
 ```
-
-Check readiness (replace the token with your configured value):
 
 ```powershell
 curl.exe -fk -H "Authorization: Bearer <service-token>" https://localhost:8443/health/ready
 ```
 
-Point your MCP client at `https://localhost:8443` and send `Authorization: Bearer <service-token>` on each request.
+- **MCP:** `https://localhost:8443` with `Authorization: Bearer <service-token>`
+- **Admin WebUI:** `https://localhost:8443/admin` (set `PROXMOX_MCP_ADMIN_USERNAME` / `PROXMOX_MCP_ADMIN_PASSWORD`)
 
-Optional Grafana profile:
+Optional Grafana: add Compose profile `observability`.
 
-```powershell
-docker compose -f docker-compose.yml -f docker-compose.homelab.yml --profile observability up
-```
-
-### Local development
-
-Use this path to evaluate the control plane and test suite without a running Compose stack.
-
-Clone the repository:
-
-```powershell
-git clone https://github.com/0x696E7175696C696E65/Proxmox-MCP.git
-cd Proxmox-MCP
-```
-
-Create an environment and install the package with development dependencies:
+### Dev server (no Compose)
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
-```
-
-Run the local verification suite:
-
-```powershell
-python -m ruff format --check .
-python -m ruff check .
-python -m pyright
 python -m pytest -q
-```
-
-Start the default in-memory development server:
-
-```powershell
 proxmox-mcp serve --mode dev
 ```
 
-Or print CLI help:
+### Lab gates
 
-```powershell
-proxmox-mcp --help
-proxmox-mcp tools list --status guarded
-```
+Opt-in disposable Proxmox validation — see [`docs/lab-runbook.md`](docs/lab-runbook.md) and [`docs/testing-strategy.md`](docs/testing-strategy.md).
 
-### Disposable Proxmox lab validation
+## Operator CLI
 
-Run the lab preflight before enabling mutation gates:
-
-```powershell
-$env:PROXMOX_MCP_LAB_ENABLED = "true"
-$env:PROXMOX_MCP_LAB_API_ENDPOINT = "https://pve.example.test:8006"
-$env:PROXMOX_MCP_LAB_USERNAME = "root@pam"
-$env:PROXMOX_MCP_LAB_PASSWORD = "<load-from-local-secret>"
-$env:PROXMOX_MCP_LAB_NODE = "pve"
-$env:PROXMOX_MCP_LAB_STORAGE = "local"
-python scripts/lab_preflight.py --output-file release-evidence/lab-preflight.json
-```
-
-Then run read-only lab tests:
-
-```powershell
-python -m pytest tests/lab -m lab -q
-```
-
-Only enable disposable mutation tests after preflight succeeds and after you choose explicit throwaway IDs:
-
-```powershell
-$env:PROXMOX_MCP_LAB_MUTATIONS_ENABLED = "true"
-$env:PROXMOX_MCP_LAB_DESTRUCTIVE_ENABLED = "true"
-$env:PROXMOX_MCP_LAB_TEST_VMID = "9101"
-$env:PROXMOX_MCP_LAB_TEST_CTID = "9102"
-python -m pytest tests/lab -m lab --junitxml=release-evidence/lab-junit.xml -q
-```
+| Command | Purpose |
+|---------|---------|
+| `proxmox-mcp serve --mode dev` | In-memory development server |
+| `proxmox-mcp serve --mode homelab` | Durable Postgres/Redis + configured cluster |
+| `proxmox-mcp validate-config` | Load settings and readiness rules |
+| `proxmox-mcp doctor` | Probe PostgreSQL, Redis, and Proxmox API |
+| `proxmox-mcp migrate` | Apply Alembic migrations |
+| `proxmox-mcp tools list` | List tools (`--status live` / `guarded`) |
 
 ## Configuration
 
-Runtime settings are environment driven and use the `PROXMOX_MCP_` prefix. Copy [`.env.example`](.env.example) as a starting point.
+Settings use the `PROXMOX_MCP_` prefix. Start from [`.env.example`](.env.example) and [`secrets.local.json.example`](secrets.local.json.example).
 
-### Homelab settings
+Homelab essentials:
 
 ```powershell
 $env:PROXMOX_MCP_ENVIRONMENT = "homelab"
 $env:PROXMOX_MCP_DURABLE_STATE_ENABLED = "true"
 $env:PROXMOX_MCP_AUTH_MODE = "service_token"
-$env:PROXMOX_MCP_EXTERNAL_AUTH_ENABLED = "true"
-$env:PROXMOX_MCP_SERVICE_TOKEN = "<load-from-local-secret>"
-$env:PROXMOX_MCP_CREDENTIAL_PROVIDER = "development"
+$env:PROXMOX_MCP_SERVICE_TOKEN = "<from-local-secret>"
 $env:PROXMOX_MCP_SECRETS_FILE = ".\secrets.local.json"
-$env:PROXMOX_MCP_CLUSTER__CLUSTER_ID = "homelab"
 $env:PROXMOX_MCP_CLUSTER__API_ENDPOINT = "https://pve.example.test:8006"
 $env:PROXMOX_MCP_CLUSTER__CREDENTIAL_REF__PATH = "clusters/homelab/proxmox-api"
 ```
 
-Store Proxmox API credentials in `secrets.local.json` using [`secrets.local.json.example`](secrets.local.json.example) as a template. Never commit real secrets.
+Transport is fail-closed: MCP is HTTPS-only; Proxmox endpoints must be `https://`; PostgreSQL must request TLS; Redis must use `rediss://`. Database/Redis/Vault URLs and secrets use Pydantic `SecretStr` and are redacted at security boundaries.
 
-### General runtime settings
+Production expectations (external auth, enterprise secret backend, pinned SSH hosts, approval policy, topology evidence): [`docs/deployment.md`](docs/deployment.md) and [`docs/security-model.md`](docs/security-model.md).
 
-```powershell
-$env:PROXMOX_MCP_ENVIRONMENT = "development"
-$env:PROXMOX_MCP_SERVER_HOST = "127.0.0.1"
-$env:PROXMOX_MCP_SERVER_PORT = "8443"
-$env:PROXMOX_MCP_DATABASE_URL = "postgresql+asyncpg://app_user:<load-from-secret>@postgres/proxmox_mcp?ssl=require"
-$env:PROXMOX_MCP_REDIS_URL = "rediss://redis:6379/0"
-$env:PROXMOX_MCP_DANGEROUS_OPERATIONS__REQUIRE_APPROVAL = "true"
-```
+## Stack
 
-Secret-like settings are modeled with Pydantic `SecretStr` and are redacted by safe serialization helpers.
-Database and Redis settings are TLS-enforced: PostgreSQL must request TLS and Redis must use `rediss://`.
-
-Secret backends are selected with `PROXMOX_MCP_CREDENTIAL_PROVIDER`. Supported values are `development`, `hashicorp_vault`, `bitwarden`, `onepassword`, `aws_secrets_manager`, and `azure_key_vault`. Use the `development` provider only for local development. External backend URLs such as `PROXMOX_MCP_VAULT_URL` and `PROXMOX_MCP_AZURE_KEY_VAULT_URL` must use `https://`; readiness fails closed when the selected provider is missing required bootstrap configuration.
-
-```powershell
-$env:PROXMOX_MCP_CREDENTIAL_PROVIDER = "hashicorp_vault"
-$env:PROXMOX_MCP_VAULT_URL = "https://vault.example.com"
-$env:PROXMOX_MCP_VAULT_TOKEN = "<load-from-orchestrator-secret>"
-```
-
-The MCP server is HTTPS-only. Provide a certificate and key for managed environments:
-
-```powershell
-$env:PROXMOX_MCP_TLS__CERT_FILE = "C:\certs\proxmox-mcp\tls.crt"
-$env:PROXMOX_MCP_TLS__KEY_FILE = "C:\certs\proxmox-mcp\tls.key"
-$env:PROXMOX_MCP_TLS__GENERATE_SELF_SIGNED = "false"
-```
-
-For disposable development or lab runs, self-signed certificates can be generated automatically:
-
-```powershell
-$env:PROXMOX_MCP_TLS__GENERATE_SELF_SIGNED = "true"
-$env:PROXMOX_MCP_TLS__GENERATED_CERT_DIR = "$env:TEMP\proxmox-mcp\certs"
-$env:PROXMOX_MCP_TLS__COMMON_NAME = "localhost"
-$env:PROXMOX_MCP_TLS__SUBJECT_ALT_NAMES = '["localhost","127.0.0.1"]'
-```
-
-Clients must trust the configured certificate or the generated self-signed certificate before connecting.
-
-### Production Configuration Expectations
-
-Production deployments should provide:
-
-- External authentication through the server session resolver, OIDC, mTLS, or signed workload identity integration.
-- Redis-backed workload identity replay protection.
-- PostgreSQL and Redis with TLS enabled.
-- An enterprise secret provider instead of local development secrets.
-- Least-privilege Proxmox API credentials scoped to the intended cluster and role.
-- Pinned SSH host keys when SSH tools are enabled.
-- Approval policy for destructive and high-risk operations.
-- Release evidence for the exact Proxmox topology being claimed.
-
-## Technology Stack
-
-- Python 3.13+
-- FastMCP
-- Pydantic v2 and pydantic-settings
-- SQLAlchemy async and asyncpg
-- Redis asyncio client
-- AsyncSSH
-- cryptography
-- structlog
-- Alembic
-- pytest and pytest-asyncio
-- Ruff
-- Pyright
-
-The current Proxmox client includes in-memory implementations for deterministic tests. Homelab mode wires `ProxmoxHttpApiClient` through `build_runtime()` with circuit-breaker protection. Enterprise Vault/OIDC deployments still require operator-supplied vendor clients and gateway integration.
-
-## Roadmap Status
-
-```mermaid
-flowchart LR
-  m0["Milestone 0 Architecture"] --> m1["Milestone 1 Foundation Runtime"]
-  m1 --> m2["Milestone 2 Auth RBAC Policy Secrets"]
-  m2 --> m3["Milestone 3 Read Only Proxmox"]
-  m3 --> m4["Milestone 4 Safe Mutations"]
-  m4 --> m5["Milestone 5 Dangerous Ops Approvals"]
-  m5 --> m6["Milestone 6 Controlled SSH"]
-  m6 --> m7["Milestone 7 Full Proxmox Coverage"]
-  m7 --> m8["Milestone 8 Observability"]
-  m8 --> m9["Milestone 9 Production HA"]
-  m9 --> m10["Milestone 10 Hardening"]
-```
-
-The detailed implementation roadmap lives in [`docs/roadmap.md`](docs/roadmap.md). The preview implementation now covers the planned runtime, security, Proxmox tool, SSH, dangerous-operation, observability, deployment, hardening, and validation-expansion milestones at code and test level. The next phase is collecting additional topology evidence for Ceph, HA, multi-node, PBS verification, LXC templates, node update orchestration, and backend-specific storage expansion before any broader qualification claims.
+Python 3.13 · FastMCP · Pydantic v2 · SQLAlchemy async / asyncpg · Redis · AsyncSSH · cryptography · structlog · Alembic · React Admin SPA · Docker / Compose / Kubernetes · Ruff · Pyright · pytest
 
 ## Documentation
 
-- [`docs/quickstart-homelab.md`](docs/quickstart-homelab.md): bootstrap, Compose, service-token auth, and MCP client setup.
-- [`docs/architecture.md`](docs/architecture.md): system architecture, module boundaries, and runtime flows.
-- [`docs/security-model.md`](docs/security-model.md): authentication, authorization, policy, approvals, and dangerous operations.
-- [`docs/threat-model.md`](docs/threat-model.md): assets, trust boundaries, abuse cases, and mitigations.
-- [`docs/tool-specification.md`](docs/tool-specification.md): MCP tool catalog (200+ tools, contract-tested).
-- [`docs/mcp-schema.md`](docs/mcp-schema.md): request, response, error, dry-run, impact, and audit schemas.
-- [`docs/database-schema.md`](docs/database-schema.md): persistence model for sessions, policy, audit, approvals, credentials, resources, and SSH recordings.
-- [`docs/testing-strategy.md`](docs/testing-strategy.md): unit, integration, security, lab, SSH sandbox, chaos, and acceptance testing.
-- [`docs/deployment.md`](docs/deployment.md): Docker, Kubernetes, HA, observability, and operations guidance.
-- [`docs/release-hardening.md`](docs/release-hardening.md): preview release gates, chaos scenarios, rollback, and known limitations.
-- [`docs/release-candidate-notes.md`](docs/release-candidate-notes.md): release-review categories for preview, profile-gated, operator-qualified, and still-guarded capabilities.
-- [`docs/proxmox-compatibility.md`](docs/proxmox-compatibility.md): evidence-backed compatibility profiles and known topology limits.
-- [`docs/domain-pack-status.md`](docs/domain-pack-status.md): domain-by-domain tool promotion status and guarded operations.
+| Doc | Topic |
+|-----|--------|
+| [`docs/quickstart-homelab.md`](docs/quickstart-homelab.md) | Bootstrap, Compose, MCP + Admin login |
+| [`docs/screenshots/README.md`](docs/screenshots/README.md) | WebUI screenshot index |
+| [`docs/architecture.md`](docs/architecture.md) | Module boundaries and runtime flows |
+| [`docs/security-model.md`](docs/security-model.md) | AuthZ, policy, approvals, dangerous ops |
+| [`docs/threat-model.md`](docs/threat-model.md) | Trust boundaries and mitigations |
+| [`docs/tool-specification.md`](docs/tool-specification.md) | Full MCP tool catalog |
+| [`docs/mcp-schema.md`](docs/mcp-schema.md) | Request / response / audit envelopes |
+| [`docs/domain-pack-status.md`](docs/domain-pack-status.md) | Promotion status by domain |
+| [`docs/proxmox-compatibility.md`](docs/proxmox-compatibility.md) | Evidence-backed lab profiles |
+| [`docs/deployment.md`](docs/deployment.md) | Docker, Kubernetes, HA, ops |
+| [`docs/release-hardening.md`](docs/release-hardening.md) | Release gates and known limits |
+| [`docs/roadmap.md`](docs/roadmap.md) | Milestone roadmap |
 
 ## License
 
-This project is open source under the Apache License 2.0. You can use, modify, and distribute the source under the terms in [`LICENSE`](LICENSE).
+Apache License 2.0 — see [`LICENSE`](LICENSE).
 
-## Production Posture
+## Production posture
 
-This project is under active development. The preview implementation includes the enterprise control-plane pieces and current disposable lab evidence, but production use still requires environment-specific validation.
+Active development, evidence-backed preview. Before any production Proxmox attachment:
 
-Before connecting to production Proxmox infrastructure:
+- Run CI/hardening and the security invariant suite.
+- Validate every enabled mutating tool on a disposable lab.
+- Keep unpromoted tools disabled.
+- Configure real TLS, auth, secrets, PostgreSQL, and Redis.
+- Review RBAC, policy, approvals, and dangerous-operation settings.
+- Confirm backup, rollback, and audit recovery for your environment.
 
-- Run the full test suite and hardening workflow.
-- Validate every enabled mutating or destructive tool against a lab Proxmox cluster.
-- Keep `verify_backup`, `expand_storage`, and live node update orchestration disabled unless your environment has matching evidence.
-- Configure real PostgreSQL, Redis, Vault or another supported secret backend, and audit retention.
-- Review RBAC, policy, approval, and dangerous-operation settings for your tenant model.
-- Pin SSH known hosts and validate Proxmox API TLS certificates.
-- Confirm backup, rollback, and audit recovery procedures.
-
-Do not enable unattended live mutation or destructive operations until the relevant tools have been verified in your own environment.
+Do not enable unattended live mutation until those tools are verified in *your* topology.
