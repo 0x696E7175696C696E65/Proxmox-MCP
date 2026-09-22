@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
 
-from sqlalchemy import and_, select
+from sqlalchemy import ColumnElement, and_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from proxmox_mcp.audit.events import AuditEvent
@@ -92,7 +92,7 @@ class DatabaseAuditEventRepository(AuditEventRepository):
         after: datetime | None = None,
         cursor: str | None = None,
     ) -> list[dict[str, object]]:
-        filters = []
+        filters: list[ColumnElement[Any]] = []
         if tenant_id is not None:
             filters.append(AuditEventRecord.tenant_id == tenant_id)
         if tool_name is not None:

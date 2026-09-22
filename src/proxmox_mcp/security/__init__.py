@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Sequence
 from datetime import UTC, datetime
 from inspect import isawaitable
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from proxmox_mcp.approvals import ApprovalValidationResult
 from proxmox_mcp.auth import ActorIdentity
@@ -38,18 +38,6 @@ class ApprovalConsumer(Protocol):
         risk_level: RiskLevel,
         risk_score: int,
     ) -> ApprovalValidationResult | Awaitable[ApprovalValidationResult]: ...
-
-    def queue_pending(
-        self,
-        *,
-        operation: str,
-        target: Target,
-        input_payload: object,
-        actor: ActorIdentity,
-        risk_level: RiskLevel,
-        risk_score: int,
-        summary: dict[str, object] | None = None,
-    ) -> Any | Awaitable[Any]: ...
 
 
 class SecurityPlaneGuard:

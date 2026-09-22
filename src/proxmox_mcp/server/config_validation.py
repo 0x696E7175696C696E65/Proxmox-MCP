@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import ssl
 from dataclasses import dataclass
 from typing import Any, cast
 from urllib.error import HTTPError, URLError
@@ -90,7 +91,11 @@ def _probe_proxmox_cluster(settings: Settings) -> list[ValidationIssue]:
     endpoint = normalize_proxmox_api_endpoint(cluster.api_endpoint)
     url = f"{endpoint}/api2/json/version"
     request = Request(url, method="GET")  # noqa: S310 - operator-configured HTTPS endpoint.
-    context = None if cluster.tls_verify else ssl._create_unverified_context()  # noqa: S323
+    context: ssl.SSLContext | None = None
+    if not cluster.tls_verify:
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
     try:
         with urlopen(request, timeout=5, context=context) as response:  # noqa: S310
             if response.status >= 400:

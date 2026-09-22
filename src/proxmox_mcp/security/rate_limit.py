@@ -6,13 +6,17 @@ from threading import Lock
 from time import monotonic
 
 
+def _empty_failure_buckets() -> dict[str, deque[float]]:
+    return {}
+
+
 @dataclass(slots=True)
 class SlidingWindowRateLimiter:
     """Track failed attempts per key and block when the window threshold is hit."""
 
     max_failures: int = 10
     window_seconds: float = 60.0
-    _failures: dict[str, deque[float]] = field(default_factory=dict)
+    _failures: dict[str, deque[float]] = field(default_factory=_empty_failure_buckets)
     _lock: Lock = field(default_factory=Lock)
 
     def is_limited(self, key: str, *, now: float | None = None) -> bool:
@@ -54,7 +58,7 @@ FAILED_ADMIN_STEP_UP_LIMITER = SlidingWindowRateLimiter(max_failures=5, window_s
 def client_ip_from_scope(scope: dict[str, object]) -> str:
     client = scope.get("client")
     if isinstance(client, tuple) and client:
-        host = client[0]
-        if isinstance(host, str) and host:
-            return host
+        host_obj: object = client[0]
+        if isinstance(host_obj, str) and host_obj:
+            return host_obj
     return "unknown"

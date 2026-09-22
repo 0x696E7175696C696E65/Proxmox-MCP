@@ -24,9 +24,11 @@ COPY src /app/src
 COPY migrations /app/migrations
 COPY --from=webbuild /web/dist /app/web/dist
 
-RUN python -m pip install --upgrade pip "setuptools>=78.1.1" wheel \
+RUN python -m pip install --upgrade pip "setuptools>=83.0.0" wheel \
     && pip install --no-cache-dir . \
-    && pip install --no-cache-dir "psycopg[binary]>=3.2" "msgpack>=1.2.1"
+    && pip install --no-cache-dir "psycopg[binary]>=3.2" \
+    && pip install --no-cache-dir --upgrade "setuptools>=83.0.0" "msgpack>=1.2.1" \
+    && python -c "import importlib.metadata as m; assert tuple(map(int, m.version('setuptools').split('.')[:2])) >= (83, 0); assert tuple(map(int, m.version('msgpack').split('.')[:2])) >= (1, 2)"
 
 USER proxmox-mcp
 EXPOSE 8443

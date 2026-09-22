@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import cast
+from typing import Any, cast
 
 from fastmcp import FastMCP
 from starlette.requests import Request
@@ -143,7 +143,7 @@ def build_server(
     authenticated_session_resolver: Callable[[ToolRequest], AuthenticatedSession | None]
     | None = None,
     approval_store: ApprovalConsumer | None = None,
-    admin_state: object | None = None,
+    admin_state: Any | None = None,
 ) -> FastMCP:
     settings = Settings() if settings is None else settings
     audit_writer = InMemoryAuditWriter() if audit_writer is None else audit_writer

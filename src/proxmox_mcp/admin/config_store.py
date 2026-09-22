@@ -299,7 +299,8 @@ class ConfigStore:
         self._restart_required = True
         self._last_message = message
 
-    def _load_secrets(self) -> dict[str, dict[str, object]]:
+    def load_secrets(self) -> dict[str, dict[str, object]]:
+        """Load secrets.json as a nested mapping (empty when missing/invalid)."""
         path = Path(self._settings.secrets_file)
         if not path.is_file():
             return {}
@@ -311,6 +312,9 @@ class ConfigStore:
             if isinstance(value, dict):
                 result[str(key)] = dict(value)
         return result
+
+    def _load_secrets(self) -> dict[str, dict[str, object]]:
+        return self.load_secrets()
 
     def _write_secrets(self, secrets: dict[str, dict[str, object]]) -> None:
         path = Path(self._settings.secrets_file)

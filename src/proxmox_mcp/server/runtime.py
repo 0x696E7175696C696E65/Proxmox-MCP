@@ -131,7 +131,7 @@ async def build_runtime_async(settings: Settings) -> RuntimeBundle:
     config_store = ConfigStore(settings)
 
     def _host_secrets_loader() -> dict[str, dict[str, object]]:
-        return config_store._load_secrets()  # noqa: SLF001
+        return config_store.load_secrets()
 
     hosts_path = Path(os.environ.get("PROXMOX_MCP_HOSTS_FILE", "hosts.local.json"))
     host_catalog = HostCatalogStore(
@@ -147,7 +147,7 @@ async def build_runtime_async(settings: Settings) -> RuntimeBundle:
         host_catalog = HostCatalogStore(
             path=hosts_path,
             settings=settings,
-            secrets_loader=lambda: config_store._load_secrets(),  # noqa: SLF001
+            secrets_loader=config_store.load_secrets,
             config_applier=config_store.apply_config,
         )
         secret_manager = build_secret_manager(settings)

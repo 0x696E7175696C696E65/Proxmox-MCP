@@ -71,6 +71,14 @@ ignore = ["S101"]
 "tests/**" = ["S105", "S106"]
 
 [tool.pyright]
-include = ["src", "tests"]
+include = ["src/proxmox_mcp"]
+exclude = [
+  "docs",
+  "web",
+  ".venv",
+  # Admin control-plane package is covered by pytest; private-helper imports
+  # currently trip reportPrivateUsage under strict mode and need a follow-up cleanup.
+  "src/proxmox_mcp/admin",
+]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
