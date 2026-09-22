@@ -55,6 +55,13 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py313"
+# Plan/spec markdown embeds incomplete Python snippets; formatting them breaks docs.
+exclude = [
+  ".venv",
+  "docs",
+  "web",
+  "release-evidence",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "ASYNC", "S"]

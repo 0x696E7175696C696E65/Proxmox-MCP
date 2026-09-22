@@ -38,7 +38,7 @@ jobs:
           python -m pip install build twine
 
       - name: Check formatting
-        run: python -m ruff format --check .
+        run: python -m ruff format --check src tests migrations scripts
 
       - name: Lint
         run: python -m ruff check .
