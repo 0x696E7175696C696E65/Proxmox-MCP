@@ -90,7 +90,7 @@ def _probe_proxmox_cluster(settings: Settings) -> list[ValidationIssue]:
     endpoint = normalize_proxmox_api_endpoint(cluster.api_endpoint)
     url = f"{endpoint}/api2/json/version"
     request = Request(url, method="GET")  # noqa: S310 - operator-configured HTTPS endpoint.
-    context = None if cluster.tls_verify else ssl._create_unverified_context()
+    context = None if cluster.tls_verify else ssl._create_unverified_context()  # noqa: S323
     try:
         with urlopen(request, timeout=5, context=context) as response:  # noqa: S310
             if response.status >= 400:

@@ -203,6 +203,27 @@ async def test_security_guard_requires_approval_without_executing_handler() -> N
     assert [event.result_status for event in writer.events] == ["started", "denied"]
 
 
+async def test_security_guard_mints_pending_approval_without_token() -> None:
+    store = InMemoryApprovalStore()
+    guard = SecurityPlaneGuard(
+        role_assignments=(make_role_assignment(),),
+        approval_store=store,
+    )
+    registry = ToolRegistry(guard=guard)
+    registry.register(make_delete_definition())
+    request = make_request()
+    writer = InMemoryAuditWriter()
+
+    response = await registry.execute("delete_vm", request, make_context(request, writer))
+
+    assert isinstance(response, ToolErrorResponse)
+    assert response.error.code == "APPROVAL_REQUIRED"
+    assert "approval_request_id" in response.error.details
+    pending = await store.list_approvals(status="pending")
+    assert len(pending) == 1
+    assert pending[0]["approval_request_id"] == response.error.details["approval_request_id"]
+
+
 async def test_security_guard_consumes_approval_token_once() -> None:
     request = make_request(approval_token=APPROVAL_CODE)
     store = InMemoryApprovalStore((make_approval(request),))

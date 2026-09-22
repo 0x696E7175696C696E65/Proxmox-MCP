@@ -72,9 +72,10 @@ def test_homelab_compose_overlay_configures_service_token_runtime() -> None:
     assert app["read_only"] is True
     assert app["security_opt"] == ["no-new-privileges:true"]
     overlay = _compose("docker-compose.homelab.yml")
-    assert cast(dict[str, Any], cast(dict[str, Any], overlay["services"])["proxmox-mcp"])[
-        "restart"
-    ] == "unless-stopped"
+    assert (
+        cast(dict[str, Any], cast(dict[str, Any], overlay["services"])["proxmox-mcp"])["restart"]
+        == "unless-stopped"
+    )
 
 
 def test_docker_compose_does_not_expose_credential_defaults() -> None:

@@ -232,6 +232,20 @@ Approval modes:
 - Break-glass approval with reason capture.
 - Time-bound preapproval for maintenance windows.
 
+**Implemented path (Admin WebUI + MCP):** When a gated tool runs without
+`options.approval_token`, the guard mints a **pending** approval row (30-minute
+TTL, idempotent by actor/operation/target/input fingerprint) and returns
+`APPROVAL_REQUIRED` with `approval_request_id` — never a consumable token.
+Admins decide via `POST /admin/api/approvals/{id}/decide` with CSRF + step-up
+password; on approve, a one-time token is returned once in that response.
+Agents retry with `options.approval_token`; `consume` requires status
+`approved`, matching binding hashes, and single use. Operators may list the
+queue but cannot decide or change policy. Policy PUT (only — not
+`PUT /admin/api/config`) updates the live Settings holder used by the MCP
+guard; config rejects dangerous-ops fields. Step-up password failures on
+decide/policy/restart/secrets are rate-limited per session+IP. Process
+restart requires admin + step-up; `restart_required` clears on next boot.
+
 Approval records include:
 
 - Requested action.

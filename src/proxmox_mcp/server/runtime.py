@@ -9,13 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from proxmox_mcp.admin.app import (
     AdminAppState,
-    AdminPathMiddleware,
-    create_admin_starlette_app,
 )
 from proxmox_mcp.admin.auth import LocalPasswordProvider
 from proxmox_mcp.admin.config_store import ConfigStore, RuntimeController
-from proxmox_mcp.admin.hosts_store import HostCatalogStore
 from proxmox_mcp.admin.events import AdminEventHub
+from proxmox_mcp.admin.hosts_store import HostCatalogStore
 from proxmox_mcp.approvals import DatabaseApprovalStore
 from proxmox_mcp.audit.repository import (
     DatabaseAuditEventRepository,
@@ -183,7 +181,7 @@ async def build_runtime_async(settings: Settings) -> RuntimeBundle:
         audit_writer=audit_writer,
         event_hub=event_hub,
         dependency_checkers=dict(dependency_checkers),
-        spa_dir=spa_path if spa_path.is_dir() else None,
+        spa_dir=spa_path if spa_path.is_dir() else None,  # noqa: ASYNC240 - startup path check
         approval_store=approval_store,
         host_catalog=host_catalog,
     )

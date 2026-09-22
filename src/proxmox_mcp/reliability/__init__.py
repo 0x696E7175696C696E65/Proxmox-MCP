@@ -119,9 +119,7 @@ class DatabaseIdempotencyStore:
                 if record.request_fingerprint != request_fingerprint:
                     return IdempotencyClaim(acquired=False, reason="fingerprint_mismatch")
                 expired = _as_aware(record.expires_at) <= now
-                failed_completed = (
-                    record.status == "completed" and record.result_status == "error"
-                )
+                failed_completed = record.status == "completed" and record.result_status == "error"
                 if expired or failed_completed:
                     await session.delete(record)
                     await session.commit()

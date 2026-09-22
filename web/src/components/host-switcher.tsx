@@ -23,6 +23,7 @@ import {
   type ManagedHost,
 } from "../api";
 import { waitForAdminReady } from "../lib/wait-for-admin";
+import { usePrivacy } from "../privacy";
 import {
   HostRestartOverlay,
   type RestartOverlayPhase,
@@ -241,6 +242,7 @@ function SwitchHostConfirm({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const { censor } = usePrivacy();
   const secretsOk = host.secrets_ready;
 
   return (
@@ -270,7 +272,7 @@ function SwitchHostConfirm({
           <p className="text-xs leading-relaxed text-muted-foreground">
             After you confirm, the MCP process will restart so it manages only{" "}
             <span className="font-medium text-foreground">{host.name}</span> (
-            <span className="font-mono text-[11px]">{shortHostLabel(host.api_endpoint)}</span>
+            <span className="font-mono text-[11px]">{censor(shortHostLabel(host.api_endpoint))}</span>
             ). The Admin UI will reconnect when MCP is back. Tools and inventory will no longer
             target the previous host.
           </p>
@@ -281,7 +283,7 @@ function SwitchHostConfirm({
             <Alert variant="destructive" className="py-2">
               <AlertDescription className="text-xs">
                 Token missing for credential path{" "}
-                <span className="font-mono">{host.credential_ref_path}</span>.{" "}
+                <span className="font-mono">{censor(host.credential_ref_path)}</span>.{" "}
                 <NavLink
                   to="/secrets"
                   className="font-medium underline underline-offset-2"
@@ -369,6 +371,7 @@ export function HostSwitcher() {
     clearBanner,
     error,
   } = useHostCatalog();
+  const { censor } = usePrivacy();
   const [open, setOpen] = useState(false);
   const [flash, setFlash] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -452,7 +455,7 @@ export function HostSwitcher() {
             {loading ? "…" : active?.name ?? "No host"}
           </span>
           <span className="block truncate font-mono text-[10px] text-muted-foreground">
-            {active ? shortHostLabel(active.api_endpoint) : "—"}
+            {active ? censor(shortHostLabel(active.api_endpoint)) : "—"}
           </span>
         </span>
         <ChevronDown
@@ -524,7 +527,7 @@ export function HostSwitcher() {
                           ) : null}
                         </span>
                         <span className="mt-0.5 block truncate font-mono text-[10px] text-muted-foreground">
-                          {host.api_endpoint}
+                          {censor(host.api_endpoint)}
                         </span>
                         <span className="mt-1 flex flex-wrap items-center gap-1.5">
                           <SecretsBadge ready={host.secrets_ready} />

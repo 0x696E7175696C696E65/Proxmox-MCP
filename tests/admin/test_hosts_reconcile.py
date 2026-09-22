@@ -90,8 +90,9 @@ def test_reconcile_noop_when_already_matching(
         path=hosts_path,
         settings=settings,
         secrets_loader=lambda: {},
-        config_applier=lambda u: calls.append(u)
-        or ApplyResult(kind="hot", changed_fields=(), message="x"),
+        config_applier=lambda u: (
+            calls.append(u) or ApplyResult(kind="hot", changed_fields=(), message="x")
+        ),
     )
     catalog.seed_from_settings_if_empty()
     assert catalog.reconcile_active_into_runtime() is False

@@ -23,6 +23,16 @@ def test_ci_workflow_uses_least_privilege_permissions() -> None:
     assert permissions == {"contents": "read"}
 
 
+def test_ci_runs_admin_web_job() -> None:
+    workflow = _workflow(".github/workflows/ci.yml")
+    jobs = cast(dict[str, Any], workflow["jobs"])
+    assert "admin-web" in jobs
+    steps = _steps(workflow, "admin-web")
+    run_commands = "\n".join(cast(str, step.get("run", "")) for step in steps if "run" in step)
+    assert "npm ci" in run_commands
+    assert "npm test" in run_commands or "npm run build" in run_commands
+
+
 def test_ci_runs_secret_scan_and_manifest_contracts() -> None:
     workflow = _workflow(".github/workflows/ci.yml")
     runtime_steps = _steps(workflow, "runtime-checks")

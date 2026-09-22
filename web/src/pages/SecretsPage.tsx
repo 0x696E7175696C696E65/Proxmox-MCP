@@ -10,11 +10,14 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { privacyFieldClass, usePrivacy } from "../privacy";
+import { cn } from "@/lib/utils";
 
 type Mask = { configured: boolean; last4: string | null };
 
 export function SecretsPage() {
   const { hosts, activeHostId } = useHostCatalog();
+  const { censor, enabled: privacyOn } = usePrivacy();
   const activeHost = hosts.find((h) => h.host_id === activeHostId) ?? null;
   const [secrets, setSecrets] = useState<Record<string, unknown> | null>(null);
   const [tokenId, setTokenId] = useState("");
@@ -35,6 +38,10 @@ export function SecretsPage() {
   useEffect(() => {
     void load().catch((err: Error) => setError(err.message));
   }, []);
+
+  useEffect(() => {
+    if (privacyOn) setRevealed(null);
+  }, [privacyOn]);
 
   async function onSave(e: FormEvent) {
     e.preventDefault();
@@ -140,7 +147,7 @@ export function SecretsPage() {
                 <span className="font-medium text-foreground">{activeHost.name}</span> expects
                 credentials at{" "}
                 <span className="font-mono text-[11px] text-foreground">
-                  {activeHost.credential_ref_path}
+                  {censor(activeHost.credential_ref_path)}
                 </span>
                 . Manage hosts on{" "}
                 <NavLink to="/servers" className="text-primary underline underline-offset-2">
@@ -154,7 +161,7 @@ export function SecretsPage() {
             <FieldLabel htmlFor="token-id">Token ID</FieldLabel>
             <Input
               id="token-id"
-              className="h-8 font-mono text-xs"
+              className={cn("h-8 font-mono text-xs", privacyFieldClass(privacyOn))}
               value={tokenId}
               onChange={(e) => setTokenId(e.target.value)}
               placeholder="user@realm!tokenname"
@@ -163,14 +170,20 @@ export function SecretsPage() {
           <div className="space-y-1.5">
             <FieldLabel
               htmlFor="token-secret"
-              hint={proxMask.configured ? `····${proxMask.last4}` : "not set"}
+              hint={
+                proxMask.configured
+                  ? privacyOn
+                    ? "····••••"
+                    : `····${proxMask.last4}`
+                  : "not set"
+              }
             >
               Token secret
             </FieldLabel>
             <Input
               id="token-secret"
               type="password"
-              className="h-8"
+              className={cn("h-8", privacyFieldClass(privacyOn))}
               value={tokenSecret}
               onChange={(e) => setTokenSecret(e.target.value)}
               placeholder="Leave blank to keep current"
@@ -180,7 +193,7 @@ export function SecretsPage() {
               type="button"
               variant="outline"
               size="xs"
-              disabled={!proxMask.configured}
+              disabled={!proxMask.configured || privacyOn}
               onClick={() => void reveal("proxmox_token_secret")}
             >
               {revealed?.name === "proxmox_token_secret" ? (
@@ -212,14 +225,20 @@ export function SecretsPage() {
           <div className="space-y-1.5">
             <FieldLabel
               htmlFor="service-token"
-              hint={svcMask.configured ? `····${svcMask.last4}` : "not set"}
+              hint={
+                svcMask.configured
+                  ? privacyOn
+                    ? "····••••"
+                    : `····${svcMask.last4}`
+                  : "not set"
+              }
             >
               Service token
             </FieldLabel>
             <Input
               id="service-token"
               type="password"
-              className="h-8"
+              className={cn("h-8", privacyFieldClass(privacyOn))}
               value={serviceToken}
               onChange={(e) => setServiceToken(e.target.value)}
               placeholder="Leave blank to keep current"
@@ -230,7 +249,7 @@ export function SecretsPage() {
                 type="button"
                 variant="outline"
                 size="xs"
-                disabled={!svcMask.configured}
+                disabled={!svcMask.configured || privacyOn}
                 onClick={() => void reveal("service_token")}
               >
                 {revealed?.name === "service_token" ? (
@@ -272,7 +291,7 @@ export function SecretsPage() {
                 actions={<KeyRound className="size-3.5 text-muted-foreground" />}
               >
                 <pre className="overflow-auto rounded-md border border-border bg-muted/30 p-3 font-mono text-[11px]">
-                  {revealed.value}
+                  {censor(revealed.value)}
                 </pre>
               </FormSection>
             ) : null}

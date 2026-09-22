@@ -189,9 +189,14 @@ def build_server(
     register_ssh_tools(registry)
 
     def context_factory(request: ToolRequest) -> ToolExecutionContext:
+        live_settings = settings
+        if admin_state is not None:
+            store = getattr(admin_state, "config_store", None)
+            if store is not None and getattr(store, "settings", None) is not None:
+                live_settings = store.settings
         return build_tool_context(
             request,
-            settings=settings,
+            settings=live_settings,
             audit_writer=audit_writer,
             proxmox_client=proxmox_client,
             ssh_client=ssh_client,
@@ -212,9 +217,9 @@ def build_server(
 
     registry.register_with_fastmcp(app, context_factory)
     if admin_state is not None:
-        setattr(admin_state, "tool_registry", registry)
-        setattr(admin_state, "tool_context_factory", context_factory)
-        setattr(admin_state, "approval_store", approval_store)
+        admin_state.tool_registry = registry
+        admin_state.tool_context_factory = context_factory
+        admin_state.approval_store = approval_store
     _register_http_routes(
         app,
         settings=settings,

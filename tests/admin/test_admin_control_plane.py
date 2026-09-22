@@ -54,9 +54,15 @@ def test_runtime_controller_uses_exit_fn(tmp_path, monkeypatch: pytest.MonkeyPat
     calls: list[int] = []
     settings = _homelab_settings(monkeypatch, tmp_path)
     store = ConfigStore(settings)
+    store.require_restart("token rotated")
     controller = RuntimeController(store, exit_fn=lambda code: calls.append(code))
+    # Boot clears restart_required via mark_restarted in __init__.
+    assert store.restart_required is False
+    store.require_restart("token rotated")
     controller.request_restart(delay_seconds=0)
     assert calls == [0]
+    # request_restart must not clear restart_required before process death.
+    assert store.restart_required is True
 
 
 def test_runtime_controller_defers_exit(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -194,7 +200,10 @@ def test_admin_login_csrf_and_config(tmp_path, monkeypatch: pytest.MonkeyPatch) 
     assert "dangerous_operations" in policy.json()
     policy_put = client.put(
         "/admin/api/policy",
-        json={"dangerous_operations_require_approval": True},
+        json={
+            "dangerous_operations_require_approval": True,
+            "password": "secret123",
+        },
         headers={"X-CSRF-Token": csrf},
     )
     assert policy_put.status_code == 200

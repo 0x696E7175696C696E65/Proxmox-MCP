@@ -48,15 +48,19 @@ def probe_host_health(state: AdminAppState, record: HostRecord) -> dict[str, Any
         return {"ok": False, "error": "token_secret not configured"}
 
     base = record.api_endpoint.rstrip("/")
+    if not base.startswith("https://"):
+        return {"ok": False, "error": "endpoint must use https"}
     url = f"{base}/api2/json/version"
-    request = UrlRequest(
+    request = UrlRequest(  # noqa: S310 - HTTPS-only after scheme check above
         url,
         headers={"Authorization": f"PVEAPIToken={token_id}={token_secret}"},
         method="GET",
     )
     started = time.perf_counter()
     try:
-        with urlopen(request, timeout=_PROBE_TIMEOUT_SECONDS, context=_ssl_context(record)) as resp:
+        with urlopen(  # noqa: S310 - HTTPS-only after scheme check above
+            request, timeout=_PROBE_TIMEOUT_SECONDS, context=_ssl_context(record)
+        ) as resp:
             body = resp.read()
     except HTTPError as exc:
         return {

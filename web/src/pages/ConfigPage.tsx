@@ -1,5 +1,6 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
+import { NavLink } from "react-router-dom";
 import { AdminApi } from "../api";
 import { FieldLabel, FormSection } from "@/components/form-section";
 import { PageHeader } from "@/components/page-header";
@@ -7,6 +8,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { privacyFieldClass, usePrivacy } from "../privacy";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -16,6 +19,7 @@ import {
 } from "@/components/ui/select";
 
 export function ConfigPage() {
+  const { enabled: privacyOn } = usePrivacy();
   const [logLevel, setLogLevel] = useState("info");
   const [endpoint, setEndpoint] = useState("");
   const [tlsVerify, setTlsVerify] = useState(false);
@@ -59,8 +63,6 @@ export function ConfigPage() {
         cluster_name: clusterName || null,
         default_actor_user_id: actorUser,
         default_actor_agent_id: actorAgent,
-        dangerous_operations_enabled: dangerEnabled,
-        dangerous_operations_require_approval: requireApproval,
       });
       const apply = (result.result as Record<string, unknown>) ?? {};
       setMessage(String(apply.message ?? (apply.kind === "hot" ? "Applied hot" : "Saved")));
@@ -111,7 +113,7 @@ export function ConfigPage() {
             <FieldLabel htmlFor="endpoint">API endpoint</FieldLabel>
             <Input
               id="endpoint"
-              className="h-8 font-mono text-xs"
+              className={cn("h-8 font-mono text-xs", privacyFieldClass(privacyOn))}
               value={endpoint}
               onChange={(e) => setEndpoint(e.target.value)}
               placeholder="https://pve.example:8006"
@@ -164,34 +166,18 @@ export function ConfigPage() {
 
         <FormSection
           title="Dangerous operations"
-          description="Gate high/critical mutations. Same policy as Approvals."
+          description="Policy is step-up gated on Approvals — not editable here."
         >
-          <label className="flex cursor-pointer items-start gap-2.5 rounded-md border border-border/80 bg-muted/20 px-3 py-2.5 text-[13px] hover:bg-muted/35">
-            <Checkbox
-              className="mt-0.5"
-              checked={dangerEnabled}
-              onCheckedChange={(v) => setDangerEnabled(v === true)}
-            />
-            <span>
-              <span className="font-medium text-foreground">Dangerous operations enabled</span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">
-                Allow high/critical tools when policy permits.
-              </span>
-            </span>
-          </label>
-          <label className="flex cursor-pointer items-start gap-2.5 rounded-md border border-border/80 bg-muted/20 px-3 py-2.5 text-[13px] hover:bg-muted/35">
-            <Checkbox
-              className="mt-0.5"
-              checked={requireApproval}
-              onCheckedChange={(v) => setRequireApproval(v === true)}
-            />
-            <span>
-              <span className="font-medium text-foreground">Require approval</span>
-              <span className="mt-0.5 block text-xs text-muted-foreground">
-                Queue dangerous ops for explicit approve/deny.
-              </span>
-            </span>
-          </label>
+          <Alert className="py-2">
+            <AlertDescription className="text-xs text-muted-foreground">
+              Current: enabled={String(dangerEnabled)}, require_approval=
+              {String(requireApproval)}. Change via{" "}
+              <NavLink to="/approvals" className="text-primary underline underline-offset-2">
+                Approvals → Policy
+              </NavLink>{" "}
+              (admin password required).
+            </AlertDescription>
+          </Alert>
         </FormSection>
 
         {(message || error) && (

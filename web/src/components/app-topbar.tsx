@@ -1,6 +1,7 @@
 import { useLocation } from "react-router-dom";
-import { Menu, Search } from "lucide-react";
+import { Eye, EyeOff, Menu, Search } from "lucide-react";
 import { useShellStatus } from "../shell-status";
+import { usePrivacy } from "../privacy";
 import { HostSwitcher } from "@/components/host-switcher";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ export function AppTopBar({
 }) {
   const { pathname } = useLocation();
   const status = useShellStatus();
+  const { enabled: privacyOn, toggle: togglePrivacy } = usePrivacy();
   const title = TITLES[pathname] ?? "Control plane";
   const healthOk = ["ok", "ready"].includes(status.healthStatus.toLowerCase());
 
@@ -51,6 +53,22 @@ export function AppTopBar({
       </div>
 
       <HostSwitcher />
+
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        className={cn(
+          "shrink-0 text-muted-foreground transition-colors duration-200",
+          privacyOn && "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary",
+        )}
+        aria-pressed={privacyOn}
+        aria-label={privacyOn ? "Show IPs and sensitive info" : "Hide IPs and sensitive info"}
+        title={privacyOn ? "Privacy on — click to reveal" : "Hide IPs & sensitive info"}
+        onClick={togglePrivacy}
+      >
+        {privacyOn ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+      </Button>
 
       <div className="hidden items-center gap-2 md:flex">
         <div className="flex items-center gap-1.5 rounded-md border border-border/70 bg-muted/20 px-2 py-1">

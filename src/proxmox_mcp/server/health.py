@@ -365,10 +365,8 @@ def _read_alembic_revisions(database_url: str) -> tuple[str | None, str]:
     if head_revision is None:
         raise RuntimeError("Alembic head revision is not configured")
 
-    sync_url = (
-        database_url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1).replace(
-            "ssl=require", "sslmode=require"
-        )
+    sync_url = database_url.replace("postgresql+asyncpg://", "postgresql+psycopg://", 1).replace(
+        "ssl=require", "sslmode=require"
     )
     engine = create_engine(sync_url)
     try:

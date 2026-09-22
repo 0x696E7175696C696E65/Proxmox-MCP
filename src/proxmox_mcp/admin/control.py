@@ -9,7 +9,13 @@ from pydantic import BaseModel, Field
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from proxmox_mcp.admin.app import _build_liveness_payload, _build_readiness_payload, _state, _write_admin_audit
+from proxmox_mcp.admin.app import (
+    _build_liveness_payload,
+    _build_readiness_payload,
+    _state,
+    _write_admin_audit,
+    verify_admin_step_up,
+)
 from proxmox_mcp.admin.auth import get_admin_session
 from proxmox_mcp.admin.config_store import AdminConfigUpdate
 from proxmox_mcp.schemas.envelope import Actor, RequestOptions, Target, ToolRequest
@@ -24,11 +30,13 @@ class ToolInvokeBody(BaseModel):
 class ApprovalDecideBody(BaseModel):
     decision: Literal["approved", "rejected"]
     reason: str | None = None
+    password: str = Field(min_length=1)
 
 
 class PolicyBody(BaseModel):
     dangerous_operations_enabled: bool | None = None
     dangerous_operations_require_approval: bool | None = None
+    password: str = Field(min_length=1)
 
 
 def _tool_summary(definition: Any) -> dict[str, object]:
@@ -56,9 +64,7 @@ async def list_tools(request: Request) -> Response:
         tools = [t for t in tools if t["risk"] == risk]
     if q:
         tools = [
-            t
-            for t in tools
-            if q in str(t["name"]).lower() or q in str(t["description"]).lower()
+            t for t in tools if q in str(t["name"]).lower() or q in str(t["description"]).lower()
         ]
     tools.sort(key=lambda t: str(t["name"]))
     return JSONResponse({"tools": tools, "count": len(tools)})
@@ -99,7 +105,9 @@ async def invoke_tool(request: Request) -> Response:
     if definition.risk in {"high", "critical"}:
         return JSONResponse(
             {
-                "detail": "High/critical tools cannot be invoked from the UI; use Approvals workflow.",
+                "detail": (
+                    "High/critical tools cannot be invoked from the UI; use Approvals workflow."
+                ),
                 "risk": definition.risk,
             },
             status_code=403,
@@ -192,10 +200,30 @@ async def decide_approval(request: Request) -> Response:
     state = _state(request)
     session = get_admin_session()
     assert session is not None
+    if session.identity.role != "admin":
+        await _write_admin_audit(
+            state,
+            session=session,
+            tool_name="admin.authz.denied",
+            operation="decide_approval",
+            result_status="denied",
+            metadata={"reason": "role"},
+        )
+        return JSONResponse({"detail": "Admin role required"}, status_code=403)
     if state.approval_store is None or not hasattr(state.approval_store, "decide"):
         return JSONResponse({"detail": "Approval store unavailable"}, status_code=503)
     approval_id = request.path_params["approval_id"]
     body = ApprovalDecideBody.model_validate(await request.json())
+    step_up_denied = await verify_admin_step_up(
+        request,
+        state=state,
+        session=session,
+        password=body.password,
+        operation="decide_approval",
+        metadata={"approval_request_id": approval_id},
+    )
+    if step_up_denied is not None:
+        return step_up_denied
     updated = await state.approval_store.decide(  # type: ignore[misc]
         approval_id,
         decision=body.decision,
@@ -204,15 +232,30 @@ async def decide_approval(request: Request) -> Response:
     )
     if updated is None:
         return JSONResponse({"detail": "Approval not found or not pending"}, status_code=404)
+    # DecideResult dataclass or legacy dict
+    approval_payload: dict[str, object]
+    approval_token: str | None = None
+    if hasattr(updated, "approval"):
+        approval_payload = updated.approval  # type: ignore[assignment]
+        approval_token = getattr(updated, "approval_token", None)
+    else:
+        approval_payload = updated  # type: ignore[assignment]
     await _write_admin_audit(
         state,
         session=session,
         tool_name="admin.approvals.decide",
         operation=body.decision,
         result_status="success",
-        metadata={"approval_request_id": approval_id, "reason": body.reason},
+        metadata={
+            "approval_request_id": approval_id,
+            "reason": body.reason,
+            "token_issued": approval_token is not None,
+        },
     )
-    return JSONResponse({"approval": updated})
+    response: dict[str, object] = {"approval": approval_payload}
+    if approval_token is not None:
+        response["approval_token"] = approval_token
+    return JSONResponse(response)
 
 
 async def get_policy(request: Request) -> Response:
@@ -236,6 +279,15 @@ async def put_policy(request: Request) -> Response:
         )
         return JSONResponse({"detail": "Admin role required"}, status_code=403)
     body = PolicyBody.model_validate(await request.json())
+    step_up_denied = await verify_admin_step_up(
+        request,
+        state=state,
+        session=session,
+        password=body.password,
+        operation="update_policy",
+    )
+    if step_up_denied is not None:
+        return step_up_denied
     result = state.config_store.apply_config(
         AdminConfigUpdate(
             dangerous_operations_enabled=body.dangerous_operations_enabled,

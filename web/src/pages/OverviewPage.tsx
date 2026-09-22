@@ -20,12 +20,14 @@ import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { usePrivacy } from "../privacy";
 
 export function OverviewPage() {
   const { user } = useAuth();
   const isAdmin = user?.role !== "operator";
   const shell = useShellStatus();
   const { hosts, activeHostId, loading: hostsLoading } = useHostCatalog();
+  const { censor } = usePrivacy();
   const activeHost = hosts.find((h) => h.host_id === activeHostId) ?? null;
   const [data, setData] = useState<Record<string, unknown> | null>(null);
   const [events, setEvents] = useState<AuditEvent[]>([]);
@@ -140,7 +142,9 @@ export function OverviewPage() {
                     />
                   ) : null}
                 </div>
-                <p className="font-mono text-[12px] text-foreground">{managingEndpoint}</p>
+                <p className="font-mono text-[12px] text-foreground">
+                  {censor(managingEndpoint)}
+                </p>
                 <p className="text-xs text-muted-foreground">
                   TLS verify: {managingTls} · Auth: {String(config.auth_mode)} · id {managingId}
                 </p>

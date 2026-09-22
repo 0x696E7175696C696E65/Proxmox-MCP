@@ -31,14 +31,15 @@ from proxmox_mcp.admin.config_store import (
     ConfigStore,
     RuntimeController,
 )
-from proxmox_mcp.admin.hosts_store import HostCatalogStore
 from proxmox_mcp.admin.events import AdminEventHub, format_sse
+from proxmox_mcp.admin.hosts_store import HostCatalogStore
 from proxmox_mcp.audit.events import AuditEvent, AuditTarget
 from proxmox_mcp.audit.repository import AuditEventRepository
 from proxmox_mcp.audit.writer import AuditWriter
 from proxmox_mcp.config import Settings
 from proxmox_mcp.security.rate_limit import (
     FAILED_ADMIN_LOGIN_LIMITER,
+    FAILED_ADMIN_STEP_UP_LIMITER,
     SlidingWindowRateLimiter,
 )
 
@@ -49,7 +50,16 @@ _ADMIN_ONLY_PATHS = {
     ("POST", "/admin/api/secrets/reveal"),
     ("POST", "/admin/api/runtime/restart"),
     ("PUT", "/admin/api/policy"),
+    ("PUT", "/admin/api/config"),
 }
+
+
+def _is_admin_only_path(method: str, path: str) -> bool:
+    if (method, path) in _ADMIN_ONLY_PATHS:
+        return True
+    return (
+        method == "POST" and path.startswith("/admin/api/approvals/") and path.endswith("/decide")
+    )
 
 
 def _cookie_secure(settings: Settings, request: Request) -> bool:
@@ -118,6 +128,11 @@ def _require_admin_role(session: AdminSession) -> JSONResponse | None:
     return None
 
 
+def _step_up_rate_key(request: Request, session: AdminSession) -> str:
+    ip = request.client.host if request.client is not None else "unknown"
+    return f"{session.session_id}:{ip}"
+
+
 def _build_liveness_payload(settings: Settings) -> dict[str, object]:
     from proxmox_mcp.server.health import build_liveness_payload
 
@@ -149,6 +164,10 @@ class RevealBody(BaseModel):
 
 class SecretsUpdateBody(AdminSecretsUpdate):
     password: str = Field(min_length=1)
+
+
+class RestartBody(BaseModel):
+    password: str = Field(min_length=1)
     config_version: str | None = None
 
 
@@ -171,6 +190,54 @@ class AdminAppState:
     tool_context_factory: Any | None = None
     approval_store: Any | None = None
     host_catalog: HostCatalogStore | None = None
+
+
+async def verify_admin_step_up(
+    request: Request,
+    *,
+    state: AdminAppState,
+    session: AdminSession,
+    password: str,
+    operation: str,
+    metadata: dict[str, object] | None = None,
+) -> JSONResponse | None:
+    """Verify re-entered admin password with shared rate limiting.
+
+    Returns an error Response on failure, or None when step-up succeeds.
+    """
+    key = _step_up_rate_key(request, session)
+    if FAILED_ADMIN_STEP_UP_LIMITER.is_limited(key):
+        await _write_admin_audit(
+            state,
+            session=session,
+            tool_name="admin.authz.denied",
+            operation=operation,
+            result_status="denied",
+            metadata={
+                **(metadata or {}),
+                "reason": "step_up_rate_limited",
+                "client_ip": key.split(":", 1)[-1],
+            },
+        )
+        return JSONResponse(
+            {"detail": "Too many step-up authentication failures"},
+            status_code=429,
+            headers={"Retry-After": "60"},
+        )
+    if not await state.identity_provider.verify_user_password(session.identity.user_id, password):
+        FAILED_ADMIN_STEP_UP_LIMITER.record_failure(key)
+        await _write_admin_audit(
+            state,
+            session=session,
+            tool_name="admin.authz.denied",
+            operation=operation,
+            result_status="denied",
+            metadata={**(metadata or {}), "reason": "step_up_failed"},
+        )
+        await asyncio.sleep(0.2)
+        return JSONResponse({"detail": "Step-up authentication failed"}, status_code=403)
+    FAILED_ADMIN_STEP_UP_LIMITER.reset(key)
+    return None
 
 
 _PUBLIC_API_PATHS = {
@@ -233,7 +300,7 @@ class AdminSessionMiddleware:
                         await response(scope, receive, send)
                         return
 
-            if (request.method, path) in _ADMIN_ONLY_PATHS and session.identity.role != "admin":
+            if _is_admin_only_path(request.method, path) and session.identity.role != "admin":
                 response = JSONResponse({"detail": "Admin role required"}, status_code=403)
                 await response(scope, receive, send)
                 return
@@ -376,6 +443,7 @@ async def health(request: Request) -> Response:
     status_code = 200 if ready.get("status") == "ready" else 503
     return JSONResponse({"live": live, "ready": ready}, status_code=status_code)
 
+
 async def overview(request: Request) -> Response:
     state = _state(request)
     events = await state.audit_repository.list_events(limit=10)
@@ -443,7 +511,39 @@ async def put_config(request: Request) -> Response:
     state = _state(request)
     session = get_admin_session()
     assert session is not None
+    denied = _require_admin_role(session)
+    if denied is not None:
+        await _write_admin_audit(
+            state,
+            session=session,
+            tool_name="admin.authz.denied",
+            operation="update_config",
+            result_status="denied",
+            metadata={"reason": "role"},
+        )
+        return denied
     update = ConfigUpdateBody.model_validate(await request.json())
+    if (
+        update.dangerous_operations_enabled is not None
+        or update.dangerous_operations_require_approval is not None
+    ):
+        await _write_admin_audit(
+            state,
+            session=session,
+            tool_name="admin.authz.denied",
+            operation="update_config",
+            result_status="denied",
+            metadata={"reason": "policy_via_config_forbidden"},
+        )
+        return JSONResponse(
+            {
+                "detail": (
+                    "Dangerous-operations policy must be changed via "
+                    "PUT /admin/api/policy with step-up authentication"
+                )
+            },
+            status_code=403,
+        )
     expected = update.config_version or request.headers.get("if-match")
     current_version = state.config_store.config_version()
     if expected is not None and expected.strip('"') != current_version:
@@ -472,7 +572,9 @@ async def put_config(request: Request) -> Response:
             "config_version": state.config_store.config_version(),
         },
     )
-    await state.event_hub.publish("runtime.applied", {"result": result.message, "kind": result.kind})
+    await state.event_hub.publish(
+        "runtime.applied", {"result": result.message, "kind": result.kind}
+    )
     return JSONResponse(
         {
             "result": {
@@ -509,18 +611,15 @@ async def put_secrets(request: Request) -> Response:
         )
         return denied
     update = SecretsUpdateBody.model_validate(await request.json())
-    if not await state.identity_provider.verify_user_password(
-        session.identity.user_id, update.password
-    ):
-        await _write_admin_audit(
-            state,
-            session=session,
-            tool_name="admin.authz.denied",
-            operation="update_secrets",
-            result_status="denied",
-            metadata={"reason": "step_up_failed"},
-        )
-        return JSONResponse({"detail": "Step-up authentication failed"}, status_code=403)
+    step_up_denied = await verify_admin_step_up(
+        request,
+        state=state,
+        session=session,
+        password=update.password,
+        operation="update_secrets",
+    )
+    if step_up_denied is not None:
+        return step_up_denied
     expected = update.config_version or request.headers.get("if-match")
     current_version = state.config_store.secrets_version()
     if expected is not None and expected.strip('"') != current_version:
@@ -586,19 +685,18 @@ async def reveal_secret(request: Request) -> Response:
     body = RevealBody.model_validate(await request.json())
     if body.name not in {"proxmox_token_secret", "service_token"}:
         return JSONResponse({"detail": "Unknown secret"}, status_code=422)
-    if not await state.identity_provider.verify_user_password(
-        session.identity.user_id, body.password
-    ):
-        SECRETS_REVEAL_LIMITER.record_failure(client_key)
-        await _write_admin_audit(
-            state,
-            session=session,
-            tool_name="admin.authz.denied",
-            operation="reveal_secret",
-            result_status="denied",
-            metadata={"reason": "step_up_failed", "name": body.name},
-        )
-        return JSONResponse({"detail": "Step-up authentication failed"}, status_code=403)
+    step_up_denied = await verify_admin_step_up(
+        request,
+        state=state,
+        session=session,
+        password=body.password,
+        operation="reveal_secret",
+        metadata={"name": body.name},
+    )
+    if step_up_denied is not None:
+        if step_up_denied.status_code == 403:
+            SECRETS_REVEAL_LIMITER.record_failure(client_key)
+        return step_up_denied
     SECRETS_REVEAL_LIMITER.reset(client_key)
     value = state.config_store.reveal_secret(body.name)  # type: ignore[arg-type]
     await _write_admin_audit(
@@ -617,6 +715,8 @@ async def get_runtime(request: Request) -> Response:
 
 
 async def post_restart(request: Request) -> Response:
+    from pydantic import ValidationError
+
     state = _state(request)
     session = get_admin_session()
     assert session is not None
@@ -631,6 +731,19 @@ async def post_restart(request: Request) -> Response:
             metadata={"reason": "role"},
         )
         return denied
+    try:
+        body = RestartBody.model_validate(await request.json())
+    except ValidationError as exc:
+        return JSONResponse({"detail": exc.errors()}, status_code=422)
+    step_up_denied = await verify_admin_step_up(
+        request,
+        state=state,
+        session=session,
+        password=body.password,
+        operation="restart",
+    )
+    if step_up_denied is not None:
+        return step_up_denied
     await _write_admin_audit(
         state,
         session=session,
@@ -639,7 +752,6 @@ async def post_restart(request: Request) -> Response:
         result_status="success",
     )
     await state.event_hub.publish("runtime.restart_requested", {})
-    # Respond before exit when possible — exit_fn may terminate immediately.
     response = JSONResponse({"ok": True, "message": "Restarting"})
     state.runtime.request_restart()
     return response
@@ -714,7 +826,9 @@ def create_admin_starlette_app(state: AdminAppState) -> Starlette:
     if state.spa_dir is not None and state.spa_dir.is_dir():
         assets = state.spa_dir / "assets"
         if assets.is_dir():
-            routes.append(Mount("/admin/assets", StaticFiles(directory=assets), name="admin-assets"))
+            routes.append(
+                Mount("/admin/assets", StaticFiles(directory=assets), name="admin-assets")
+            )
         routes.append(Route("/admin", spa_index, methods=["GET"]))
         routes.append(Route("/admin/{path:path}", spa_index, methods=["GET"]))
     else:

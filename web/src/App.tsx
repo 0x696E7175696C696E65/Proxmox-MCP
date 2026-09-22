@@ -32,6 +32,7 @@ import { LoadingBlock } from "@/components/loading-block";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { PrivacyProvider } from "./privacy";
 
 function Shell() {
   const { user, logout } = useAuth();
@@ -194,7 +195,9 @@ export default function App() {
   if (!user) return <LoginPage />;
   return (
     <TooltipProvider delayDuration={200}>
-      <Shell />
+      <PrivacyProvider>
+        <Shell />
+      </PrivacyProvider>
     </TooltipProvider>
   );
 }

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Sequence
 from datetime import UTC, datetime
 from inspect import isawaitable
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from proxmox_mcp.approvals import ApprovalValidationResult
 from proxmox_mcp.auth import ActorIdentity
@@ -38,6 +38,18 @@ class ApprovalConsumer(Protocol):
         risk_level: RiskLevel,
         risk_score: int,
     ) -> ApprovalValidationResult | Awaitable[ApprovalValidationResult]: ...
+
+    def queue_pending(
+        self,
+        *,
+        operation: str,
+        target: Target,
+        input_payload: object,
+        actor: ActorIdentity,
+        risk_level: RiskLevel,
+        risk_score: int,
+        summary: dict[str, object] | None = None,
+    ) -> Any | Awaitable[Any]: ...
 
 
 class SecurityPlaneGuard:
@@ -151,7 +163,7 @@ class SecurityPlaneGuard:
             )
 
         approval_info = ApprovalInfo(required=True)
-        if self._approval_store is None or request.options.approval_token is None:
+        if self._approval_store is None:
             return ToolGuardDecision.requires_approval(
                 risk=risk,
                 policy=PolicyDecision(
@@ -159,6 +171,55 @@ class SecurityPlaneGuard:
                     matched_rules=policy.matched_rules,
                 ),
                 approval=approval_info,
+                impact=impact,
+                message="Approval store unavailable; cannot queue approval request",
+            )
+
+        if request.options.approval_token is None:
+            queue_fn = getattr(self._approval_store, "queue_pending", None)
+            if queue_fn is None:
+                return ToolGuardDecision.requires_approval(
+                    risk=risk,
+                    policy=PolicyDecision(
+                        decision="requires_approval",
+                        matched_rules=policy.matched_rules,
+                    ),
+                    approval=approval_info,
+                    impact=impact,
+                )
+            queued = queue_fn(
+                operation=definition.permission,
+                target=request.target,
+                input_payload=request.parameters,
+                actor=actor,
+                risk_level=risk.level,
+                risk_score=risk.score,
+                summary={
+                    "tool_name": definition.name,
+                    "permission": definition.permission,
+                    "resource_type": request.target.resource_type,
+                    "resource_id": request.target.resource_id,
+                    "node": request.target.node,
+                    "vmid": request.target.vmid,
+                },
+            )
+            if isawaitable(queued):
+                queued = await queued
+            return ToolGuardDecision.requires_approval(
+                message=(
+                    "Tool execution requires approval. After an admin approves "
+                    f"request {queued.approval_request_id}, retry with the one-time approval_token."
+                ),
+                approval_request_id=queued.approval_request_id,
+                risk=risk,
+                policy=PolicyDecision(
+                    decision="requires_approval",
+                    matched_rules=policy.matched_rules,
+                ),
+                approval=ApprovalInfo(
+                    required=True,
+                    approval_request_id=queued.approval_request_id,
+                ),
                 impact=impact,
             )
 

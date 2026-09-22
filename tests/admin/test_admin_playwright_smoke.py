@@ -10,7 +10,6 @@ import os
 
 import pytest
 
-
 pytestmark = pytest.mark.skipif(
     not os.environ.get("PROXMOX_MCP_ADMIN_SMOKE_URL"),
     reason="Set PROXMOX_MCP_ADMIN_SMOKE_URL to run Playwright admin smoke",

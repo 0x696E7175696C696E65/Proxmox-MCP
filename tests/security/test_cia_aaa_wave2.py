@@ -102,7 +102,7 @@ async def test_approval_decide_is_single_transition(tmp_path) -> None:
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     store = DatabaseApprovalStore(build_session_factory(engine))
-    now = datetime(2026, 1, 1, tzinfo=UTC)
+    now = datetime.now(UTC)
     target = Target(resource_type="vm", resource_id="100")
     approval = StoredApproval(
         approval_request_id="apr_decide_1",
@@ -120,9 +120,12 @@ async def test_approval_decide_is_single_transition(tmp_path) -> None:
     )
     await store.add(approval)
     first = await store.decide("apr_decide_1", decision="approved", decided_by="admin", reason="ok")
-    second = await store.decide("apr_decide_1", decision="rejected", decided_by="admin", reason="no")
+    second = await store.decide(
+        "apr_decide_1", decision="rejected", decided_by="admin", reason="no"
+    )
     await engine.dispose()
     assert first is not None
-    assert first["status"] == "approved"
-    assert first["decided_by"] == "admin"
+    assert first.approval["status"] == "approved"
+    assert first.approval["decided_by"] == "admin"
+    assert first.approval_token is not None
     assert second is None

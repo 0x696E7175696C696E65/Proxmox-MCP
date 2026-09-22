@@ -2,16 +2,25 @@ import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { Gauge, RefreshCw, RotateCcw } from "lucide-react";
 import { AdminApi } from "../api";
-import { FormSection } from "@/components/form-section";
+import {
+  HostRestartOverlay,
+  type RestartOverlayPhase,
+} from "@/components/host-restart-overlay";
+import { FieldLabel, FormSection } from "@/components/form-section";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { waitForAdminReady } from "../lib/wait-for-admin";
 
 export function RuntimePage() {
   const [status, setStatus] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showStepUp, setShowStepUp] = useState(false);
+  const [password, setPassword] = useState("");
+  const [overlayPhase, setOverlayPhase] = useState<RestartOverlayPhase | null>(null);
 
   async function refresh() {
     const data = await AdminApi.runtime();
@@ -22,19 +31,29 @@ export function RuntimePage() {
     void refresh().catch((err: Error) => setError(err.message));
   }, []);
 
-  async function restart() {
-    if (!window.confirm("Restart the MCP process now? Active sessions will drop briefly.")) return;
+  async function runRestart() {
     setBusy(true);
     setError(null);
+    setOverlayPhase("applying");
     try {
-      await AdminApi.restart();
+      setOverlayPhase("restarting");
+      try {
+        await AdminApi.restart(password);
+      } catch {
+        // Network drop mid-restart is expected.
+      }
+      setShowStepUp(false);
+      setPassword("");
+      setOverlayPhase("reconnecting");
+      await waitForAdminReady();
+      setOverlayPhase("ready");
+      await refresh();
+      window.setTimeout(() => setOverlayPhase(null), 1600);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Restart requested");
+      setOverlayPhase("timeout");
+      setError(err instanceof Error ? err.message : "Restart reconnect timed out");
     } finally {
       setBusy(false);
-      window.setTimeout(() => {
-        void refresh().catch(() => undefined);
-      }, 2500);
     }
   }
 
@@ -58,9 +77,7 @@ export function RuntimePage() {
         <FormSection
           title="Process state"
           description="Hot-applied config stays live; some secret rotations need a restart."
-          actions={
-            <StatusBadge status={restartRequired ? "started" : "ok"} />
-          }
+          actions={<StatusBadge status={restartRequired ? "started" : "ok"} />}
         >
           <div className="grid gap-2 sm:grid-cols-2">
             <div className="rounded-md border border-border/70 bg-muted/15 px-3 py-2.5">
@@ -91,7 +108,11 @@ export function RuntimePage() {
               variant="destructive"
               size="sm"
               disabled={busy}
-              onClick={() => void restart()}
+              onClick={() => {
+                setPassword("");
+                setError(null);
+                setShowStepUp(true);
+              }}
             >
               <RotateCcw className="size-3.5" />
               {busy ? "Restarting…" : "Restart MCP"}
@@ -102,7 +123,7 @@ export function RuntimePage() {
               </p>
             ) : (
               <p className="self-center text-xs text-primary">
-                A config or secret change needs a process restart to take effect.
+                {message || "A config or secret change needs a process restart to take effect."}
               </p>
             )}
           </div>
@@ -125,6 +146,80 @@ export function RuntimePage() {
           </div>
         </FormSection>
       </div>
+
+      {showStepUp && overlayPhase === null ? (
+        <div
+          className="fixed inset-0 z-[180] flex items-center justify-center bg-background/80 px-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="runtime-stepup-title"
+        >
+          <div className="w-full max-w-sm space-y-3 rounded-lg border border-border bg-card p-5 shadow-xl">
+            <div>
+              <h2 id="runtime-stepup-title" className="text-[15px] font-semibold">
+                Confirm process restart
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Active sessions will drop briefly. Re-enter your admin password.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <FieldLabel htmlFor="runtime-stepup-password">Password</FieldLabel>
+              <Input
+                id="runtime-stepup-password"
+                type="password"
+                className="h-8"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                autoFocus
+              />
+            </div>
+            {error ? <p className="text-xs text-destructive">{error}</p> : null}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => setShowStepUp(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="destructive"
+                disabled={busy || !password}
+                onClick={() => void runRestart()}
+              >
+                {busy ? "Restarting…" : "Restart now"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {overlayPhase ? (
+        <HostRestartOverlay
+          mode="process"
+          hostName="MCP"
+          phase={overlayPhase}
+          onRetry={() => {
+            void (async () => {
+              setOverlayPhase("reconnecting");
+              try {
+                await waitForAdminReady();
+                setOverlayPhase("ready");
+                await refresh().catch(() => undefined);
+                window.setTimeout(() => setOverlayPhase(null), 1600);
+              } catch {
+                setOverlayPhase("timeout");
+              }
+            })();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -28,6 +28,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { privacyFieldClass, usePrivacy } from "../privacy";
+import { cn } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -36,7 +38,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
 
 const emptyForm = (): ManagedHostInput => ({
   host_id: "",
@@ -62,6 +63,7 @@ export function ServersPage() {
     requestActivate,
     canSwitch,
   } = useHostCatalog();
+  const { censor, enabled: privacyOn } = usePrivacy();
   const [form, setForm] = useState<ManagedHostInput>(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -280,7 +282,7 @@ export function ServersPage() {
               <FieldLabel htmlFor="host-endpoint">API endpoint</FieldLabel>
               <Input
                 id="host-endpoint"
-                className="h-8 font-mono text-xs"
+                className={cn("h-8 font-mono text-xs", privacyFieldClass(privacyOn))}
                 value={form.api_endpoint}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, api_endpoint: e.target.value }))
@@ -293,7 +295,7 @@ export function ServersPage() {
               <FieldLabel htmlFor="host-cred">Credential path</FieldLabel>
               <Input
                 id="host-cred"
-                className="h-8 font-mono text-xs"
+                className={cn("h-8 font-mono text-xs", privacyFieldClass(privacyOn))}
                 value={form.credential_ref_path}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, credential_ref_path: e.target.value }))
@@ -397,16 +399,16 @@ export function ServersPage() {
                           {host.host_id}
                         </div>
                         <div className="font-mono text-[10px] text-muted-foreground">
-                          {host.credential_ref_path}
+                          {censor(host.credential_ref_path)}
                         </div>
                       </div>
                     </TableCell>
                     <TableCell className="align-top">
                       <div className="font-mono text-[11px]">
-                        {shortHostLabel(host.api_endpoint)}
+                        {censor(shortHostLabel(host.api_endpoint))}
                       </div>
                       <div className="mt-0.5 max-w-[220px] truncate font-mono text-[10px] text-muted-foreground">
-                        {host.api_endpoint}
+                        {censor(host.api_endpoint)}
                       </div>
                       <div className="mt-0.5 text-[10px] text-muted-foreground">
                         TLS verify: {String(host.tls_verify)}

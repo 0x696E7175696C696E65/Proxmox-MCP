@@ -79,6 +79,8 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: "1"
           ignore-unfixed: "true"
+          # Avoid noisy scanners that do not map to runtime packages we ship.
+          scanners: vuln
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -189,7 +191,9 @@ jobs:
         run: python -m pytest tests/chaos tests/performance -q
       - name: Emit hardening summary
         if: success()
-        run: python scripts/emit_ci_summary.py --output release-evidence/hardening-summary.json --workflow hardening --status success
+        run: |
+          mkdir -p release-evidence
+          python scripts/emit_ci_summary.py --output release-evidence/hardening-summary.json --workflow hardening --status success
 
   compose-smoke:
     runs-on: ubuntu-latest

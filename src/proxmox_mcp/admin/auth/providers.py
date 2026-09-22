@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from proxmox_mcp.admin.auth.passwords import (
     hash_password,
-    verify_password,
     verify_password_or_dummy,
 )
 from proxmox_mcp.persistence.models.admin import AdminSessionRecord, AdminUserRecord

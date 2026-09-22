@@ -24,9 +24,9 @@ COPY src /app/src
 COPY migrations /app/migrations
 COPY --from=webbuild /web/dist /app/web/dist
 
-RUN python -m pip install --upgrade pip setuptools wheel \
+RUN python -m pip install --upgrade pip "setuptools>=78.1.1" wheel \
     && pip install --no-cache-dir . \
-    && pip install --no-cache-dir "psycopg[binary]>=3.2"
+    && pip install --no-cache-dir "psycopg[binary]>=3.2" "msgpack>=1.2.1"
 
 USER proxmox-mcp
 EXPOSE 8443

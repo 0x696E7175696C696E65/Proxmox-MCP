@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { CheckCircle2, Loader2, RefreshCw, Server } from "lucide-react";
+import { usePrivacy } from "../privacy";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -12,11 +13,20 @@ export type RestartOverlayPhase =
   | "ready"
   | "timeout";
 
-const PHASES: Array<{
+const HOST_PHASES: Array<{
   id: Exclude<RestartOverlayPhase, "ready" | "timeout">;
   label: string;
 }> = [
   { id: "applying", label: "Apply host config" },
+  { id: "restarting", label: "Restart MCP process" },
+  { id: "reconnecting", label: "Reconnect Admin API" },
+];
+
+const PROCESS_PHASES: Array<{
+  id: Exclude<RestartOverlayPhase, "ready" | "timeout">;
+  label: string;
+}> = [
+  { id: "applying", label: "Confirm restart" },
   { id: "restarting", label: "Restart MCP process" },
   { id: "reconnecting", label: "Reconnect Admin API" },
 ];
@@ -26,13 +36,17 @@ export function HostRestartOverlay({
   hostEndpoint,
   phase,
   onRetry,
+  mode = "host",
 }: {
   hostName: string;
   hostEndpoint?: string;
   phase: RestartOverlayPhase;
   onRetry: () => void;
+  mode?: "host" | "process";
 }) {
+  const phases = mode === "process" ? PROCESS_PHASES : HOST_PHASES;
   const [elapsedSec, setElapsedSec] = useState(0);
+  const { censor } = usePrivacy();
 
   useEffect(() => {
     setElapsedSec(0);
@@ -69,26 +83,36 @@ export function HostRestartOverlay({
               </div>
               <div className="min-w-0 space-y-1">
                 <h2 id="host-restart-title" className="text-[15px] font-semibold tracking-tight">
-                  Switching managed server
+                  {mode === "process" ? "Restarting MCP runtime" : "Switching managed server"}
                 </h2>
                 <p id="host-restart-desc" className="text-xs leading-relaxed text-muted-foreground">
-                  Target{" "}
-                  <span className="font-medium text-foreground">{hostName}</span>
-                  {hostEndpoint ? (
+                  {mode === "process" ? (
                     <>
-                      {" "}
-                      <span className="font-mono text-[11px] text-muted-foreground">
-                        ({hostEndpoint.replace(/^https?:\/\//, "")})
-                      </span>
+                      Process{" "}
+                      <span className="font-medium text-foreground">{hostName}</span> is recycling.
+                      Admin API will drop briefly; this page reconnects automatically.
                     </>
-                  ) : null}
-                  . Tools will talk to this host only after reconnect.
+                  ) : (
+                    <>
+                      Target{" "}
+                      <span className="font-medium text-foreground">{hostName}</span>
+                      {hostEndpoint ? (
+                        <>
+                          {" "}
+                          <span className="font-mono text-[11px] text-muted-foreground">
+                            ({censor(hostEndpoint.replace(/^https?:\/\//, ""))})
+                          </span>
+                        </>
+                      ) : null}
+                      . Tools will talk to this host only after reconnect.
+                    </>
+                  )}
                 </p>
               </div>
             </div>
 
             <ol className="space-y-2 rounded-md border border-border/70 bg-muted/15 p-3">
-              {PHASES.map((step, idx) => {
+              {phases.map((step, idx) => {
                 const done = idx < activeIdx;
                 const current = idx === activeIdx;
                 return (
@@ -145,9 +169,13 @@ export function HostRestartOverlay({
         {phase === "ready" ? (
           <Alert className="border-[oklch(0.72_0.15_155/0.35)] bg-[oklch(0.72_0.15_155/0.08)] py-3 animate-in fade-in zoom-in-95 duration-300">
             <CheckCircle2 className="size-4 text-[oklch(0.78_0.14_155)]" />
-            <AlertTitle className="text-[oklch(0.78_0.14_155)]">Now managing {hostName}</AlertTitle>
+            <AlertTitle className="text-[oklch(0.78_0.14_155)]">
+              {mode === "process" ? "Runtime is back" : `Now managing ${hostName}`}
+            </AlertTitle>
             <AlertDescription className="text-xs text-muted-foreground">
-              Admin API is back. Catalog, Overview, and tools target this host only.
+              {mode === "process"
+                ? "Admin API is healthy again. Restart-required flags are cleared on this boot."
+                : "Admin API is back. Catalog, Overview, and tools target this host only."}
             </AlertDescription>
           </Alert>
         ) : null}

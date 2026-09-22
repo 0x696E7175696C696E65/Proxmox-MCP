@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from proxmox_mcp.config import Settings
 
@@ -150,18 +150,14 @@ class ConfigStore:
                 "require_approval": self._settings.dangerous_operations.require_approval,
             },
         }
-        return hashlib.sha256(
-            json.dumps(payload, sort_keys=True, default=str).encode()
-        ).hexdigest()
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
 
     def secrets_version(self) -> str:
         import hashlib
         import json
 
         payload = {k: v for k, v in self.public_secrets().items() if k != "config_version"}
-        return hashlib.sha256(
-            json.dumps(payload, sort_keys=True, default=str).encode()
-        ).hexdigest()
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
 
     def public_secrets(self) -> dict[str, Any]:
         secrets = self._load_secrets()
@@ -276,10 +272,12 @@ class ConfigStore:
                 changed.append("proxmox_token_secret")
             secrets[path] = entry
             self._write_secrets(secrets)
+            # Proxmox client is process-bound; require restart after credential material change.
+            restart = True
 
         if restart:
             self._restart_required = True
-            self._last_message = "Secrets updated; restart required for service token"
+            self._last_message = "Secrets updated; restart required for credential/token changes"
             return ApplyResult(
                 kind="restart",
                 changed_fields=tuple(changed),
@@ -293,6 +291,13 @@ class ConfigStore:
     def mark_restarted(self) -> None:
         self._restart_required = False
         self._last_message = "Runtime restarted"
+
+    def set_restart_pending_message(self, message: str) -> None:
+        self._last_message = message
+
+    def require_restart(self, message: str) -> None:
+        self._restart_required = True
+        self._last_message = message
 
     def _load_secrets(self) -> dict[str, dict[str, object]]:
         path = Path(self._settings.secrets_file)
@@ -323,6 +328,8 @@ class RuntimeController:
         self._config_store = config_store
         self._restart_requested = False
         self._exit_fn = exit_fn if exit_fn is not None else os._exit
+        # New process boot: clear any prior restart_required semantics.
+        self._config_store.mark_restarted()
 
     @property
     def status(self) -> dict[str, object]:
@@ -334,7 +341,9 @@ class RuntimeController:
 
     def request_restart(self, *, delay_seconds: float = 0.75) -> dict[str, object]:
         self._restart_requested = True
-        self._config_store.mark_restarted()
+        # Keep restart_required until the next process boot clears it via mark_restarted().
+        self._config_store.set_restart_pending_message("Restart requested; process exiting")
+
         # Defer exit so the HTTP response (activate / restart) can flush to the client
         # before Docker's restart policy recycles the process.
         def _exit() -> None:

@@ -227,6 +227,9 @@ def _find_host(hosts: list[HostRecord], host_id: str) -> HostRecord | None:
 def _entry_has_tokens(entry: dict[str, object]) -> bool:
     token_id = entry.get("token_id")
     token_secret = entry.get("token_secret")
-    return isinstance(token_id, str) and bool(token_id) and isinstance(token_secret, str) and bool(
-        token_secret
+    return (
+        isinstance(token_id, str)
+        and bool(token_id)
+        and isinstance(token_secret, str)
+        and bool(token_secret)
     )

@@ -68,9 +68,10 @@ export const AdminApi = {
       body: JSON.stringify({ name, password }),
     }),
   runtime: () => api<Record<string, unknown>>("/admin/api/runtime"),
-  restart: () =>
+  restart: (password: string) =>
     api<{ ok: boolean; message: string }>("/admin/api/runtime/restart", {
       method: "POST",
+      body: JSON.stringify({ password }),
     }),
   tools: (params?: URLSearchParams) =>
     api<{ tools: ToolSummary[]; count: number }>(
@@ -104,13 +105,27 @@ export const AdminApi = {
     api<{ approvals: ApprovalRow[]; count: number }>(
       `/admin/api/approvals${params ? `?${params.toString()}` : ""}`,
     ),
-  decideApproval: (id: string, decision: "approved" | "rejected", reason?: string) =>
-    api<{ approval: ApprovalRow }>(`/admin/api/approvals/${encodeURIComponent(id)}/decide`, {
-      method: "POST",
-      body: JSON.stringify({ decision, reason }),
-    }),
+  decideApproval: (
+    id: string,
+    body: {
+      decision: "approved" | "rejected";
+      password: string;
+      reason?: string;
+    },
+  ) =>
+    api<{ approval: ApprovalRow; approval_token?: string }>(
+      `/admin/api/approvals/${encodeURIComponent(id)}/decide`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
   policy: () => api<{ dangerous_operations: Record<string, unknown> }>("/admin/api/policy"),
-  putPolicy: (body: Record<string, unknown>) =>
+  putPolicy: (body: {
+    dangerous_operations_enabled?: boolean;
+    dangerous_operations_require_approval?: boolean;
+    password: string;
+  }) =>
     api<Record<string, unknown>>("/admin/api/policy", {
       method: "PUT",
       body: JSON.stringify(body),
@@ -198,6 +213,10 @@ export type ApprovalRow = {
   expires_at: string;
   status: string;
   consumed_at: string | null;
+  summary?: Record<string, unknown> | null;
+  decided_by?: string | null;
+  reason?: string | null;
+  decided_at?: string | null;
 };
 
 export type AuditEvent = {
