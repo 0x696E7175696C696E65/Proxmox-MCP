@@ -10,7 +10,6 @@ REDACTED_VALUE = "**********"
 _SENSITIVE_KEY_PARTS = (
     "api_key",
     "apikey",
-    "auth",
     "authorization",
     "bearer",
     "cookie",
@@ -20,11 +19,15 @@ _SENSITIVE_KEY_PARTS = (
     "password",
     "private_key",
     "secret",
-    "session",
+    "session_id",
+    "session_token",
     "set_cookie",
     "ticket",
     "token",
 )
+
+# Ambiguous tokens matched only as whole underscore-separated segments.
+_SENSITIVE_KEY_TOKENS = frozenset({"auth", "key"})
 
 
 def sanitize_for_security_boundary(value: object) -> object:
@@ -55,4 +58,7 @@ def sanitize_for_security_boundary(value: object) -> object:
 
 def _is_sensitive_key(key: str) -> bool:
     normalized = key.lower().replace("-", "_")
-    return any(part in normalized for part in _SENSITIVE_KEY_PARTS)
+    if any(part in normalized for part in _SENSITIVE_KEY_PARTS):
+        return True
+    tokens = frozenset(normalized.split("_"))
+    return bool(tokens & _SENSITIVE_KEY_TOKENS)

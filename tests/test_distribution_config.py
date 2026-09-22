@@ -17,4 +17,6 @@ def test_dockerfile_applies_base_security_updates_before_install() -> None:
 
     assert "apt-get update" in dockerfile
     assert "apt-get upgrade -y" in dockerfile
-    assert "python -m pip install --upgrade pip setuptools wheel" in dockerfile
+    assert 'python -m pip install --upgrade pip "setuptools>=83.0.0" wheel' in dockerfile
+    assert '"msgpack>=1.2.1"' in dockerfile
+    assert "ensurepip" in dockerfile

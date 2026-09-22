@@ -16,6 +16,7 @@ from proxmox_mcp.audit.repository import DatabaseAuditWriter
 from proxmox_mcp.auth import ActorIdentity, AuthenticatedSession
 from proxmox_mcp.config import ClusterCredentialRefSettings, ClusterSettings, Settings
 from proxmox_mcp.proxmox.domain_tools import register_domain_completion_tools
+from proxmox_mcp.rbac import Role, RoleAssignment, Scope
 from proxmox_mcp.schemas.envelope import Actor, RequestOptions, Target, ToolRequest, ToolResponse
 from proxmox_mcp.security import SecurityPlaneGuard
 from proxmox_mcp.server.app import build_server_from_runtime
@@ -38,7 +39,10 @@ def homelab_database_url(tmp_path: Path) -> str:
 async def test_get_audit_events_queries_durable_repository(
     tmp_path: Path,
     homelab_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv("PROXMOX_MCP_HOSTS_FILE", str(tmp_path / "hosts.json"))
+    monkeypatch.setenv("PROXMOX_MCP_ENV_FILE", str(tmp_path / ".env"))
     secrets_path = tmp_path / "secrets.json"
     secrets_path.write_text(
         json.dumps(
@@ -92,7 +96,19 @@ async def test_get_audit_events_queries_durable_repository(
         )
     )
 
-    registry = ToolRegistry(guard=SecurityPlaneGuard(approval_store=bundle.approval_store))
+    registry = ToolRegistry(
+        guard=SecurityPlaneGuard(
+            approval_store=bundle.approval_store,
+            role_assignments=(
+                RoleAssignment(
+                    actor_user_id="operator",
+                    actor_agent_id="agent",
+                    role=Role.administrator(),
+                    scope=Scope(tenant_id="tenant_1"),
+                ),
+            ),
+        )
+    )
     register_domain_completion_tools(registry)
     session = AuthenticatedSession(
         session_id="sess_1",
