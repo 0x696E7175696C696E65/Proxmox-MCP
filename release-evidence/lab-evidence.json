@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-06-07T22:13:34Z",
+  "lab": {
+    "auth_method": "ticket",
+    "endpoint": "https://192.168.20.169:8006",
+    "node": "test",
+    "profile": "pve-9-storage-local-local-lvm",
+    "proxmox_version": "9.1.1",
+    "status": "passed",
+    "storage_ids": [
+      "local",
+      "local-lvm"
+    ],
+    "tls_verify": false
+  },
+  "operator_notes": [
+    "Generated from sanitized lab metadata and pytest JUnit output; credentials are omitted."
+  ],
+  "promoted_tools": [],
+  "schema_version": 1,
+  "status": "preview",
+  "test_runs": [
+    {
+      "failed": 0,
+      "name": "pytest",
+      "passed": 20,
+      "skipped": 8,
+      "status": "skipped"
+    }
+  ]
+}

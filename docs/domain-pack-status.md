@@ -1,0 +1,192 @@
+# Domain Pack Status
+
+Domain packs are promoted through the lab-first framework in `docs/tool-promotion-framework.md`.
+
+## VM/LXC Lifecycle And Restore
+
+Status: implemented with Proxmox API live support for lifecycle, migration, snapshot, restore, disk resize, hardware/resource, and cloud-init operations. `enter_lxc_console` now uses the durable SSH session and recording contract for live execution; it opens a recorded session reference instead of returning raw console output.
+
+Validation:
+
+- Unit/contract tests: `python -m pytest tests/proxmox/test_domain_vm_lxc_pack.py`
+- Full domain regression: `python -m pytest tests/proxmox/test_domain_tools.py`
+- Read-only lab discovery: `python -m pytest tests/lab -m lab`
+- Registered disposable VM mutation evidence: `python -m pytest tests/lab/test_registered_vm_lifecycle_smoke.py -q`
+- LXC lab evidence: inventory passes on the current lab; template and lifecycle tests skip safely when no `vztmpl` template exists on `local`.
+
+Safety notes:
+
+- Dry-run previews include endpoint, payload, impact, risk, promotion status, and rollback guidance.
+- Live mutation tests must require `PROXMOX_MCP_LAB_MUTATIONS_ENABLED=true`.
+- Destructive VM/LXC tests must also require `PROXMOX_MCP_LAB_DESTRUCTIVE_ENABLED=true` and disposable target IDs.
+
+## Storage, ZFS, LVM, Volume, And Disk
+
+Status: implemented with Proxmox API live support for storage config, ISO content listing/download/delete, and volume move/copy operations, SSH live support for explicit `zpool`, `pvesm`, `wipefs`, and bounded `fio` benchmark operations, and guarded behavior for ambiguous operations that do not yet have safe universal semantics.
+
+Live command-backed tools:
+
+- `create_zfs_pool`: `zpool create {pool} {device}`
+- `scrub_zfs_pool`: `zpool scrub {pool}`
+- `create_lvm_storage`: `pvesm add lvm {storage_id} --vgname {volume}`
+- `create_lvmthin_storage`: `pvesm add lvmthin {storage_id} --vgname {volume} --thinpool {pool}`
+- `wipe_disk`: `wipefs -a {device}`
+
+Guarded or profile-gated:
+
+- `expand_storage`: storage expansion is backend-specific. LVM-thin dry-runs now produce an expansion plan with requested size, preflight checks, audit fields, and guarded execution status; live execution returns `NOT_IMPLEMENTED` until disposable lab evidence exists.
+- `benchmark_storage`: bounded live execution uses `fio` with `duration_seconds`, `max_bytes`, an `mcp-lab-*` artifact path, and `--unlink=1` cleanup evidence. Broader backend support still requires profile-specific lab evidence.
+
+Validation:
+
+- Unit/contract tests: `python -m pytest tests/proxmox/test_domain_storage_pack.py`
+- ISO media tests: `python -m pytest tests/proxmox/test_media_tools.py`
+- Read-only lab discovery: `python -m pytest tests/lab -m lab`
+- Storage profile lab evidence: `python -m pytest tests/lab/test_storage_profiles.py -q` validates `local` directory content discovery and `local-lvm` LVM-thin metadata/status.
+- Storage mutation gate: `python -m pytest tests/lab/test_storage_mutation_smoke.py -q` passed in the 2026-06-07 `pve-9-storage-local-local-lvm` disposable lab for bounded benchmark preview evidence and guarded expansion evidence. Live expansion remains unpromoted.
+
+Safety notes:
+
+- Destructive disk operations require explicit device path fields and reject traversal values.
+- Live destructive lab tests must require both mutation and destructive opt-in flags.
+
+## Network, SDN, VLAN, Bridge, Bond, And Firewall
+
+Status: implemented with Proxmox API live support for bridge, bond, VLAN, SDN zone/VXLAN, cluster firewall rule, alias, IP set, firewall enable, and network reload/apply operations. Firewall policy test remains a read-only hybrid command-backed operation.
+
+Validation:
+
+- Unit/contract tests: `python -m pytest tests/proxmox/test_domain_network_firewall_pack.py`
+- Read-only lab discovery: `python -m pytest tests/lab -m lab`
+
+Safety notes:
+
+- Network identifiers use precise schema fields (`iface`, `zone_id`, `rule_id`, `alias`, `ipset`) and reject traversal values.
+- Dry-runs must be reviewed for rollback access before live bridge, bond, VLAN, SDN, or reload operations.
+- Live mutation lab tests must require `PROXMOX_MCP_LAB_MUTATIONS_ENABLED=true` and console-access verification.
+
+## Backup, Restore, Verify, Prune, And Scheduled Jobs
+
+Status: implemented with Proxmox API live support for cluster backup jobs, VM/LXC backup requests, VM/LXC backup restore requests, and storage prune operations. Backup verification remains guarded with backend-specific dry-run metadata until exact PVE-local or PBS verification semantics are configured and lab-validated. Restore tools now return dry-run restore-preview evidence before any live restore mutation.
+
+Validation:
+
+- Unit/contract tests: `python -m pytest tests/proxmox/test_domain_backup_pack.py`
+- Read-only lab discovery: `python -m pytest tests/lab -m lab`
+- Backup create/list lab evidence: `python -m pytest tests/lab/test_backup_smoke.py -q` validates registered `run_vm_backup`, UPID task capture, backup content listing, and cleanup against a disposable VM. The 2026-06-07 disposable lab also validated restore-precondition dry-run evidence against a created backup artifact.
+- PBS verification gate: `python -m pytest tests/lab/test_backup_verify_smoke.py -q` skips unless `PROXMOX_MCP_LAB_PROFILE=pve-9-pbs-enabled` and PBS repository prerequisites are present. `verify_backup` remains guarded until this profile records real verification evidence.
+- Restore preview evidence is covered by `python -m pytest tests/proxmox/test_domain_backup_pack.py -q` and confirms artifact, target type, target ID, storage, non-mutating preview status, and optional read-only artifact/target-conflict checks when a Proxmox client is available.
+
+Safety notes:
+
+- Job mutations require explicit `job_id`.
+- Backup content operations require explicit `volume` values and reject traversal values.
+- `verify_backup` live execution returns `NOT_IMPLEMENTED` with backend and evidence requirements instead of contacting Proxmox without a proven verification contract.
+- Restore and prune lab tests require `PROXMOX_MCP_LAB_MUTATIONS_ENABLED=true`; destructive restore/prune tests require disposable storage and target IDs.
+
+## Ceph And HA
+
+Status: implemented with Proxmox API live support for Ceph pools, OSDs, MONs, HA resources, HA groups, and HA migration, plus SSH command support for Ceph OSD reweighting and rebalancing.
+
+Validation:
+
+- Unit/contract tests: `python -m pytest tests/proxmox/test_domain_ceph_ha_pack.py`
+- Read-only lab discovery: `python -m pytest tests/lab -m lab`
+
+Safety notes:
+
+- Ceph mutation dry-runs must be reviewed against cluster health and quorum status before live execution.
+- HA migrations require explicit `ha_resource_id` values and target payloads.
+- Live Ceph/HA mutation lab tests require mutation opt-in and disposable or non-production lab resources.
+
+## SSH, LXC Console, Diagnostics, And Support Bundle
+
+Status: implemented with SSH command support for node diagnostics and support bundle collection. LXC console entry exposes a dry-run `pct enter {vmid}` preview and live execution opens a durable SSH session with a reserved recording reference. It does not execute `pct enter` as a one-shot command or return raw console output.
+
+Live command-backed tools:
+
+- `enter_lxc_console`: `pct enter {vmid}` dry-run preview, live durable session/recording reference
+- `run_diagnostics`: `pvesh get /nodes/{node}/status`
+- `collect_support_bundle`: `pveversion -v`
+
+Validation:
+
+- Unit/contract tests: `python -m pytest tests/proxmox/test_domain_ssh_console_pack.py tests/ssh`
+- Read-only lab discovery: `python -m pytest tests/lab -m lab`
+
+Safety notes:
+
+- Interactive console usage is still bounded by SSH policy, recording, and session controls in the SSH subsystem.
+- Support bundle collection avoids shell chaining by default and uses a single allowlisted command.
+
+## Media, Templates, And Helper Scripts
+
+Status: implemented with native Proxmox API tools for ISO and LXC template
+workflows plus guarded helper-script catalog, staging, and execution tools.
+
+Native media/template tools:
+
+- `list_iso_images`, `download_iso_from_url`, `delete_iso_image`
+- `attach_iso_to_vm`, `detach_iso_from_vm`, `prepare_vm_install_media`
+- `list_lxc_templates`, `download_lxc_template`, `delete_lxc_template`
+- `create_vm_from_iso`, `create_lxc_from_template`
+
+Helper-script tools:
+
+- Catalog and preview: `sync_helper_script_catalog`, `search_helper_scripts`,
+  `get_helper_script_details`, `preview_helper_script`
+- Guarded SSH execution: `stage_helper_script`, `execute_helper_script`,
+  `run_helper_app_install`
+- Execution bookkeeping placeholders: `get_helper_script_execution`,
+  `cancel_helper_script_execution`
+
+Validation:
+
+- Unit/contract tests:
+  `python -m pytest tests/proxmox/test_media_tools.py tests/proxmox/test_helper_scripts.py tests/proxmox/test_setup_workflows.py`
+- Tool catalog contract:
+  `python -m pytest tests/tools/test_tool_coverage_contract.py`
+
+Safety notes:
+
+- Helper scripts are resolved from the allowlisted upstream community repo with
+  the project owner's fork as fallback.
+- Execution never uses a moving branch ref directly; script content is hashed
+  and staged under `/var/lib/proxmox-mcp/helpers/<sha>/`.
+- Default SSH policy still denies `bash`; operators must explicitly allow the
+  helper runner and approve high/critical helper execution.
+
+## Observability Runtime Wiring
+
+Status: implemented in `ToolRegistry`. Every terminal tool execution outcome can now record metrics, emit structured JSON logs, and attach trace IDs to audit metadata when a metrics sink or log sink is configured.
+
+Internal observability tool status:
+
+- `get_audit_events`: live-supported when a queryable audit repository is configured; otherwise fails closed with `NOT_IMPLEMENTED`.
+- `get_prometheus_metrics`: live-supported when the in-process metrics registry is configured and also exposed through `/metrics`.
+- `get_recent_alerts`: remains `external_source_required` until an alert backend is configured.
+- `get_resource_trends`: remains `external_source_required` until a durable metrics or time-series backend is configured.
+
+Validation:
+
+- Unit tests: `python -m pytest tests/tools/test_registry.py tests/observability/test_metrics.py`
+- Metrics rendering: `InMemoryMetricsRegistry.render_prometheus()`
+
+Correlation fields:
+
+- `request_id`
+- `correlation_id`
+- `audit_event_id`
+- `trace_id`
+- `span_id`
+- `tool_name`
+- `connector`
+- `status`
+
+## Remaining Guarded Promotion Order
+
+1. Promote queryable internal observability sources that can be validated without touching Proxmox state.
+2. Promote `verify_backup` only after the exact PVE or PBS verification contract and lab evidence exist.
+3. Broaden `benchmark_storage` support only after each backend has bounded workload, timeout, cleanup, and result schema evidence.
+4. Promote `expand_storage` backend-by-backend after each storage type has implementation and lab proof.
+5. Promote `apply_node_updates` last because node update, reboot, rollback, and task-polling semantics have the highest operational blast radius. Dry-runs now produce a guarded orchestration plan with quorum, guest/HA, storage, backup, rollback, and audit preflight fields; live lab evidence is tracked by `tests/lab/test_node_update_smoke.py`.

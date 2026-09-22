@@ -1,0 +1,291 @@
+# Production Deployment Guide
+
+## Deployment Modes
+
+Enterprise Proxmox MCP should support:
+
+- Local development with a development secret provider.
+- Docker Compose for homelab and small team deployments.
+- Kubernetes for HA and enterprise deployments.
+- External PostgreSQL, Redis, and secret manager services for production.
+
+## Required Services
+
+- MCP server application.
+- PostgreSQL 16+.
+- Redis 7+.
+- Secret backend.
+- Proxmox VE API endpoint.
+- Optional SIEM or log pipeline.
+- Optional Prometheus, Grafana, Loki, and OpenTelemetry collector.
+
+## Configuration
+
+Configuration is environment-driven:
+
+```yaml
+server:
+  bind_host: 0.0.0.0
+  port: 8443
+  environment: production
+  tls:
+    cert_file: /run/proxmox-mcp/tls/tls.crt
+    key_file: /run/proxmox-mcp/tls/tls.key
+
+database:
+  url: postgresql+asyncpg://proxmox_mcp:REDACTED@postgres/proxmox_mcp?ssl=require
+
+redis:
+  url: rediss://redis:6379/0
+
+security:
+  auth_mode: oidc | mtls | workload_identity
+  external_auth_enabled: true
+  dangerous_operations:
+    enabled: true
+    require_approval: true
+    log_full_command: true
+
+secrets:
+  provider: hashicorp_vault
+  vault_addr: https://vault.example.com
+
+observability:
+  alertmanager_url: https://alertmanager.example.com
+  prometheus_url: https://prometheus.example.com
+  alertmanager_required: false
+  prometheus_required: false
+```
+
+No secrets should be committed to the repository. Production deployments should load sensitive values from a secret manager or orchestrator secret mechanism.
+
+Supported authentication primitives are service tokens, OIDC JWTs verified against RS256/JWKS material, mTLS client certificates mapped to explicit identities, and signed workload identity tokens with audience, expiry, and replay checks. Production readiness rejects `development` auth and requires `PROXMOX_MCP_EXTERNAL_AUTH_ENABLED=true`, which means the deployment gateway or server integration has wired `build_server(..., authenticated_session_resolver=...)` so every non-internal MCP tool receives an authenticated session before RBAC and policy evaluation. Production also requires `PROXMOX_MCP_DURABLE_STATE_ENABLED=true`; workload identity production deployments must set `PROXMOX_MCP_WORKLOAD_IDENTITY_REPLAY_CACHE=redis` and use `RedisWorkloadIdentityReplayCache` with `build_sync_redis_client()` or an equivalent atomic shared replay store for token nonces.
+
+Supported credential providers are `development`, `hashicorp_vault`, `bitwarden`, `onepassword`, `aws_secrets_manager`, and `azure_key_vault`. The base package exposes provider contracts and adapters that accept deployment-supplied clients; operators should install and configure the vendor SDK or sidecar appropriate for their environment. Readiness fails closed when the selected provider is missing required bootstrap configuration.
+
+The MCP server is HTTPS-only. Production deployments must mount a certificate and
+private key into the application container and set `PROXMOX_MCP_TLS__CERT_FILE`
+and `PROXMOX_MCP_TLS__KEY_FILE`. PostgreSQL URLs must require TLS with
+`ssl=require` or an equivalent verification mode, and Redis URLs must use
+`rediss://`. Disposable lab and development deployments may set
+`PROXMOX_MCP_TLS__GENERATE_SELF_SIGNED=true`, but clients must explicitly trust
+the generated certificate.
+
+External Alertmanager and Prometheus sources are configured through
+`PROXMOX_MCP_OBSERVABILITY__ALERTMANAGER_URL` and
+`PROXMOX_MCP_OBSERVABILITY__PROMETHEUS_URL`. These URLs must use `https://`.
+If `PROXMOX_MCP_OBSERVABILITY__ALERTMANAGER_REQUIRED=true` or
+`PROXMOX_MCP_OBSERVABILITY__PROMETHEUS_REQUIRED=true`, readiness fails closed
+until the corresponding source is configured.
+
+External secret backend endpoints must be encrypted. `PROXMOX_MCP_VAULT_URL`
+and `PROXMOX_MCP_AZURE_KEY_VAULT_URL` require `https://`. Bitwarden and
+1Password providers require their access/service-account tokens to be supplied
+through orchestrator secrets. AWS Secrets Manager requires an AWS region and
+should use workload identity or instance role credentials rather than static
+long-lived keys.
+
+## Homelab Assembly
+
+Homelab deployments use `build_runtime()` to wire durable PostgreSQL stores,
+file-backed development secrets, service-token HTTP middleware, and a configured
+Proxmox cluster client. See [`docs/quickstart-homelab.md`](quickstart-homelab.md).
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.homelab.yml up --build
+proxmox-mcp serve --mode homelab
+proxmox-mcp validate-config
+proxmox-mcp doctor
+```
+
+## Docker Deployment
+
+The Docker image should:
+
+- Use a minimal Python runtime base.
+- Run as a non-root user.
+- Include only runtime dependencies.
+- Expose health and metrics endpoints.
+- Support read-only root filesystem where possible.
+- Write temporary files to configured writable paths.
+
+Example service layout:
+
+```yaml
+services:
+  proxmox-mcp:
+    image: ghcr.io/0x696e7175696c696e65/proxmox-mcp:latest
+    environment:
+      PROXMOX_MCP_DATABASE_URL: postgresql+asyncpg://proxmox_mcp:REDACTED@postgres/proxmox_mcp?ssl=require
+      PROXMOX_MCP_REDIS_URL: rediss://redis:6379/0
+      PROXMOX_MCP_AUTH_MODE: oidc
+      PROXMOX_MCP_EXTERNAL_AUTH_ENABLED: "true"
+      PROXMOX_MCP_DURABLE_STATE_ENABLED: "true"
+      PROXMOX_MCP_WORKLOAD_IDENTITY_REPLAY_CACHE: redis
+      PROXMOX_MCP_CREDENTIAL_PROVIDER: hashicorp_vault
+      PROXMOX_MCP_TLS__CERT_FILE: /run/proxmox-mcp/tls/tls.crt
+      PROXMOX_MCP_TLS__KEY_FILE: /run/proxmox-mcp/tls/tls.key
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./certs/local:/run/proxmox-mcp/tls:ro
+    depends_on:
+      - postgres
+      - redis
+```
+
+The checked-in Compose file intentionally requires `PROXMOX_MCP_DATABASE_URL`
+and `PROXMOX_MCP_POSTGRES_PASSWORD` from the operator environment instead of
+shipping reusable credential defaults.
+
+## Kubernetes Deployment
+
+Kubernetes production deployments should include:
+
+- Deployment with at least two replicas.
+- PodDisruptionBudget.
+- HorizontalPodAutoscaler.
+- Service.
+- NetworkPolicy.
+- ConfigMap for non-secret configuration.
+- Secret or external secret reference for bootstrap credentials.
+- TLS Secret mounted at `/run/proxmox-mcp/tls`.
+- ServiceMonitor for Prometheus.
+- OpenTelemetry collector sidecar or daemon integration.
+
+Recommended pod controls:
+
+- `runAsNonRoot: true`
+- `readOnlyRootFilesystem: true`
+- Drop Linux capabilities.
+- Resource requests and limits.
+- Liveness, readiness, and startup probes.
+
+Kubernetes probes must call the application health endpoints over HTTPS:
+
+- Readiness: `GET https://<pod>:8443/health/ready`
+- Liveness: `GET https://<pod>:8443/health/live`
+- Startup: `GET https://<pod>:8443/health/ready`
+
+The provided manifest uses `httpGet.scheme: HTTPS` with the named `https`
+container port. Kubernetes HTTPS probes do not provide full custom CA trust
+configuration, so production operators should use certificates trusted by the
+node environment or terminate probe traffic through an approved internal
+trust path. Do not replace these probes with raw TCP probes because TCP checks
+cannot verify that dependency-aware readiness is functioning.
+
+## High Availability Design
+
+The MCP server is stateless except for PostgreSQL and Redis. Multiple replicas can serve requests concurrently when they share:
+
+- PostgreSQL for durable records.
+- Redis for locks, idempotency coordination, rate limits, cache, and circuit state.
+- A common secret backend.
+- A shared object store or durable volume for SSH recordings if recordings are stored outside PostgreSQL.
+
+HA-sensitive workflows:
+
+- Approval validation has database-backed storage available and should use it for multi-replica deployments.
+- Idempotency has durable records available and should be paired with Redis locks for live mutating requests.
+- SSH interactive sessions have a database-backed session store available. Use it for multi-replica deployments; the in-memory manager remains a development fallback and still requires sticky routing.
+- SSH recordings have a database-backed metadata and redacted output store available. Use a shared object store or durable volume if raw recording blobs are stored outside PostgreSQL.
+- Proxmox UPID task state has a database-backed store available so long-running mutating operations can return a durable task reference and be resumed by another process.
+- SIEM delivery has a database-backed retry/dead-letter queue available. Audit persistence remains authoritative; SIEM delivery failures are retryable and should not block read-only operations.
+
+## Network Security
+
+Recommended network controls:
+
+- Restrict MCP server ingress to trusted agent networks or gateways.
+- Restrict egress to Proxmox API endpoints, SSH endpoints, PostgreSQL, Redis, secret backends, and observability sinks.
+- Use TLS for MCP ingress, Proxmox API, database, secret backend, and external logs.
+- Prefer OIDC, mTLS, or workload identity over static service tokens for production agents.
+- Use known host verification for SSH.
+- Pin or validate Proxmox API certificates in production.
+
+## Observability
+
+Expose:
+
+- `/health/live`
+- `/health/ready`
+- `/metrics`
+- OpenTelemetry traces.
+- Structured JSON logs.
+- Alertmanager-backed recent alert queries when configured.
+- Prometheus-backed resource trend queries when configured.
+
+Alertmanager and Prometheus adapters require HTTPS endpoints and normalize backend
+responses into MCP-safe records with scope filtering.
+
+Important metrics:
+
+- Tool invocation count and latency.
+- Policy decisions by effect.
+- Approval requests by status.
+- Dangerous operations by outcome.
+- Proxmox API failures.
+- SSH session count and duration.
+- Circuit breaker state.
+- Audit write failures.
+- Secret backend failures.
+
+## SIEM Integration
+
+Audit events should be forwardable to:
+
+- Splunk.
+- ELK.
+- Graylog.
+- Wazuh.
+- Loki.
+
+The primary database remains the authoritative audit source. SIEM export failures are queued for retry and then dead-lettered after configured attempts, but should not block read-only tool execution. Required audit persistence failures should block mutating execution. `HttpJsonSiemDelivery` rejects plaintext destinations, redacts sensitive payload keys before delivery, and treats 429/5xx responses as retryable failures for the durable queue.
+
+## Backup And Recovery
+
+Back up:
+
+- PostgreSQL database.
+- Configuration.
+- Policy definitions.
+- SSH recording storage.
+- Deployment manifests.
+
+Do not back up raw secrets from secret managers through this application. Use the secret provider's own backup and recovery process.
+
+Recovery runbook:
+
+1. Restore PostgreSQL.
+2. Restore Redis only if required for short-lived state; otherwise allow cache rebuild.
+3. Reconnect secret backend.
+4. Validate migrations.
+5. Start MCP server in read-only mode.
+6. Verify audit continuity.
+7. Re-enable mutating tools after validation.
+
+## Upgrade Strategy
+
+- Use database migrations with forward-only production migrations.
+- Run contract tests before upgrade.
+- Drain old replicas before schema-incompatible releases.
+- Keep tool schema compatibility for at least one minor release.
+- Provide rollback instructions for application image and configuration.
+
+## Production Hardening Checklist
+
+- Authentication enabled.
+- External authenticated session resolver configured.
+- TLS configured.
+- Secret backend configured.
+- No development secret provider.
+- Dangerous operations reviewed.
+- Approval workflow configured.
+- Audit sink configured.
+- SIEM export tested.
+- Prometheus scrape configured.
+- PostgreSQL backups enabled.
+- Redis persistence or HA configured as appropriate.
+- Network policies applied.
+- Proxmox credentials least-privileged.
+- SSH known hosts pinned.

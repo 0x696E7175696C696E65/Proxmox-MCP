@@ -1,0 +1,37 @@
+{
+  "artifacts": {
+    "ci-success.json": {
+      "sha256": "82858c79dc839387c17d75f96d998c6503a3376f0b93e0c6470fe75a8823d5ad",
+      "size_bytes": 131
+    },
+    "compatibility-report.json": {
+      "sha256": "01fa1f4f32329ac9841a04ae9d5d925dc691a5766baefafe3580b5e1198a79ad",
+      "size_bytes": 3680
+    },
+    "distribution-summary.json": {
+      "sha256": "12bbb3f09edf68c2bd6ff03300dabc5be0a01ca8931ef990b86e7727bed44b60",
+      "size_bytes": 143
+    },
+    "hardening-summary.json": {
+      "sha256": "2be181dab722c10c99a749fe1117f7e55f1dcb3cd5a3369cca6358eae8c51d0f",
+      "size_bytes": 152
+    },
+    "lab-evidence.json": {
+      "sha256": "5c1b0f90441d71e05d5d57be25c5e6725141d4f095d4dd70f6f7768113a60d62",
+      "size_bytes": 711
+    },
+    "migration-validation.json": {
+      "sha256": "72c50ec3e46259306da14680d28e8cb9a99d9bd3f74bd3146662898701b43c0c",
+      "size_bytes": 132
+    },
+    "sbom.spdx.json": {
+      "sha256": "41a09e4f38bd959a2e1b184fbb3b4ecfec956d06a4e1486742610ed2d712f7a0",
+      "size_bytes": 147
+    },
+    "trivy-image-results.sarif": {
+      "sha256": "d1837569dae7072e5ca37d842eb1ec41894cdc5b3510568cc280f53a65247cab",
+      "size_bytes": 43
+    }
+  },
+  "schema_version": 1
+}

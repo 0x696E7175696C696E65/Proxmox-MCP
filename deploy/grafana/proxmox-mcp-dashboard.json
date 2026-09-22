@@ -1,0 +1,30 @@
+{
+  "title": "Enterprise Proxmox MCP",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Tool Invocations",
+      "targets": [
+        {
+          "expr": "sum by (tool, status) (rate(proxmox_mcp_tool_invocations_total[5m]))",
+          "legendFormat": "{{tool}} {{status}}"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Tool Duration",
+      "targets": [
+        {
+          "expr": "proxmox_mcp_tool_invocation_duration_ms",
+          "legendFormat": "{{tool}} {{status}}"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 }
+    }
+  ]
+}

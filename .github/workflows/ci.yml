@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  docs:
+    name: Documentation Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check markdown files are present
+        run: |
+          test -f README.md
+          test -f docs/architecture.md
+          test -f docs/security-model.md
+          test -f docs/threat-model.md
+          test -f docs/tool-specification.md
+          test -f docs/mcp-schema.md
+          test -f docs/database-schema.md
+          test -f docs/roadmap.md
+          test -f docs/testing-strategy.md
+          test -f docs/proxmox-compatibility.md
+          test -f docs/deployment.md
+
+  runtime-checks:
+    name: Runtime Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Format
+        run: ruff format --check .
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Type check
+        run: pyright
+
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Manifest and release gate validation
+        run: python -m pytest tests/deploy/test_kubernetes_manifest.py tests/release/test_workflow_contracts.py tests/release/test_migration_gate.py -q
+
+      - name: Test
+        run: python -m pytest
+
+      - name: Emit CI success summary
+        if: success()
+        run: python scripts/emit_ci_summary.py --output release-evidence/ci-success.json --workflow ci --status success
+
+      - name: Emit migration validation summary
+        if: success()
+        run: python scripts/emit_ci_summary.py --output release-evidence/migration-validation.json --workflow ci --status success --detail gate=sqlite
+
+      - name: Security scan
+        run: pip-audit
+
+      - name: Build Docker image
+        run: |
+          if [ -f Dockerfile ]; then
+            docker build -t enterprise-proxmox-mcp:ci .
+          else
+            echo "Skipping Docker build; Dockerfile not found."
+          fi

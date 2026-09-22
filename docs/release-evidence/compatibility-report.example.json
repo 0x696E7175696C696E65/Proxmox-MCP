@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "status": "preview",
+  "generated_at": "2026-06-07T00:00:00Z",
+  "release_summary": {
+    "ci": "success",
+    "hardening": "success",
+    "distribution": "success",
+    "sbom": "present",
+    "trivy": "success",
+    "lab": "preview",
+    "migration": "success"
+  },
+  "matrix": [
+    {
+      "proxmox_version": "Proxmox VE 9.1.1",
+      "topology": "single-node, no Ceph, no existing guests",
+      "profile": "pve-9-single-node-no-ceph",
+      "evidence_status": "preview_lab_evidence",
+      "evidence_artifacts": [
+        "lab-evidence.json",
+        "ci-success.json",
+        "distribution-summary.json",
+        "hardening-summary.json"
+      ]
+    },
+    {
+      "proxmox_version": "Proxmox VE 9.1.1",
+      "topology": "single-node storage profile, local and local-lvm, no PBS, no Ceph, no HA, no LXC template",
+      "profile": "pve-9-storage-local-local-lvm",
+      "evidence_status": "preview_lab_evidence",
+      "evidence_artifacts": [
+        "lab-evidence.json"
+      ]
+    },
+    {
+      "proxmox_version": "Proxmox VE 8.x",
+      "topology": "multi-node",
+      "evidence_status": "not_yet_claimed",
+      "evidence_artifacts": [
+        "operator-lab-run-required"
+      ]
+    }
+  ],
+  "profiles": [
+    {
+      "name": "pve-9-single-node-no-ceph",
+      "status": "preview",
+      "required_tests": [
+        "read-only lab smoke",
+        "registered MCP read tool smoke",
+        "registered disposable VM mutation smoke",
+        "backup create/list smoke",
+        "storage profile smoke"
+      ],
+      "expected_skips": [
+        "Ceph status when Ceph is not installed",
+        "LXC lifecycle when no template exists"
+      ]
+    },
+    {
+      "name": "pve-9-storage-local-local-lvm",
+      "status": "preview",
+      "required_tests": [
+        "full gated lab qualification",
+        "storage profile smoke",
+        "storage mutation smoke",
+        "node update preflight smoke",
+        "backup create/list smoke"
+      ],
+      "optional_tests": [],
+      "expected_skips": [
+        "Storage expansion live execution",
+        "PBS verification profile",
+        "Ceph profile",
+        "HA profile",
+        "multi-node profile",
+        "LXC lifecycle when no template exists"
+      ]
+    },
+    {
+      "name": "pve-9-ceph-enabled",
+      "status": "not_yet_claimed",
+      "required_tests": [
+        "Ceph discovery smoke"
+      ],
+      "optional_tests": [
+        "Ceph mutation smoke"
+      ],
+      "expected_skips": []
+    },
+    {
+      "name": "pve-9-ha-enabled",
+      "status": "not_yet_claimed",
+      "required_tests": [
+        "HA discovery smoke"
+      ],
+      "optional_tests": [
+        "HA migration smoke"
+      ],
+      "expected_skips": []
+    },
+    {
+      "name": "pve-9-multi-node",
+      "status": "not_yet_claimed",
+      "required_tests": [
+        "multi-node inventory smoke",
+        "cluster quorum smoke"
+      ],
+      "optional_tests": [
+        "migration smoke"
+      ],
+      "expected_skips": []
+    },
+    {
+      "name": "pve-9-pbs-enabled",
+      "status": "not_yet_claimed",
+      "required_tests": [
+        "PBS availability smoke",
+        "PBS verification gate"
+      ],
+      "optional_tests": [
+        "backup verification smoke"
+      ],
+      "expected_skips": [
+        "Live PBS verification until artifact evidence is available"
+      ]
+    }
+  ],
+  "known_limits": [
+    "Ceph, HA, PBS, backup verification, storage expansion, and node update orchestration require topology-specific lab evidence before GA claims."
+  ]
+}

@@ -1,0 +1,10 @@
+.git
+.superpowers
+**/__pycache__
+**/.pytest_cache
+**/node_modules
+web/node_modules
+web/dist
+*.pyc
+.venv
+venv

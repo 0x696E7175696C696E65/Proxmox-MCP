@@ -1,0 +1,46 @@
+# Windows bind-mount TLS keys are world-readable; Postgres/Redis refuse that.
+# Also avoid mounting into /run/postgresql — the official image chowns that tree.
+services:
+  postgres:
+    volumes: !override
+      - postgres-data:/var/lib/postgresql/data
+      - ./certs/local/postgres:/certs:ro
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        mkdir -p /var/lib/postgresql/tls
+        cp /certs/tls.crt /var/lib/postgresql/tls/tls.crt
+        cp /certs/tls.key /var/lib/postgresql/tls/tls.key
+        cp /certs/ca.crt /var/lib/postgresql/tls/ca.crt
+        chown -R postgres:postgres /var/lib/postgresql/tls
+        chmod 600 /var/lib/postgresql/tls/tls.key
+        chmod 644 /var/lib/postgresql/tls/tls.crt /var/lib/postgresql/tls/ca.crt
+        exec docker-entrypoint.sh postgres \
+          -c ssl=on \
+          -c ssl_cert_file=/var/lib/postgresql/tls/tls.crt \
+          -c ssl_key_file=/var/lib/postgresql/tls/tls.key
+  redis:
+    volumes: !override
+      - redis-data:/data
+      - ./certs/local/redis:/certs:ro
+    entrypoint:
+      - /bin/sh
+      - -ec
+      - |
+        mkdir -p /data/tls
+        cp /certs/tls.crt /data/tls/tls.crt
+        cp /certs/tls.key /data/tls/tls.key
+        cp /certs/ca.crt /data/tls/ca.crt
+        chmod 600 /data/tls/tls.key
+        chmod 644 /data/tls/tls.crt /data/tls/ca.crt
+        exec redis-server \
+          --appendonly yes \
+          --port 0 \
+          --tls-port 6379 \
+          --tls-cert-file /data/tls/tls.crt \
+          --tls-key-file /data/tls/tls.key \
+          --tls-ca-cert-file /data/tls/ca.crt \
+          --tls-auth-clients no
+    healthcheck:
+      test: ["CMD", "redis-cli", "--tls", "--cacert", "/data/tls/ca.crt", "ping"]

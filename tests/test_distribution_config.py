@@ -1,0 +1,20 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+
+def test_dockerfile_copies_packaging_metadata_files() -> None:
+    dockerfile = Path("Dockerfile").read_text()
+
+    assert "COPY pyproject.toml README.md LICENSE alembic.ini /app/" in dockerfile
+    assert "FROM node:22-alpine AS webbuild" in dockerfile
+    assert "COPY --from=webbuild /web/dist /app/web/dist" in dockerfile
+    assert "PROXMOX_MCP_ADMIN_SPA_DIR=/app/web/dist" in dockerfile
+
+
+def test_dockerfile_applies_base_security_updates_before_install() -> None:
+    dockerfile = Path("Dockerfile").read_text()
+
+    assert "apt-get update" in dockerfile
+    assert "apt-get upgrade -y" in dockerfile
+    assert "python -m pip install --upgrade pip setuptools wheel" in dockerfile

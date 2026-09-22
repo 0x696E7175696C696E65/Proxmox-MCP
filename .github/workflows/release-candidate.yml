@@ -1,0 +1,51 @@
+name: Release Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      evidence_dir:
+        description: Directory containing release evidence artifacts
+        required: false
+        default: release-evidence
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  validate-release-evidence:
+    name: Validate Release Evidence
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Show required evidence artifacts
+        run: |
+          echo "Required evidence directory: ${{ inputs.evidence_dir }}"
+          echo "Expected artifacts:"
+          echo "- ci-success.json"
+          echo "- distribution-summary.json"
+          echo "- hardening-summary.json"
+          echo "- migration-validation.json"
+          echo "- sbom.spdx.json"
+          echo "- trivy-image-results.sarif"
+          echo "- compatibility-report.json"
+          echo "- lab-evidence.json"
+          echo "- artifact-manifest.json"
+
+      - name: Collect release evidence manifest
+        run: >
+          python scripts/collect_release_evidence.py
+          --source-dir "${{ inputs.evidence_dir }}"
+          --output-dir "${{ inputs.evidence_dir }}"
+
+      - name: Validate release evidence artifacts
+        run: python scripts/validate_release_evidence.py --evidence-dir "${{ inputs.evidence_dir }}"

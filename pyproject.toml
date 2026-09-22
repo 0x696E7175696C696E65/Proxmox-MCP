@@ -1,0 +1,66 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "enterprise-proxmox-mcp"
+version = "0.1.0"
+description = "Enterprise-grade MCP server for secure Proxmox VE automation"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { file = "LICENSE" }
+authors = [{ name = "0x696E7175696C696E65" }]
+dependencies = [
+  "alembic>=1.16",
+  "argon2-cffi>=23.1",
+  "asyncpg>=0.30",
+  "asyncssh>=2.14",
+  "cryptography>=39.0",
+  "fastmcp>=2.0",
+  "pydantic>=2.11",
+  "pydantic-settings>=2.9",
+  "redis>=5.2",
+  "starlette>=0.46",
+  "sqlalchemy[asyncio]>=2.0",
+  "structlog>=25.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "aiosqlite>=0.21",
+  "pip-audit>=2.7",
+  "playwright>=1.49",
+  "pyright>=1.1",
+  "pytest>=8.3",
+  "pytest-asyncio>=0.25",
+  "pyyaml>=6.0",
+  "ruff>=0.9",
+  "types-PyYAML>=6.0",
+]
+
+[project.scripts]
+proxmox-mcp = "proxmox_mcp.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/proxmox_mcp"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+  "lab: tests that require an explicitly configured Proxmox lab environment",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "S"]
+ignore = ["S101"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"

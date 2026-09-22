@@ -1,0 +1,89 @@
+# Release Hardening Runbook
+
+## Preview Release Gates
+
+Before tagging a preview release, run:
+
+1. Formatting, linting, type checking, and unit tests.
+2. Tool catalog contract tests against `docs/tool-specification.md`.
+3. Alembic migration upgrade tests against disposable SQLite and PostgreSQL databases plus model/schema parity checks.
+4. Security invariant regression suite for auth, RBAC, policy, approvals, audit evidence, redaction, and transport enforcement.
+5. Kubernetes manifest validation for HTTPS health probes and release workflow contracts.
+6. Secret scanning, dependency vulnerability audit, Docker image build, Trivy image scan, and SBOM generation.
+7. Release-candidate evidence validation for CI, distribution, hardening, migration, SBOM, image scan, compatibility, and lab evidence artifacts.
+8. Lab-only SSH, chaos, and performance gates when Proxmox lab credentials are configured.
+
+Current lab-rollout evidence:
+
+- `python -m ruff format .`: clean
+- `python -m ruff check .`: clean
+- `python -m pyright`: `0 errors, 0 warnings`
+- Security invariant suite: `54 passed`
+- `python -m pytest`: latest full local suite reported `350 passed, 10 skipped`; lab and PostgreSQL migration tests require explicit operator-provided endpoints.
+- Auth/secret/config/server focused suite: `50 passed`.
+- Release evidence schema, public preview docs, and workflow contract suite: `19 passed`.
+- Live Proxmox VE 9.1.1 `pve-9-single-node-no-ceph` lab evidence now covers read-only smoke, registered MCP read execution, registered disposable VM config update, backup create/list, and storage profile discovery. LXC template lifecycle is skip-safe because the current lab has no LXC templates on `local`.
+- Chaos and lightweight load gates: `5 passed`; lab gates skip safely when `PROXMOX_MCP_LAB_ENABLED=true` is not configured in the local environment.
+- Domain-pack contract tests cover VM/LXC, storage/ZFS/LVM/disk, network/firewall, backup, Ceph/HA, SSH/console, and observability runtime wiring.
+- Production qualification gates reject development auth, missing external authenticated-session integration, development secret providers, plaintext dependency URLs, and incomplete TLS configuration.
+- Release hardening gates now include `tests/release/test_migration_gate.py`, `tests/deploy/test_kubernetes_manifest.py`, `tests/release/test_workflow_contracts.py`, `tests/chaos/`, and `tests/performance/`.
+- Compatibility evidence is tracked in `docs/proxmox-compatibility.md` and must be updated before tagging a release candidate.
+
+## Remaining Release Qualification Matrix
+
+| Area | Current readiness | Required tests | Release gate |
+| --- | --- | --- | --- |
+| Documentation truthfulness | Preview status reconciled across README, roadmap, domain-pack status, and this runbook | Documentation review and CI markdown checks | Release checklist confirms no production-ready claims without evidence |
+| Migrations | Alembic migration exists for audit, approval, and idempotency records | SQLite and PostgreSQL upgrade validation plus model/schema parity checks | `hardening.yml` runs SQLite and PostgreSQL migration gates |
+| Container supply chain | Docker image builds in distribution workflow | Image vulnerability scan and SBOM artifact upload | `hardening.yml` uploads Trivy SARIF and SBOM artifacts |
+| Runtime readiness | Dependency-aware live/ready payloads and HTTPS runtime exist | Manifest tests assert HTTPS `/health/live`, `/health/ready`, and startup probes | Kubernetes probes use HTTPS endpoints and do not fall back to raw TCP |
+| Shared-state HA | Database-backed approval, idempotency, SSH session, SSH recording, and Proxmox task stores exist | Multi-replica approval consumption, idempotency locking, audit persistence, SSH session/recording behavior, and task-state replay | HA test suite documents replica-safe paths and requires durable stores for multi-replica claims |
+| External observability | In-process metrics/log/trace wiring exists; Alertmanager and Prometheus adapters are available when configured | Query tests for audit events, Alertmanager alert normalization, Prometheus trend normalization, required-source readiness, and explicit external-source responses when unconfigured | Internal tools must return real source data or `external_source_required` |
+| SIEM delivery | SIEM payload formatting plus durable retry/dead-letter queue exists | Queue redaction, retry, dead-letter, and audit-writer degradation tests | Audit DB remains authoritative; SIEM delivery degrades for read-only operations and retries durably |
+| Enterprise auth and secrets | Service tokens, OIDC RS256/JWKS verification, mTLS identity mapping, workload identity replay checks, and enterprise secret-provider adapters exist | Authenticator unit tests, fail-closed verifier tests, secret-provider routing tests, HTTPS config validation, and readiness tests for missing provider bootstrap configuration | Production deployments must select a real identity path and secret backend; missing configuration blocks readiness |
+| Production deployment qualification | Docker Compose and Kubernetes examples enforce HTTPS probes, TLS mounts, non-root runtime posture, encrypted dependencies, external auth enablement, and operator-supplied secrets | `tests/deploy/test_kubernetes_manifest.py`, `tests/deploy/test_docker_compose.py`, and readiness tests in `tests/test_server.py` | Production readiness fails closed for development auth, missing external auth resolver, development secret provider, plaintext PostgreSQL/Redis URLs, and missing TLS material |
+| Guarded Proxmox tools | Guarded tools fail visibly instead of returning fake success | Contract, unit, and opt-in lab tests per promoted tool | Tool promotion checklist and evidence must be attached |
+| Compatibility | Preview evidence exists for `pve-9-single-node-no-ceph` and `pve-9-storage-local-local-lvm` only | Version/topology matrix for tested Proxmox and optional Ceph/HA/PBS features | Release notes include compatibility report; qualified reports cannot contain required skipped lab runs |
+| Release evidence | Evidence requirements are explicit and schema-checked for compatibility/lab artifacts, profile declarations, release-summary fields, artifact hashes, tool promotion evidence, and sanitized payloads | Release-candidate workflow fails when required evidence artifacts are missing, invalid, incomplete, hash-mismatched, contain credential-shaped keys, reference unknown profiles, or claim `qualified` with missing/skipped required profile tests | `.github/workflows/release-candidate.yml` runs `scripts/collect_release_evidence.py` and `scripts/validate_release_evidence.py`; examples live in `docs/release-evidence/` |
+| Chaos and load | Deterministic non-lab chaos/load gates exist; live lab gates remain opt-in | `tests/chaos/`, `tests/performance/`, and lab gates when credentials are configured | Hardening workflow runs executable pytest gates and fails closed when lab gates are enabled without required lab config |
+
+## Chaos Scenarios
+
+Run these only against an isolated lab cluster:
+
+- Restart the Proxmox API while read-only discovery runs.
+- Drop SSH connections during command execution.
+- Simulate PostgreSQL unavailability during mutating tool execution.
+- Simulate Redis failover during approval and idempotency workflows.
+- Interrupt a long-running backup or migration task and confirm structured retryable errors.
+
+Security-critical dependencies must fail closed. Optional observability exporters may degrade without blocking read-only operations.
+
+## Public Preview Checklist
+
+Preview releases must include:
+
+1. Passing CI, distribution, hardening, migration, SBOM, Trivy, and artifact-manifest evidence artifacts.
+2. A compatibility report whose profiles match the lab evidence and do not claim `qualified` with missing, skipped, failed, or placeholder required tests.
+3. A lab evidence artifact that contains only sanitized endpoint/profile/test summaries, never usernames, tokens, passwords, private keys, or credential-shaped keys.
+4. README, compatibility, and domain-pack status updates that keep guarded operations clearly marked as guarded.
+5. Release candidate notes in `docs/release-candidate-notes.md` that separate preview, profile-gated, operator-qualified, and still-guarded capabilities.
+5. Production deployment notes showing external auth, enterprise secret backend, TLS cert material, PostgreSQL TLS, Redis TLS, and operator-owned credentials.
+
+## Rollback
+
+1. Stop new mutating requests at the gateway or policy layer.
+2. Drain application replicas.
+3. Roll back the application image.
+4. Verify database migrations are forward-compatible before attempting application rollback.
+5. Confirm audit continuity and approval replay protection.
+6. Re-enable mutating tools after a successful smoke test.
+
+## Known Limitations
+
+- SSH interactive sessions should use the database-backed session store for multi-replica deployments; in-memory development sessions still require sticky routing.
+- OIDC, mTLS, workload identity, and vendor secret-provider adapters expose production-ready contracts, but each deployment must supply its own trusted issuer/JWKS, certificate trust mapping, workload signing key, Redis-backed or equivalent shared workload replay cache, or vendor SDK client.
+- Lab chaos gates require operator-provided Proxmox credentials and are not enabled by default.
+- SIEM exporters format payloads locally and can use the durable retry queue; vendor-specific delivery adapters beyond the current generic delivery protocol still require deployment-specific wiring.
+- Release-candidate validation requires evidence artifacts to be staged under the configured evidence directory.
+- Backend-specific operations without universal safe semantics remain guarded with `NOT_IMPLEMENTED` until lab evidence exists.

@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "status": "preview",
+  "generated_at": "2026-06-07T00:00:00Z",
+  "lab": {
+    "endpoint": "https://pve.example.test:8006",
+    "node": "test",
+    "topology": "single-node disposable lab, no Ceph, no PBS, no HA, no LXC template",
+    "profile": "pve-9-storage-local-local-lvm",
+    "proxmox_version": "9.1.1",
+    "storage_ids": [
+      "local",
+      "local-lvm"
+    ],
+    "tls_verify": false,
+    "auth_note": "Username/password ticket auth requires a realm-qualified username such as user@realm."
+  },
+  "test_runs": [
+    {
+      "name": "full gated lab qualification",
+      "status": "skipped",
+      "passed": 20,
+      "skipped": 8,
+      "failed": 0,
+      "notes": "Preview evidence includes read-only discovery, disposable VM lifecycle, registered VM update, backup create/list, restore-precondition dry-run, storage benchmark preview, and node update preflight. Skips are expected profile gaps."
+    },
+    {
+      "name": "read-only lab smoke",
+      "status": "passed",
+      "passed": 4,
+      "skipped": 1,
+      "failed": 0,
+      "notes": "Ceph test skipped because Ceph was not installed in this lab."
+    },
+    {
+      "name": "registered MCP read tool smoke",
+      "status": "passed",
+      "passed": 4,
+      "skipped": 0,
+      "failed": 0,
+      "notes": "Registered list_nodes exercised auth, RBAC, policy denial, audit, and Proxmox HTTP client paths."
+    },
+    {
+      "name": "disposable VM mutation smoke",
+      "status": "passed",
+      "passed": 1,
+      "skipped": 0,
+      "failed": 0,
+      "notes": "Created, updated, waited on Proxmox task completion, and deleted a disposable VM."
+    },
+    {
+      "name": "registered disposable VM mutation smoke",
+      "status": "passed",
+      "passed": 1,
+      "skipped": 0,
+      "failed": 0,
+      "notes": "Registered update_vm_config changed a disposable VM description and confirmed this endpoint returns no UPID task reference."
+    },
+    {
+      "name": "LXC smoke",
+      "status": "skipped",
+      "passed": 1,
+      "skipped": 2,
+      "failed": 0,
+      "notes": "LXC inventory passed; template and lifecycle checks skipped because no LXC template was present on local storage."
+    },
+    {
+      "name": "backup create/list smoke",
+      "status": "passed",
+      "passed": 2,
+      "skipped": 0,
+      "failed": 0,
+      "notes": "Registered run_vm_backup returned a UPID, task tracking captured it, backup content appeared on local storage, and cleanup completed."
+    },
+    {
+      "name": "storage profile smoke",
+      "status": "passed",
+      "passed": 3,
+      "skipped": 0,
+      "failed": 0,
+      "notes": "local directory content discovery and local-lvm LVM-thin status were validated without claiming expansion or benchmark support."
+    },
+    {
+      "name": "storage mutation smoke",
+      "status": "passed",
+      "passed": 2,
+      "skipped": 0,
+      "failed": 0,
+      "notes": "Bounded benchmark preview and expansion guarded evidence were recorded; live expansion remains guarded."
+    },
+    {
+      "name": "PBS verification gate",
+      "status": "skipped",
+      "passed": 0,
+      "skipped": 1,
+      "failed": 0,
+      "notes": "PBS profile was not selected and live backup verification remains unpromoted."
+    },
+    {
+      "name": "Ceph/HA/multi-node profile gates",
+      "status": "skipped",
+      "passed": 0,
+      "skipped": 3,
+      "failed": 0,
+      "notes": "Current evidence is single-node without Ceph, HA, or PBS topology claims."
+    },
+    {
+      "name": "chaos gate",
+      "status": "passed",
+      "passed": 3,
+      "skipped": 0,
+      "failed": 0
+    },
+    {
+      "name": "lightweight load gate",
+      "status": "passed",
+      "passed": 2,
+      "skipped": 0,
+      "failed": 0
+    }
+  ],
+  "promoted_tools": [
+    {
+      "tool": "enter_lxc_console",
+      "status": "live_supported",
+      "evidence": "Durable SSH session and recording contract tests for pve-9-storage-local-local-lvm require database-backed stores for live console sessions."
+    }
+  ],
+  "operator_notes": [
+    "Do not include usernames, passwords, API tokens, private keys, or raw credential references in this artifact."
+  ]
+}

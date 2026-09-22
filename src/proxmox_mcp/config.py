@@ -1,0 +1,208 @@
+from __future__ import annotations
+
+import tempfile
+from pathlib import Path
+from typing import Literal, Self, cast
+from urllib.parse import parse_qs, urlparse
+
+from pydantic import BaseModel, Field, SecretStr, field_validator, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from proxmox_mcp.secrets import CredentialPurpose, SecretProviderName
+
+
+class DangerousOperationSettings(BaseModel):
+    enabled: bool = True
+    require_approval: bool = True
+    log_full_command: bool = False
+    require_impact_analysis: bool = True
+    require_dry_run_when_supported: bool = True
+    require_target_revalidation: bool = True
+
+
+def _default_generated_cert_dir() -> str:
+    return str(Path(tempfile.gettempdir()) / "proxmox-mcp" / "certs")
+
+
+class TlsSettings(BaseModel):
+    cert_file: str | None = Field(default=None, min_length=1)
+    key_file: SecretStr | None = None
+    ca_file: str | None = Field(default=None, min_length=1)
+    generate_self_signed: bool = True
+    generated_cert_dir: str = Field(default_factory=_default_generated_cert_dir, min_length=1)
+    common_name: str = Field(default="localhost", min_length=1)
+    subject_alt_names: tuple[str, ...] = ("localhost", "127.0.0.1")
+
+    @field_validator("subject_alt_names", mode="before")
+    @classmethod
+    def _parse_subject_alt_names(cls, value: object) -> object:
+        if isinstance(value, str):
+            return tuple(item.strip() for item in value.split(",") if item.strip())
+        return value
+
+
+class ObservabilitySettings(BaseModel):
+    alertmanager_url: str | None = None
+    alertmanager_required: bool = False
+    prometheus_url: str | None = None
+    prometheus_required: bool = False
+    siem_required: bool = False
+    siem_url: str | None = None
+
+    @field_validator("alertmanager_url", "prometheus_url", "siem_url")
+    @classmethod
+    def _require_https_observability_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        parsed = urlparse(value)
+        if parsed.scheme != "https":
+            raise ValueError("External observability URLs must use https://")
+        return value.rstrip("/")
+
+
+class DefaultActorSettings(BaseModel):
+    user_id: str = Field(default="operator", min_length=1)
+    agent_id: str = Field(default="homelab-agent", min_length=1)
+    tenant_id: str | None = None
+
+
+class ClusterCredentialRefSettings(BaseModel):
+    provider: SecretProviderName = "development"
+    path: str = Field(min_length=1)
+    purpose: CredentialPurpose = "proxmox_api"
+
+
+class ClusterSettings(BaseModel):
+    cluster_id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    api_endpoint: str = Field(min_length=1)
+    tls_verify: bool = True
+    credential_ref: ClusterCredentialRefSettings
+    environment: Literal["development", "test", "staging", "homelab", "production"] = "homelab"
+    status: Literal["active", "disabled"] = "active"
+
+    @model_validator(mode="after")
+    def _validate_transport(self) -> Self:
+        if not self.api_endpoint.startswith("https://"):
+            raise ValueError("Proxmox clusters require https:// API endpoints")
+        if self.environment == "production" and not self.tls_verify:
+            raise ValueError("Production Proxmox clusters require TLS verification")
+        return self
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="PROXMOX_MCP_",
+        env_nested_delimiter="__",
+        case_sensitive=False,
+    )
+
+    environment: Literal["development", "test", "staging", "homelab", "production"] = "development"
+    auth_mode: Literal["development", "service_token", "oidc", "mtls", "workload_identity"] = (
+        "development"
+    )
+    external_auth_enabled: bool = False
+    durable_state_enabled: bool = False
+    workload_identity_replay_cache: Literal["memory", "redis"] = "memory"
+    service_token: SecretStr | None = None
+    service_token_sha256: str | None = None
+    default_actor: DefaultActorSettings = Field(default_factory=DefaultActorSettings)
+    secrets_file: str = "/run/proxmox-mcp/secrets/secrets.json"
+    cluster: ClusterSettings | None = None
+    server_host: str = "127.0.0.1"
+    server_port: int = Field(default=8443, ge=1, le=65535)
+    database_url: SecretStr = SecretStr(
+        "postgresql+asyncpg://proxmox_mcp:proxmox_mcp@localhost/proxmox_mcp?ssl=require"
+    )
+    redis_url: SecretStr = SecretStr("rediss://localhost:6379/0")
+    log_level: Literal["debug", "info", "warning", "error"] = "info"
+    credential_provider: Literal[
+        "development",
+        "hashicorp_vault",
+        "bitwarden",
+        "onepassword",
+        "aws_secrets_manager",
+        "azure_key_vault",
+    ] = "development"
+    vault_url: str | None = None
+    vault_token: SecretStr | None = None
+    bitwarden_access_token: SecretStr | None = None
+    onepassword_service_account_token: SecretStr | None = None
+    aws_region: str | None = None
+    azure_key_vault_url: str | None = None
+    dangerous_operations: DangerousOperationSettings = Field(
+        default_factory=DangerousOperationSettings
+    )
+    tls: TlsSettings = Field(default_factory=TlsSettings)
+    observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
+    admin_username: str | None = None
+    admin_password: SecretStr | None = None
+    admin_spa_dir: str = "web/dist"
+
+    @model_validator(mode="after")
+    def _validate_encrypted_network_urls(self) -> Settings:
+        _validate_database_url(self.database_url.get_secret_value())
+        _validate_redis_url(self.redis_url.get_secret_value())
+        _validate_optional_https_url(self.vault_url, "Vault URL")
+        _validate_optional_https_url(self.azure_key_vault_url, "Azure Key Vault URL")
+        _validate_service_token_configuration(self)
+        if (
+            self.environment == "production"
+            and self.cluster is not None
+            and not self.cluster.tls_verify
+        ):
+            raise ValueError("Production environment requires Proxmox TLS verification")
+        if self.environment == "production" and self.auth_mode == "development":
+            raise ValueError("Production environment rejects development auth mode")
+        return self
+
+    def safe_dump(self) -> dict[str, object]:
+        from proxmox_mcp.security.redaction import sanitize_for_security_boundary
+
+        dumped = self.model_dump(mode="json")
+        sanitized = sanitize_for_security_boundary(dumped)
+        if not isinstance(sanitized, dict):
+            return {}
+        return cast(dict[str, object], sanitized)
+
+
+def _validate_database_url(value: str) -> None:
+    parsed = urlparse(value)
+    if parsed.scheme != "postgresql+asyncpg":
+        raise ValueError("Database URL must use postgresql+asyncpg")
+
+    query = parse_qs(parsed.query)
+    ssl_values = tuple(value.lower() for value in query.get("ssl", ()))
+    sslmode_values = tuple(value.lower() for value in query.get("sslmode", ()))
+    if not (
+        set(ssl_values) & {"require", "required", "verify-ca", "verify-full", "true", "1"}
+        or set(sslmode_values) & {"require", "verify-ca", "verify-full"}
+    ):
+        raise ValueError("PostgreSQL TLS must be required with ssl=require or sslmode=require")
+
+
+def _validate_redis_url(value: str) -> None:
+    parsed = urlparse(value)
+    if parsed.scheme != "rediss":
+        raise ValueError("Redis TLS requires a rediss:// URL")
+
+
+def _validate_optional_https_url(value: str | None, label: str) -> None:
+    if value is None:
+        return
+    if urlparse(value).scheme != "https":
+        raise ValueError(f"{label} must use https://")
+
+
+def _validate_service_token_configuration(settings: Settings) -> None:
+    if settings.auth_mode != "service_token":
+        return
+    if settings.service_token is None and settings.service_token_sha256 is None:
+        raise ValueError(
+            "Service token auth requires PROXMOX_MCP_SERVICE_TOKEN or "
+            "PROXMOX_MCP_SERVICE_TOKEN_SHA256"
+        )
+    if settings.service_token is not None and settings.service_token_sha256 is not None:
+        raise ValueError(
+            "Configure only one of PROXMOX_MCP_SERVICE_TOKEN or PROXMOX_MCP_SERVICE_TOKEN_SHA256"
+        )
