@@ -16,7 +16,7 @@ Enterprise Proxmox MCP is a Model Context Protocol (MCP) server that exposes Pro
   <em>Admin WebUI overview: readiness indicators, active Proxmox target, approval queue state, and recent audit activity (privacy mode enabled).</em>
 </p>
 
-This repository is published as an **evidence-backed public preview**. It is suitable for homelab evaluation, disposable lab qualification, MSP assessment, and research. It is **not** certified for unattended production control of Proxmox clusters. Initial deployments should restrict agents to read-only tools, require dry-run and impact analysis for mutations, enforce approval for high- and critical-risk operations, and promote capabilities only after topology-specific evidence is collected.
+This repository is an **actively developed, evidence-backed public preview**. It is suitable for homelab evaluation, disposable lab qualification, MSP assessment, and research. It is **not certified for unattended production control** of Proxmox clusters. Initial deployments should restrict agents to read-only tools, require dry-run and impact analysis for mutations, enforce approval for high- and critical-risk operations, and promote capabilities only after topology-specific evidence is collected.
 
 ## Capabilities
 
