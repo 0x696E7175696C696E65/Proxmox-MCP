@@ -6,7 +6,11 @@ import {
   Gauge,
   HardDrive,
   HeartPulse,
+  KeyRound,
   LayoutDashboard,
+  ListTodo,
+  Radar,
+  Server,
   Settings2,
   ShieldCheck,
   Wrench,
@@ -24,6 +28,10 @@ import { ToolsPage } from "./pages/ToolsPage";
 import { HealthPage } from "./pages/HealthPage";
 import { ApprovalsPage } from "./pages/ApprovalsPage";
 import { ServersPage } from "./pages/ServersPage";
+import { TasksPage } from "./pages/TasksPage";
+import { InventoryPage } from "./pages/InventoryPage";
+import { ObservabilityPage } from "./pages/ObservabilityPage";
+import { AccessPage } from "./pages/AccessPage";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppTopBar } from "@/components/app-topbar";
 import { CommandPalette } from "@/components/command-palette";
@@ -72,21 +80,24 @@ function Shell() {
     return () => window.clearInterval(id);
   }, [tick]);
 
-  const isAdmin = user?.role !== "operator";
+  const isAdmin = user?.role === "admin";
   const navGroups = useMemo(
     () => [
       {
         label: "Observe",
         items: [
           { to: "/", label: "Overview", icon: LayoutDashboard, end: true },
-          { to: "/tools", label: "Tools", icon: Wrench },
+          { to: "/inventory", label: "Inventory", icon: Server },
+          { to: "/tasks", label: "Tasks", icon: ListTodo },
           { to: "/audit", label: "Audit", icon: Activity },
           { to: "/health", label: "Health", icon: HeartPulse },
+          { to: "/observability", label: "Observability", icon: Radar },
         ],
       },
       {
         label: "Control",
         items: [
+          { to: "/tools", label: "Tools", icon: Wrench },
           {
             to: "/approvals",
             label: "Approvals",
@@ -95,6 +106,7 @@ function Shell() {
           },
           ...(isAdmin
             ? [
+                { to: "/access", label: "Access", icon: KeyRound },
                 { to: "/servers", label: "Servers", icon: HardDrive },
                 { to: "/secrets", label: "Secrets", icon: FileKey2 },
                 { to: "/config", label: "Config", icon: Settings2 },
@@ -153,11 +165,19 @@ function Shell() {
                 <Route path="/tools" element={<ToolsPage />} />
                 <Route path="/audit" element={<AuditPage />} />
                 <Route path="/health" element={<HealthPage />} />
+                <Route path="/tasks" element={<TasksPage />} />
+                <Route path="/inventory" element={<InventoryPage />} />
+                <Route path="/observability" element={<ObservabilityPage />} />
                 <Route path="/approvals" element={<ApprovalsPage />} />
                 <Route
                   path="/servers"
                   element={isAdmin ? <ServersPage /> : <Navigate to="/" replace />}
                 />
+                <Route
+                  path="/access"
+                  element={isAdmin ? <AccessPage /> : <Navigate to="/" replace />}
+                />
+                <Route path="/users" element={<Navigate to="/access" replace />} />
                 <Route
                   path="/secrets"
                   element={isAdmin ? <SecretsPage /> : <Navigate to="/" replace />}

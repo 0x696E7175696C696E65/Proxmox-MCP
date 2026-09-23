@@ -55,8 +55,9 @@ def test_liveness_payload_reports_process_status_without_dependency_checks() -> 
 
     assert payload.status == "ok"
     assert payload.service == "enterprise-proxmox-mcp"
-    assert payload.environment == "test"
-    assert payload.port == 8443
+    dumped = payload.model_dump()
+    assert "environment" not in dumped
+    assert "port" not in dumped
 
 
 async def test_readiness_payload_fails_closed_when_required_dependency_fails() -> None:
@@ -173,6 +174,7 @@ async def test_secret_backend_readiness_rejects_development_provider_in_producti
             environment="production",
             auth_mode="service_token",
             service_token=SecretStr("x" * 32),
+            allow_shared_service_token_actor=True,
             credential_provider="development",
         ),
         {"secret_backend": SecretBackendDependencyChecker()},
@@ -205,15 +207,11 @@ async def test_production_readiness_rejects_development_auth_mode() -> None:
         Settings(environment="production", auth_mode="development")
 
 
-async def test_production_readiness_requires_external_auth_resolver_path() -> None:
-    payload = await build_readiness_payload(
-        Settings(environment="production", auth_mode="oidc", external_auth_enabled=False),
-        {"auth": ProductionAuthDependencyChecker()},
-    )
-
-    assert payload.status == "not_ready"
-    assert payload.dependencies["auth"].status == "unavailable"
-    assert "external authenticated session resolver" in payload.dependencies["auth"].detail
+async def test_production_rejects_unwired_http_auth_modes_without_external_auth() -> None:
+    with pytest.raises(ValueError, match="not wired for direct HTTP"):
+        Settings(environment="production", auth_mode="oidc", external_auth_enabled=False)
+    with pytest.raises(ValueError, match="not wired for direct HTTP"):
+        Settings(environment="homelab", auth_mode="mtls", external_auth_enabled=False)
 
 
 async def test_production_readiness_accepts_external_auth_path() -> None:
@@ -226,12 +224,19 @@ async def test_production_readiness_accepts_external_auth_path() -> None:
     assert payload.dependencies["auth"].status == "ok"
 
 
+async def test_build_server_rejects_unwired_auth_mode_without_resolver() -> None:
+    settings = Settings(environment="test", auth_mode="oidc", external_auth_enabled=True)
+    with pytest.raises(ValueError, match="authenticated_session_resolver"):
+        build_server(settings)
+
+
 async def test_production_readiness_requires_durable_state() -> None:
     payload = await build_readiness_payload(
         Settings(
             environment="production",
             auth_mode="service_token",
             service_token=SecretStr("x" * 32),
+            allow_shared_service_token_actor=True,
             durable_state_enabled=False,
         ),
         {
@@ -252,6 +257,7 @@ async def test_workload_identity_requires_redis_replay_cache_in_production() -> 
         Settings(
             environment="production",
             auth_mode="workload_identity",
+            external_auth_enabled=True,
             durable_state_enabled=True,
             workload_identity_replay_cache="memory",
         ),
@@ -276,6 +282,7 @@ async def test_production_state_accepts_durable_state_and_redis_replay_cache() -
         Settings(
             environment="production",
             auth_mode="workload_identity",
+            external_auth_enabled=True,
             durable_state_enabled=True,
             workload_identity_replay_cache="redis",
         ),
@@ -297,6 +304,7 @@ async def test_production_state_rejects_claim_without_actual_durable_components(
             environment="production",
             auth_mode="service_token",
             service_token=SecretStr("x" * 32),
+            allow_shared_service_token_actor=True,
             durable_state_enabled=True,
         ),
         {"production_state": ProductionStateDependencyChecker(durable_components_configured=False)},
@@ -313,6 +321,7 @@ async def test_production_state_requires_actual_approval_store() -> None:
             environment="production",
             auth_mode="service_token",
             service_token=SecretStr("x" * 32),
+            allow_shared_service_token_actor=True,
             durable_state_enabled=True,
         ),
         {
@@ -408,7 +417,7 @@ async def test_build_server_registers_health_and_read_only_tools() -> None:
         spec.name for spec in DOMAIN_COMPLETION_TOOL_SPECS
     } | {spec.name for spec in SSH_TOOL_SPECS} | {
         definition.name for definition in expected_registry.definitions()
-    }
+    } | {"list_my_pending_approvals", "get_approval_status"}
 
 
 def test_build_tool_context_accepts_resolved_authenticated_session() -> None:

@@ -68,10 +68,14 @@ def homelab_settings(tmp_path: Path) -> Settings:
 async def test_build_runtime_async_wires_durable_components(
     homelab_settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     async def fake_redis_ping() -> bool:
         return True
 
+    monkeypatch.setenv("PROXMOX_MCP_HOSTS_FILE", str(tmp_path / "hosts.json"))
+    monkeypatch.setenv("PROXMOX_MCP_ENV_FILE", str(tmp_path / ".env"))
+    monkeypatch.setenv("PROXMOX_MCP_SECRETS_FILE", homelab_settings.secrets_file)
     monkeypatch.setattr(
         "proxmox_mcp.server.config_validation.build_redis_client",
         lambda settings: type(

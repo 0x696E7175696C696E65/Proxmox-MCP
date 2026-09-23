@@ -57,12 +57,16 @@ describe("AdminApi hosts", () => {
       );
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await AdminApi.activateHost("pve-b");
+    const result = await AdminApi.activateHost("pve-b", "secret123");
 
     expect(result.restarting).toBe(true);
     expect(fetchMock).toHaveBeenCalledWith(
       "/admin/api/hosts/pve-b/activate",
-      expect.objectContaining({ method: "POST", credentials: "include" }),
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        body: JSON.stringify({ password: "secret123" }),
+      }),
     );
   });
 });

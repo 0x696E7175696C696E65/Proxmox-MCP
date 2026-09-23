@@ -34,7 +34,7 @@ Live command-backed tools:
 
 Guarded or profile-gated:
 
-- `expand_storage`: storage expansion is backend-specific. LVM-thin dry-runs now produce an expansion plan with requested size, preflight checks, audit fields, and guarded execution status; live execution returns `NOT_IMPLEMENTED` until disposable lab evidence exists.
+- `expand_storage`: storage expansion is backend-specific. LVM-thin dry-runs produce an expansion plan with requested size, preflight checks, and audit fields. Secure live LVM-thin path is **implemented, pending lab evidence** behind `PROXMOX_MCP_DOMAIN_PROMOTIONS_EXPAND_STORAGE_LVMTHIN_LIVE=true` (fail-closed default). Non-LVM-thin backends remain `NOT_IMPLEMENTED`.
 - `benchmark_storage`: bounded live execution uses `fio` with `duration_seconds`, `max_bytes`, an `mcp-lab-*` artifact path, and `--unlink=1` cleanup evidence. Broader backend support still requires profile-specific lab evidence.
 
 Validation:
@@ -67,21 +67,21 @@ Safety notes:
 
 ## Backup, Restore, Verify, Prune, And Scheduled Jobs
 
-Status: implemented with Proxmox API live support for cluster backup jobs, VM/LXC backup requests, VM/LXC backup restore requests, and storage prune operations. Backup verification remains guarded with backend-specific dry-run metadata until exact PVE-local or PBS verification semantics are configured and lab-validated. Restore tools now return dry-run restore-preview evidence before any live restore mutation.
+Status: implemented with Proxmox API live support for cluster backup jobs, VM/LXC backup requests, VM/LXC backup restore requests, and storage prune operations. `verify_backup` is **implemented, pending lab evidence** — dry-run always; live path behind `PROXMOX_MCP_DOMAIN_PROMOTIONS_VERIFY_BACKUP_LIVE=true` with artifact binding (fail-closed default). Restore tools return dry-run restore-preview evidence before any live restore mutation.
 
 Validation:
 
 - Unit/contract tests: `python -m pytest tests/proxmox/test_domain_backup_pack.py`
 - Read-only lab discovery: `python -m pytest tests/lab -m lab`
 - Backup create/list lab evidence: `python -m pytest tests/lab/test_backup_smoke.py -q` validates registered `run_vm_backup`, UPID task capture, backup content listing, and cleanup against a disposable VM. The 2026-06-07 disposable lab also validated restore-precondition dry-run evidence against a created backup artifact.
-- PBS verification gate: `python -m pytest tests/lab/test_backup_verify_smoke.py -q` skips unless `PROXMOX_MCP_LAB_PROFILE=pve-9-pbs-enabled` and PBS repository prerequisites are present. `verify_backup` remains guarded until this profile records real verification evidence.
+- PBS verification gate: `python -m pytest tests/lab/test_backup_verify_smoke.py -q` skips unless `PROXMOX_MCP_LAB_PROFILE=pve-9-pbs-enabled` and PBS repository prerequisites are present. Secure live path is implemented behind `PROXMOX_MCP_DOMAIN_PROMOTIONS_VERIFY_BACKUP_LIVE` but remains pending disposable lab evidence.
 - Restore preview evidence is covered by `python -m pytest tests/proxmox/test_domain_backup_pack.py -q` and confirms artifact, target type, target ID, storage, non-mutating preview status, and optional read-only artifact/target-conflict checks when a Proxmox client is available.
 
 Safety notes:
 
 - Job mutations require explicit `job_id`.
 - Backup content operations require explicit `volume` values and reject traversal values.
-- `verify_backup` live execution returns `NOT_IMPLEMENTED` with backend and evidence requirements instead of contacting Proxmox without a proven verification contract.
+- `verify_backup` live execution is fail-closed unless `PROXMOX_MCP_DOMAIN_PROMOTIONS_VERIFY_BACKUP_LIVE=true` and artifact binding succeeds; otherwise returns `NOT_IMPLEMENTED` with structured requirements.
 - Restore and prune lab tests require `PROXMOX_MCP_LAB_MUTATIONS_ENABLED=true`; destructive restore/prune tests require disposable storage and target IDs.
 
 ## Ceph And HA

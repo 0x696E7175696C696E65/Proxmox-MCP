@@ -6,9 +6,8 @@ import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Literal, Protocol, cast
-from urllib.error import HTTPError, URLError
+from urllib.error import URLError
 from urllib.parse import parse_qsl, urlencode, urlparse
-from urllib.request import Request, urlopen
 from uuid import uuid4
 
 from sqlalchemy import select, update
@@ -203,11 +202,16 @@ class AlertmanagerAlertBackend:
         base_url: str,
         timeout_seconds: int = 10,
         json_get: JsonGetter | None = None,
+        allow_private_hosts: bool = False,
     ) -> None:
         _require_https_url(base_url, "Alertmanager URL")
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
-        self._json_get = _default_json_get if json_get is None else json_get
+        self._allow_private_hosts = allow_private_hosts
+        if json_get is None:
+            self._json_get = _bound_json_get(allow_private=allow_private_hosts)
+        else:
+            self._json_get = json_get
 
     async def get_recent_alerts(
         self,
@@ -251,11 +255,16 @@ class PrometheusTrendBackend:
         base_url: str,
         timeout_seconds: int = 10,
         json_get: JsonGetter | None = None,
+        allow_private_hosts: bool = False,
     ) -> None:
         _require_https_url(base_url, "Prometheus URL")
         self._base_url = base_url.rstrip("/")
         self._timeout_seconds = timeout_seconds
-        self._json_get = _default_json_get if json_get is None else json_get
+        self._allow_private_hosts = allow_private_hosts
+        if json_get is None:
+            self._json_get = _bound_json_get(allow_private=allow_private_hosts)
+        else:
+            self._json_get = json_get
 
     async def get_resource_trends(
         self,
@@ -604,7 +613,14 @@ def format_siem_event(
 
 
 async def _default_json_get(url: str, timeout_seconds: int) -> object:
-    return await asyncio.to_thread(_blocking_json_get, url, timeout_seconds)
+    return await asyncio.to_thread(_blocking_json_get, url, timeout_seconds, False)
+
+
+def _bound_json_get(*, allow_private: bool) -> JsonGetter:
+    async def _get(url: str, timeout_seconds: int) -> object:
+        return await asyncio.to_thread(_blocking_json_get, url, timeout_seconds, allow_private)
+
+    return _get
 
 
 async def _default_json_post(
@@ -620,17 +636,21 @@ def _blocking_json_post(
     payload: dict[str, object],
     timeout_seconds: int,
 ) -> int:
-    request = Request(  # noqa: S310
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Accept": "application/json", "Content-Type": "application/json"},
-        method="POST",
-    )
+    from proxmox_mcp.security.egress import https_json_post_no_redirect
+
     try:
-        with urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310
-            return int(response.status)
-    except HTTPError as exc:
-        return int(exc.code)
+        return https_json_post_no_redirect(
+            url,
+            payload,
+            timeout_seconds=float(timeout_seconds),
+            allow_private=False,
+            allow_public=True,
+        )
+    except ValueError as exc:
+        raise SiemDeliveryError(
+            f"SIEM destination rejected by egress policy: {exc}",
+            retryable=False,
+        ) from exc
     except URLError as exc:
         raise SiemDeliveryError(
             f"SIEM destination is unavailable: {exc.reason}",
@@ -638,22 +658,42 @@ def _blocking_json_post(
         ) from exc
 
 
-def _blocking_json_get(url: str, timeout_seconds: int) -> object:
-    request = Request(url, headers={"Accept": "application/json"}, method="GET")  # noqa: S310
+def _blocking_json_get(url: str, timeout_seconds: int, allow_private: bool = False) -> object:
+    from proxmox_mcp.security.egress import https_json_get_no_redirect
+
     try:
-        with urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310
-            return json.loads(response.read().decode("utf-8"))
-    except HTTPError as exc:
+        return https_json_get_no_redirect(
+            url,
+            timeout_seconds=float(timeout_seconds),
+            # Homelab Prometheus/Alertmanager on RFC1918 require explicit opt-in.
+            allow_private=allow_private,
+            allow_public=True,
+        )
+    except ValueError as exc:
         raise ObservabilityBackendError(
-            "External observability backend returned an error",
-            retryable=exc.code >= 500,
-            details={"status_code": exc.code},
+            f"Observability URL rejected by egress policy: {exc}",
+            retryable=False,
+            details={"reason": str(exc)},
         ) from exc
     except URLError as exc:
+        reason = getattr(exc, "reason", None) or str(exc)
+        status_match = None
+        reason_text = str(reason)
+        if reason_text.startswith("HTTP "):
+            try:
+                status_match = int(reason_text.split()[1])
+            except (IndexError, ValueError):
+                status_match = None
+        if status_match is not None:
+            raise ObservabilityBackendError(
+                "External observability backend returned an error",
+                retryable=status_match >= 500,
+                details={"status_code": status_match},
+            ) from exc
         raise ObservabilityBackendError(
             "External observability backend is unavailable",
             retryable=True,
-            details={"reason": str(exc.reason)},
+            details={"reason": reason_text},
         ) from exc
     except json.JSONDecodeError as exc:
         raise ObservabilityBackendError(

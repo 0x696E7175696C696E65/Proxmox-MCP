@@ -114,7 +114,11 @@ async def build_runtime_async(settings: Settings) -> RuntimeBundle:
         )
         siem_configured = True
 
-    approval_store = DatabaseApprovalStore(session_factory)
+    approval_store = DatabaseApprovalStore(
+        session_factory,
+        dual_control_for_high=settings.approval_dual_control_high,
+        sod_linked_identity_groups=settings.sod_linked_identity_groups(),
+    )
     idempotency_store = DatabaseIdempotencyStore(session_factory)
     proxmox_task_store = DatabaseProxmoxTaskStore(session_factory)
     ssh_session_store = DatabaseSshSessionStore(session_factory)
@@ -172,6 +176,10 @@ async def build_runtime_async(settings: Settings) -> RuntimeBundle:
 
     runtime_controller = RuntimeController(config_store)
 
+    from proxmox_mcp.rbac.store import CapabilityRoleStore
+
+    capability_role_store = CapabilityRoleStore(session_factory)
+
     admin_state = AdminAppState(
         settings=settings,
         identity_provider=identity_provider,
@@ -184,6 +192,9 @@ async def build_runtime_async(settings: Settings) -> RuntimeBundle:
         spa_dir=spa_path if spa_path.is_dir() else None,  # noqa: ASYNC240 - startup path check
         approval_store=approval_store,
         host_catalog=host_catalog,
+        proxmox_task_store=proxmox_task_store,
+        proxmox_client=proxmox_client,
+        capability_role_store=capability_role_store,
     )
 
     return RuntimeBundle(

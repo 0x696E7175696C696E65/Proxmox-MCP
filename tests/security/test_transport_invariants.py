@@ -75,5 +75,15 @@ def test_database_and_redis_urls_fail_closed_without_tls() -> None:
 
 
 def test_tls_runtime_requires_material_when_generation_is_disabled() -> None:
-    with pytest.raises(TlsConfigurationError, match="certificate and key"):
+    with pytest.raises(TlsConfigurationError, match="TLS mode unresolved|certificate and key"):
         resolve_tls_config(TlsSettings(generate_self_signed=False))
+
+
+def test_settings_production_shared_service_token_requires_bindings_or_break_glass() -> None:
+    with pytest.raises(ValueError, match="SERVICE_TOKEN_ACTORS|SHARED_SERVICE_TOKEN"):
+        Settings(
+            environment="production",
+            auth_mode="service_token",
+            service_token=SecretStr("token-for-production-settings-test-xx"),
+            allow_generated_tls=True,
+        )

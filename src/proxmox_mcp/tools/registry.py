@@ -20,6 +20,7 @@ from proxmox_mcp.schemas.envelope import (
     AuditRef,
     ErrorCode,
     Impact,
+    MutatorRequestOptions,
     PolicyDecision,
     RequestOptions,
     ResourceRef,
@@ -151,6 +152,7 @@ class ToolGuardDecision(BaseModel):
         *,
         message: str = "Tool execution requires approval",
         approval_request_id: str | None = None,
+        resume_secret: str | None = None,
         risk: Risk | None = None,
         policy: PolicyDecision | None = None,
         approval: ApprovalInfo | None = None,
@@ -159,6 +161,8 @@ class ToolGuardDecision(BaseModel):
         details: dict[str, object] = {}
         if approval_request_id is not None:
             details["approval_request_id"] = approval_request_id
+        if resume_secret is not None:
+            details["approval_resume_secret"] = resume_secret
 
         approval_info = ApprovalInfo(required=True, approval_request_id=approval_request_id)
         if approval is not None:
@@ -278,6 +282,14 @@ class ToolRegistry:
         guard_decision = await self._evaluate_guard(definition, request, context)
         if guard_decision.decision != "allowed":
             error_code = guard_decision.error_code or "POLICY_DENIED"
+            # Standardize deny/error audit metadata for MSP triage.
+            self._enrich_failure_audit_metadata(
+                context,
+                definition,
+                started_at=started_at,
+                error_code=error_code,
+                extra=guard_decision.details,
+            )
             denied_event = await self._write_audit_event(
                 definition,
                 request,
@@ -360,6 +372,13 @@ class ToolRegistry:
             data = await definition.handler(request, context)
             data = self._validate_result(definition, data)
         except ToolExecutionError as exc:
+            self._enrich_failure_audit_metadata(
+                context,
+                definition,
+                started_at=started_at,
+                error_code=exc.error_code,
+                extra=exc.details,
+            )
             error_event = await self._write_audit_event(
                 definition,
                 request,
@@ -396,6 +415,13 @@ class ToolRegistry:
                 audit=AuditRef(event_id=error_event.event_id, recorded=True),
             )
         except CircuitOpenError as exc:
+            self._enrich_failure_audit_metadata(
+                context,
+                definition,
+                started_at=started_at,
+                error_code="CIRCUIT_OPEN",
+                extra={"retryable": True, "http_status": getattr(exc, "status_code", None)},
+            )
             error_event = await self._write_audit_event(
                 definition,
                 request,
@@ -432,6 +458,12 @@ class ToolRegistry:
                 audit=AuditRef(event_id=error_event.event_id, recorded=True),
             )
         except ValidationError:
+            self._enrich_failure_audit_metadata(
+                context,
+                definition,
+                started_at=started_at,
+                error_code="INTERNAL_ERROR",
+            )
             error_event = await self._write_audit_event(
                 definition,
                 request,
@@ -467,6 +499,12 @@ class ToolRegistry:
                 audit=AuditRef(event_id=error_event.event_id, recorded=True),
             )
         except Exception:
+            self._enrich_failure_audit_metadata(
+                context,
+                definition,
+                started_at=started_at,
+                error_code="INTERNAL_ERROR",
+            )
             error_event = await self._write_audit_event(
                 definition,
                 request,
@@ -524,6 +562,7 @@ class ToolRegistry:
             result_status="success",
         )
         impact = guard_decision.impact or self._default_impact(request)
+        sanitized_result = sanitize_for_security_boundary(data)
         return ToolResponse(
             request_id=request.request_id,
             correlation_id=request.correlation_id,
@@ -532,7 +571,7 @@ class ToolRegistry:
             policy=guard_decision.policy or self._default_policy(definition),
             approval=guard_decision.approval or self._default_approval(definition),
             impact=impact,
-            result=data,
+            result=sanitized_result,
             rollback_suggestions=impact.rollback_suggestions,
             audit=AuditRef(event_id=success_event.event_id, recorded=True),
         )
@@ -568,6 +607,7 @@ class ToolRegistry:
             if definition.parameters_model is not None
             else dict[str, object]
         )
+        options_type: object = MutatorRequestOptions if definition.dry_run else RequestOptions
         target_field: tuple[object, object] = (
             (Target | None, None) if definition.connector == "internal" else (Target, ...)
         )
@@ -579,7 +619,7 @@ class ToolRegistry:
                 {
                     "target": target_field,
                     "parameters": (parameters_type, Field(default_factory=dict)),
-                    "options": (RequestOptions, Field(default_factory=RequestOptions)),
+                    "options": (options_type, Field(default_factory=options_type)),
                 },
             ),
         )
@@ -782,13 +822,48 @@ class ToolRegistry:
         return event
 
     def _sanitize_details(self, details: dict[str, object]) -> dict[str, object]:
-        sanitized = sanitize_for_security_boundary(details)
+        # Agent-facing error details may keep one-shot resume secrets.
+        sanitized = sanitize_for_security_boundary(
+            details,
+            allow_agent_capabilities=True,
+        )
         if not isinstance(sanitized, dict):
             return {}
         return cast(dict[str, object], sanitized)
 
+    def _enrich_failure_audit_metadata(
+        self,
+        context: ToolExecutionContext,
+        definition: ToolDefinition,
+        *,
+        started_at: float,
+        error_code: str | None,
+        extra: dict[str, object] | None = None,
+    ) -> None:
+        if extra:
+            # Never copy agent capability secrets into durable audit metadata.
+            for key, value in extra.items():
+                if key.lower().replace("-", "_") in {
+                    "approval_resume_secret",
+                    "approval_token",
+                    "approval_token_hash",
+                }:
+                    continue
+                context.audit_metadata.setdefault(key, value)
+        if error_code:
+            context.audit_metadata.setdefault("denial_reason", error_code)
+        context.audit_metadata.setdefault("matched_rule", definition.name)
+        context.audit_metadata.setdefault("risk_level", definition.risk)
+        context.audit_metadata.setdefault(
+            "duration_ms", int((perf_counter() - started_at) * 1000)
+        )
+
     def _sanitize_metadata(self, metadata: dict[str, object]) -> dict[str, object]:
-        sanitized = sanitize_for_security_boundary(metadata)
+        # Audit / SSE / SIEM: no agent capability passthrough.
+        sanitized = sanitize_for_security_boundary(
+            metadata,
+            allow_agent_capabilities=False,
+        )
         if not isinstance(sanitized, dict):
             return {}
         return cast(dict[str, object], sanitized)

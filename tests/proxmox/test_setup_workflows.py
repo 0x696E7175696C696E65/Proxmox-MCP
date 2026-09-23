@@ -158,7 +158,7 @@ async def test_create_lxc_from_template_dry_run_plans_template_download_and_crea
     assert payload["vmid"] == 101
     assert payload["hostname"] == "mcp-lab-101"
     assert payload["ostemplate"] == "local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst"
-    assert payload["password"] == "<secret-ref:secret://lab/lxc-password>"  # noqa: S105
+    assert payload["password"] == "**********"  # noqa: S105
 
 
 async def test_create_lxc_from_template_live_refuses_unresolved_secret_ref() -> None:

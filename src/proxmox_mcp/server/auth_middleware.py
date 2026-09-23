@@ -12,7 +12,7 @@ from proxmox_mcp.server.auth_resolver import authenticate_bearer_token
 
 # /admin is excluded from service-token auth: AdminPathMiddleware + cookie sessions
 # own that surface. /health/* stays anonymous; /metrics requires bearer.
-_PUBLIC_PATH_PREFIXES = ("/health/", "/admin")
+_PUBLIC_PATH_PREFIXES = ("/health/",)
 
 
 class ServiceTokenAuthMiddleware:
@@ -45,7 +45,7 @@ class ServiceTokenAuthMiddleware:
 
         authorization = request.headers.get("authorization", "")
         if not authorization.lower().startswith("bearer "):
-            self._rate_limiter.record_failure(client_key)
+            # Missing auth is not a credential-guessing signal — do not lock out shared egress.
             response = JSONResponse(
                 {"detail": "Authorization bearer token required"}, status_code=401
             )
@@ -54,7 +54,6 @@ class ServiceTokenAuthMiddleware:
 
         token = authorization[7:].strip()
         if not token:
-            self._rate_limiter.record_failure(client_key)
             response = JSONResponse(
                 {"detail": "Authorization bearer token required"}, status_code=401
             )
@@ -85,7 +84,9 @@ class ServiceTokenAuthMiddleware:
 
 
 def _is_public_path(path: str) -> bool:
-    return any(path.startswith(prefix) for prefix in _PUBLIC_PATH_PREFIXES)
+    if path.startswith("/health/"):
+        return True
+    return path == "/admin" or path.startswith("/admin/")
 
 
 def attach_service_token_middleware(app: object, *, settings: Settings) -> None:

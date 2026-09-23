@@ -63,17 +63,45 @@ Supported authentication primitives are service tokens, OIDC JWTs verified again
 
 Supported credential providers are `development`, `hashicorp_vault`, `bitwarden`, `onepassword`, `aws_secrets_manager`, and `azure_key_vault`. The base package exposes provider contracts and adapters that accept deployment-supplied clients; operators should install and configure the vendor SDK or sidecar appropriate for their environment. Readiness fails closed when the selected provider is missing required bootstrap configuration.
 
-The MCP server is HTTPS-only. Production deployments must mount a certificate and
-private key into the application container and set `PROXMOX_MCP_TLS__CERT_FILE`
-and `PROXMOX_MCP_TLS__KEY_FILE`. PostgreSQL URLs must require TLS with
+The MCP server is HTTPS-only — even on localhost. Choose one TLS mode:
+
+**Generate (homelab / first boot)**
+
+```bash
+proxmox-mcp tls generate --out-dir ./certs/local --cn localhost
+# Import ./certs/local/ca.crt into browsers and MCP clients
+export PROXMOX_MCP_TLS__MODE=generate
+export PROXMOX_MCP_TLS__GENERATED_CERT_DIR=./certs/local
+```
+
+To mint a leaf signed by your existing private CA:
+
+```bash
+proxmox-mcp tls generate --out-dir ./certs/local \
+  --ca-cert ./certs/my-ca.crt --ca-key ./certs/my-ca.key \
+  --cn mcp.home.arpa --san mcp.home.arpa --san 192.168.1.10
+```
+
+**BYOC (bring your own cert)** — required for production unless break-glass
+`PROXMOX_MCP_ALLOW_GENERATED_TLS=true`:
+
+```bash
+export PROXMOX_MCP_TLS__MODE=byoc
+export PROXMOX_MCP_TLS__CERT_FILE=/run/proxmox-mcp/tls/tls.crt
+export PROXMOX_MCP_TLS__KEY_FILE=/run/proxmox-mcp/tls/tls.key
+export PROXMOX_MCP_TLS__CA_FILE=/run/proxmox-mcp/tls/ca.crt  # optional; validates chain
+proxmox-mcp tls validate
+```
+
+Production deployments must mount a certificate and private key (or enable the
+break-glass flag above). PostgreSQL URLs must require TLS with
 `ssl=require` or an equivalent verification mode, and Redis URLs must use
-`rediss://`. Disposable lab and development deployments may set
-`PROXMOX_MCP_TLS__GENERATE_SELF_SIGNED=true`, but clients must explicitly trust
-the generated certificate.
+`rediss://`. Disposable lab clients must trust the generated `ca.crt`.
 
 External Alertmanager and Prometheus sources are configured through
 `PROXMOX_MCP_OBSERVABILITY__ALERTMANAGER_URL` and
 `PROXMOX_MCP_OBSERVABILITY__PROMETHEUS_URL`. These URLs must use `https://`.
+Homelab RFC1918 backends require `PROXMOX_MCP_OBSERVABILITY__ALLOW_PRIVATE_HOSTS=true`.
 If `PROXMOX_MCP_OBSERVABILITY__ALERTMANAGER_REQUIRED=true` or
 `PROXMOX_MCP_OBSERVABILITY__PROMETHEUS_REQUIRED=true`, readiness fails closed
 until the corresponding source is configured.

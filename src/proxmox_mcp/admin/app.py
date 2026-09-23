@@ -51,19 +51,42 @@ _ADMIN_ONLY_PATHS = {
     ("POST", "/admin/api/runtime/restart"),
     ("PUT", "/admin/api/policy"),
     ("PUT", "/admin/api/config"),
+    ("POST", "/admin/api/users"),
+    ("GET", "/admin/api/users"),
+    ("POST", "/admin/api/approvals/webhook/test"),
+    ("GET", "/admin/api/access/roles"),
+    ("POST", "/admin/api/access/roles"),
+    ("GET", "/admin/api/access/tools"),
+    ("POST", "/admin/api/access/effective"),
 }
 
 
 def _is_admin_only_path(method: str, path: str) -> bool:
     if (method, path) in _ADMIN_ONLY_PATHS:
         return True
+    if method == "PUT" and path.startswith("/admin/api/users/"):
+        return True
+    if method in {"GET", "PUT", "DELETE"} and path.startswith("/admin/api/access/roles/"):
+        return True
+    if method == "POST" and path.startswith("/admin/api/tools/") and path.endswith("/invoke"):
+        return True
+    if method in {"POST", "PUT", "DELETE"} and path.startswith("/admin/api/hosts"):
+        return True
     return (
         method == "POST" and path.startswith("/admin/api/approvals/") and path.endswith("/decide")
     )
 
 
+_VIEWER_MUTATION_ALLOWLIST = {
+    ("POST", "/admin/api/auth/logout"),
+}
+
+
 def _cookie_secure(settings: Settings, request: Request) -> bool:
     return settings.environment == "production" or request.url.scheme == "https"
+
+
+ADMIN_SESSION_COOKIE_PATH = "/admin"
 
 
 def _set_session_cookie(
@@ -80,7 +103,7 @@ def _set_session_cookie(
         secure=_cookie_secure(settings, request),
         samesite="lax",
         max_age=int(SESSION_IDLE_TTL.total_seconds()),
-        path="/",
+        path=ADMIN_SESSION_COOKIE_PATH,
     )
 
 
@@ -92,7 +115,7 @@ def _clear_session_cookie(
 ) -> None:
     response.delete_cookie(
         SESSION_COOKIE,
-        path="/",
+        path=ADMIN_SESSION_COOKIE_PATH,
         secure=_cookie_secure(settings, request),
         httponly=True,
         samesite="lax",
@@ -173,6 +196,7 @@ class RestartBody(BaseModel):
 
 class ConfigUpdateBody(AdminConfigUpdate):
     config_version: str | None = None
+    password: str | None = Field(default=None, min_length=1)
 
 
 @dataclass(slots=True)
@@ -190,6 +214,9 @@ class AdminAppState:
     tool_context_factory: Any | None = None
     approval_store: Any | None = None
     host_catalog: HostCatalogStore | None = None
+    proxmox_task_store: Any | None = None
+    proxmox_client: Any | None = None
+    capability_role_store: Any | None = None
 
 
 async def verify_admin_step_up(
@@ -302,6 +329,15 @@ class AdminSessionMiddleware:
 
             if _is_admin_only_path(request.method, path) and session.identity.role != "admin":
                 response = JSONResponse({"detail": "Admin role required"}, status_code=403)
+                await response(scope, receive, send)
+                return
+
+            if (
+                session.identity.role == "viewer"
+                and request.method in {"POST", "PUT", "PATCH", "DELETE"}
+                and (request.method, path) not in _VIEWER_MUTATION_ALLOWLIST
+            ):
+                response = JSONResponse({"detail": "Viewer role is read-only"}, status_code=403)
                 await response(scope, receive, send)
                 return
 
@@ -544,6 +580,33 @@ async def put_config(request: Request) -> Response:
             },
             status_code=403,
         )
+    sensitive = any(
+        getattr(update, field) is not None
+        for field in (
+            "cluster_api_endpoint",
+            "cluster_tls_verify",
+            "cluster_name",
+            "cluster_id",
+            "credential_ref_path",
+            "default_actor_user_id",
+            "default_actor_agent_id",
+        )
+    )
+    if sensitive:
+        if not update.password:
+            return JSONResponse(
+                {"detail": "password step-up required for endpoint/TLS/actor config changes"},
+                status_code=400,
+            )
+        step_up_denied = await verify_admin_step_up(
+            request,
+            state=state,
+            session=session,
+            password=update.password,
+            operation="update_config_sensitive",
+        )
+        if step_up_denied is not None:
+            return step_up_denied
     expected = update.config_version or request.headers.get("if-match")
     current_version = state.config_store.config_version()
     if expected is not None and expected.strip('"') != current_version:
@@ -554,7 +617,10 @@ async def put_config(request: Request) -> Response:
     result = state.config_store.apply_config(update)
     content_hash = hashlib.sha256(
         json.dumps(
-            update.model_dump(exclude_none=True, exclude={"config_version"}),
+            update.model_dump(
+                exclude_none=True,
+                exclude={"config_version", "password"},
+            ),
             sort_keys=True,
             default=str,
         ).encode()
@@ -775,6 +841,11 @@ async def spa_index(request: Request) -> Response:
 def create_admin_starlette_app(state: AdminAppState) -> Starlette:
     from proxmox_mcp.admin import control as admin_control
     from proxmox_mcp.admin import hosts as admin_hosts
+    from proxmox_mcp.admin import inventory as admin_inventory
+    from proxmox_mcp.admin import observability_api as admin_observability
+    from proxmox_mcp.admin import tasks as admin_tasks
+    from proxmox_mcp.admin import users as admin_users
+    from proxmox_mcp.admin import access as admin_access
 
     api_routes = [
         Route("/admin/api/auth/login", login, methods=["POST"]),
@@ -800,6 +871,16 @@ def create_admin_starlette_app(state: AdminAppState) -> Starlette:
         Route("/admin/api/tools/{name}/invoke", admin_control.invoke_tool, methods=["POST"]),
         Route("/admin/api/approvals", admin_control.list_approvals, methods=["GET"]),
         Route(
+            "/admin/api/approvals/webhook/test",
+            admin_control.test_approval_webhook,
+            methods=["POST"],
+        ),
+        Route(
+            "/admin/api/approvals/{approval_id}",
+            admin_control.get_approval,
+            methods=["GET"],
+        ),
+        Route(
             "/admin/api/approvals/{approval_id}/decide",
             admin_control.decide_approval,
             methods=["POST"],
@@ -820,6 +901,46 @@ def create_admin_starlette_app(state: AdminAppState) -> Starlette:
             admin_hosts.probe_host,
             methods=["POST"],
         ),
+        Route("/admin/api/tasks", admin_tasks.list_tasks, methods=["GET"]),
+        Route("/admin/api/tasks/{upid}", admin_tasks.get_task, methods=["GET"]),
+        Route(
+            "/admin/api/tasks/{upid}/refresh",
+            admin_tasks.refresh_task,
+            methods=["POST"],
+        ),
+        Route("/admin/api/inventory/summary", admin_inventory.inventory_summary, methods=["GET"]),
+        Route(
+            "/admin/api/inventory/guests/{guest_type}/{guest_id}",
+            admin_inventory.inventory_guest_detail,
+            methods=["GET"],
+        ),
+        Route(
+            "/admin/api/observability/overview",
+            admin_observability.observability_overview,
+            methods=["GET"],
+        ),
+        Route("/admin/api/users", admin_users.list_users, methods=["GET"]),
+        Route("/admin/api/users", admin_users.create_user, methods=["POST"]),
+        Route("/admin/api/users/{user_id}", admin_users.update_user, methods=["PUT"]),
+        Route("/admin/api/access/roles", admin_access.list_capability_roles, methods=["GET"]),
+        Route("/admin/api/access/roles", admin_access.create_capability_role, methods=["POST"]),
+        Route(
+            "/admin/api/access/roles/{role_id}",
+            admin_access.get_capability_role,
+            methods=["GET"],
+        ),
+        Route(
+            "/admin/api/access/roles/{role_id}",
+            admin_access.update_capability_role,
+            methods=["PUT"],
+        ),
+        Route(
+            "/admin/api/access/roles/{role_id}",
+            admin_access.delete_capability_role,
+            methods=["DELETE"],
+        ),
+        Route("/admin/api/access/tools", admin_access.tool_catalog_for_acl, methods=["GET"]),
+        Route("/admin/api/access/effective", admin_access.effective_access, methods=["POST"]),
     ]
 
     routes: list[Any] = list(api_routes)

@@ -146,6 +146,13 @@ def build_server(
     admin_state: Any | None = None,
 ) -> FastMCP:
     settings = Settings() if settings is None else settings
+    if settings.auth_mode not in {"development", "service_token"}:
+        if authenticated_session_resolver is None:
+            raise ValueError(
+                f"Auth mode {settings.auth_mode!r} is not wired for direct HTTP MCP auth. "
+                "Pass authenticated_session_resolver from the deployment gateway, "
+                "or use auth_mode=service_token / development"
+            )
     audit_writer = InMemoryAuditWriter() if audit_writer is None else audit_writer
     ssh_command_policy = SshCommandPolicy() if ssh_command_policy is None else ssh_command_policy
     ssh_session_manager = (
@@ -156,9 +163,15 @@ def build_server(
     )
     metrics_registry = InMemoryMetricsRegistry() if metrics_registry is None else metrics_registry
     if alert_backend is None and settings.observability.alertmanager_url is not None:
-        alert_backend = AlertmanagerAlertBackend(base_url=settings.observability.alertmanager_url)
+        alert_backend = AlertmanagerAlertBackend(
+            base_url=settings.observability.alertmanager_url,
+            allow_private_hosts=settings.observability.allow_private_hosts,
+        )
     if trend_backend is None and settings.observability.prometheus_url is not None:
-        trend_backend = PrometheusTrendBackend(base_url=settings.observability.prometheus_url)
+        trend_backend = PrometheusTrendBackend(
+            base_url=settings.observability.prometheus_url,
+            allow_private_hosts=settings.observability.allow_private_hosts,
+        )
 
     runtime_dependency_checkers = dependency_checkers
     if runtime_dependency_checkers is None:
@@ -187,6 +200,9 @@ def build_server(
     register_media_tools(registry)
     register_helper_script_tools(registry)
     register_ssh_tools(registry)
+    from proxmox_mcp.tools.approval_status import register_approval_status_tools
+
+    register_approval_status_tools(registry)
 
     def context_factory(request: ToolRequest) -> ToolExecutionContext:
         live_settings = settings
@@ -210,6 +226,7 @@ def build_server(
             trend_backend=trend_backend,
             idempotency_store=idempotency_store,
             proxmox_task_store=proxmox_task_store,
+            approval_store=approval_store,
             authenticated_session=authenticated_session_resolver(request)
             if authenticated_session_resolver is not None
             else None,
@@ -220,6 +237,8 @@ def build_server(
         admin_state.tool_registry = registry
         admin_state.tool_context_factory = context_factory
         admin_state.approval_store = approval_store
+        admin_state.proxmox_task_store = proxmox_task_store
+        admin_state.proxmox_client = proxmox_client
     _register_http_routes(
         app,
         settings=settings,
@@ -230,34 +249,44 @@ def build_server(
 
 
 def _runtime_role_assignments(settings: Settings) -> tuple[RoleAssignment, ...]:
-    """Grant the configured service-token actor and admin-ui full tool access.
+    """Grant MCP service actors least-privilege roles; admin-ui uses AdminConsole (never *)."""
+    from proxmox_mcp.server.auth_resolver import resolve_mcp_role
 
-    Production fails closed if no assignments can be derived (should not happen
-    with default_actor always present).
-    """
     actor = settings.default_actor
-    assignments = (
+    mcp_role = resolve_mcp_role(settings.mcp_service_role)
+    assignments: list[RoleAssignment] = [
         RoleAssignment(
             actor_user_id=actor.user_id,
             actor_agent_id=actor.agent_id,
-            role=Role.administrator(),
+            role=mcp_role,
             scope=Scope(tenant_id=actor.tenant_id),
         ),
         RoleAssignment(
             actor_user_id=actor.user_id,
             actor_agent_id="admin-ui",
-            role=Role.administrator(),
+            role=Role.admin_console(),
             scope=Scope(tenant_id=actor.tenant_id),
         ),
+        # Admin UI sessions share agent_id=admin-ui with varying user_ids.
+        # MCP tokens cannot claim this agent_id (see RESERVED_MCP_AGENT_IDS).
         RoleAssignment(
             actor_agent_id="admin-ui",
-            role=Role.administrator(),
+            role=Role.admin_console(),
             scope=Scope(tenant_id=None),
         ),
-    )
+    ]
+    for binding in settings.service_token_actors:
+        assignments.append(
+            RoleAssignment(
+                actor_user_id=binding.user_id,
+                actor_agent_id=binding.agent_id,
+                role=resolve_mcp_role(binding.role),
+                scope=Scope(tenant_id=binding.tenant_id),
+            )
+        )
     if settings.environment == "production" and not assignments:
         raise ValueError("Production requires durable RBAC role assignments")
-    return assignments
+    return tuple(assignments)
 
 
 def _runtime_dependency_checkers(
@@ -301,6 +330,7 @@ def build_tool_context(
     idempotency_store: IdempotencyStore | None = None,
     proxmox_task_store: ProxmoxTaskStore | None = None,
     authenticated_session: AuthenticatedSession | None = None,
+    approval_store: ApprovalConsumer | None = None,
 ) -> ToolExecutionContext:
     return ToolExecutionContext(
         request=request,
@@ -319,6 +349,7 @@ def build_tool_context(
         trend_backend=trend_backend,
         idempotency_store=idempotency_store,
         proxmox_task_store=proxmox_task_store,
+        approval_store=approval_store,
     )
 
 
@@ -397,6 +428,22 @@ def run(settings: Settings | None = None, *, mode: str | None = None) -> None:
             asgi_middleware.append(Middleware(AdminPathMiddleware, admin_app=admin_app))
         if settings.auth_mode == "service_token":
             asgi_middleware.append(Middleware(ServiceTokenAuthMiddleware, settings=settings))
+
+        from proxmox_mcp.server.tls import TlsConfigurationError, resolve_tls_mode
+
+        try:
+            mode_resolved = resolve_tls_mode(settings.tls)
+        except TlsConfigurationError:
+            mode_resolved = None
+        if (
+            settings.environment == "production"
+            and mode_resolved == "generate"
+            and not settings.allow_generated_tls
+        ):
+            raise TlsConfigurationError(
+                "Production requires BYOC TLS (cert_file+key_file) "
+                "or PROXMOX_MCP_ALLOW_GENERATED_TLS=true"
+            )
 
         tls_config = resolve_tls_config(settings.tls)
         app.run(

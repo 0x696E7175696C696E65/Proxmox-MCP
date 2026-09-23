@@ -41,32 +41,36 @@ class DangerousOperationRegistry:
         *,
         settings: DangerousOperationSettings | None = None,
     ) -> DangerousOperationRegistry:
+        operations: set[str] = {
+            # Legacy aliases kept for permission-string variants.
+            "vm.delete",
+            "lxc.delete",
+            "storage.delete",
+            "disk.wipe",
+            "wipe_disk",
+            "storage.disk.wipe",
+            "node.reboot",
+            "node.shutdown",
+            "vm.migrate.force",
+            "force_migrate_vm",
+            "ssh.execute",
+            "execute_ssh",
+            "ssh.command.execute",
+            "firewall.disable",
+            "firewall.permission.write",
+            "permissions.write",
+            "permission.write",
+        }
+        try:
+            from proxmox_mcp.proxmox.dangerous_tools import DANGEROUS_TOOL_SPECS
+
+            for spec in DANGEROUS_TOOL_SPECS:
+                operations.add(spec.name)
+                operations.add(spec.permission)
+        except Exception:  # noqa: BLE001 - registry must still construct
+            pass
         return cls(
-            critical_operations=frozenset(
-                {
-                    "delete_vm",
-                    "vm.delete",
-                    "delete_lxc",
-                    "lxc.delete",
-                    "delete_storage",
-                    "storage.delete",
-                    "wipe_disk",
-                    "disk.wipe",
-                    "remove_ceph_osd",
-                    "ceph.osd.remove",
-                    "node_reboot",
-                    "node.reboot",
-                    "node_shutdown",
-                    "node.shutdown",
-                    "force_migrate_vm",
-                    "vm.migrate.force",
-                    "execute_ssh",
-                    "ssh.execute",
-                    "firewall.disable",
-                    "firewall.permission.write",
-                    "permissions.write",
-                }
-            ),
+            critical_operations=frozenset(operations),
             settings=DangerousOperationSettings() if settings is None else settings,
         )
 

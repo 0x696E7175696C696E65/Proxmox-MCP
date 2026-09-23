@@ -31,8 +31,9 @@ def test_pbs_backup_verification_requires_profile_prerequisites(
         pytest.skip("; ".join(missing))
 
     pytest.skip(
-        "Live PBS verification is not promoted until repository visibility, artifact addressing, "
-        "and verification command/source semantics are recorded in release evidence"
+        "Live PBS verification path is implemented behind "
+        "PROXMOX_MCP_DOMAIN_PROMOTIONS_VERIFY_BACKUP_LIVE but remains pending lab evidence "
+        "for repository visibility, artifact addressing, and verification semantics"
     )
 
 

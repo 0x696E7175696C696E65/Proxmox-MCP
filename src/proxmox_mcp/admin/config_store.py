@@ -132,6 +132,10 @@ class ConfigStore:
                 "enabled": self._settings.dangerous_operations.enabled,
                 "require_approval": self._settings.dangerous_operations.require_approval,
             },
+            "approval_webhook": {
+                "url_configured": bool(self._settings.approval_webhook_url),
+                "secret_configured": self._settings.approval_webhook_secret is not None,
+            },
             "restart_required": self._restart_required,
             "last_message": self._last_message,
             "config_version": self.config_version(),
@@ -208,7 +212,7 @@ class ConfigStore:
     def apply_config(self, update: AdminConfigUpdate) -> ApplyResult:
         changed: list[str] = []
         env_updates: dict[str, str] = {}
-        data = update.model_dump(exclude_none=True)
+        data = update.model_dump(exclude_none=True, exclude={"password"})
 
         mapping = {
             "log_level": "PROXMOX_MCP_LOG_LEVEL",

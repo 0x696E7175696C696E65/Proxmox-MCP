@@ -262,10 +262,15 @@ class AsyncSshClient:
                 known_hosts=connection_config.known_hosts,
             )
             async with asyncio.timeout(command.timeout_seconds):
+                from proxmox_mcp.security.egress import SECURE_SSH_PATH
+
+                # Force a secure PATH so basename allowlisted tools cannot resolve
+                # attacker-planted binaries via a poisoned remote PATH.
+                env = {**command.environment, "PATH": SECURE_SSH_PATH}
                 result = await connection.run(
                     command.command,
                     check=False,
-                    env=command.environment,
+                    env=env,
                 )
         except TimeoutError as exc:
             raise SshClientError(

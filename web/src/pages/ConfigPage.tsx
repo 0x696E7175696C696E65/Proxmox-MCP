@@ -28,6 +28,10 @@ export function ConfigPage() {
   const [actorAgent, setActorAgent] = useState("homelab-agent");
   const [dangerEnabled, setDangerEnabled] = useState(true);
   const [requireApproval, setRequireApproval] = useState(true);
+  const [webhookUrlConfigured, setWebhookUrlConfigured] = useState(false);
+  const [webhookSecretConfigured, setWebhookSecretConfigured] = useState(false);
+  const [webhookPassword, setWebhookPassword] = useState("");
+  const [webhookBusy, setWebhookBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -46,9 +50,31 @@ export function ConfigPage() {
         const danger = (cfg.dangerous_operations ?? {}) as Record<string, unknown>;
         setDangerEnabled(Boolean(danger.enabled));
         setRequireApproval(Boolean(danger.require_approval));
+        const webhook = (cfg.approval_webhook ?? {}) as Record<string, unknown>;
+        setWebhookUrlConfigured(Boolean(webhook.url_configured));
+        setWebhookSecretConfigured(Boolean(webhook.secret_configured));
       })
       .catch((err: Error) => setError(err.message));
   }, []);
+
+  async function onWebhookPing() {
+    setWebhookBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await AdminApi.testApprovalWebhook(webhookPassword);
+      setMessage(
+        result.ok
+          ? "Webhook ping delivered"
+          : `Webhook ping failed: ${JSON.stringify(result.delivery)}`,
+      );
+      setWebhookPassword("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Webhook ping failed");
+    } finally {
+      setWebhookBusy(false);
+    }
+  }
 
   async function onSave(e: FormEvent) {
     e.preventDefault();
@@ -178,6 +204,39 @@ export function ConfigPage() {
               (admin password required).
             </AlertDescription>
           </Alert>
+        </FormSection>
+
+        <FormSection
+          title="Approval webhook"
+          description="Signed HTTPS notify on approval mint. Secrets via env only."
+        >
+          <Alert className="py-2">
+            <AlertDescription className="text-xs text-muted-foreground">
+              URL configured={String(webhookUrlConfigured)}, secret configured=
+              {String(webhookSecretConfigured)}. Set{" "}
+              <span className="font-mono">PROXMOX_MCP_APPROVAL_WEBHOOK_URL</span> and{" "}
+              <span className="font-mono">PROXMOX_MCP_APPROVAL_WEBHOOK_SECRET</span>.
+            </AlertDescription>
+          </Alert>
+          <div className="space-y-1.5">
+            <FieldLabel htmlFor="webhook-stepup">Admin password (step-up)</FieldLabel>
+            <Input
+              id="webhook-stepup"
+              type="password"
+              className="h-8"
+              value={webhookPassword}
+              onChange={(e) => setWebhookPassword(e.target.value)}
+            />
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={webhookBusy || !webhookPassword}
+            onClick={() => void onWebhookPing()}
+          >
+            {webhookBusy ? "Pinging…" : "Test webhook"}
+          </Button>
         </FormSection>
 
         {(message || error) && (

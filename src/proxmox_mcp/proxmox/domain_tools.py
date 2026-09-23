@@ -737,6 +737,18 @@ def _build_domain_handler(
 
         if not spec.live_supported:
             if spec.name == "verify_backup":
+                if context.settings.domain_promotions_verify_backup_live:
+                    result = await _execute_verify_backup_live(
+                        spec, request, parameters, payload, context, endpoint
+                    )
+                    return _result(
+                        spec,
+                        request,
+                        endpoint=endpoint,
+                        command=command,
+                        payload=payload,
+                        result=result,
+                    )
                 backend = _backup_verification_backend(payload)
                 raise ToolExecutionError(
                     error_code="NOT_IMPLEMENTED",
@@ -751,10 +763,26 @@ def _build_domain_handler(
                         "required_evidence": (
                             "backend-specific backup verification contract and lab evidence"
                         ),
+                        "enable_flag": "PROXMOX_MCP_DOMAIN_PROMOTIONS_VERIFY_BACKUP_LIVE",
                     },
                 )
             if spec.name == "expand_storage":
                 backend = _storage_backend(payload)
+                if (
+                    context.settings.domain_promotions_expand_storage_lvmthin_live
+                    and backend == "lvmthin"
+                ):
+                    result = await _execute_expand_storage_lvmthin_live(
+                        spec, request, payload, context
+                    )
+                    return _result(
+                        spec,
+                        request,
+                        endpoint=endpoint,
+                        command=command,
+                        payload=payload,
+                        result=result,
+                    )
                 raise ToolExecutionError(
                     error_code="NOT_IMPLEMENTED",
                     message=(
@@ -768,6 +796,7 @@ def _build_domain_handler(
                         "required_evidence": (
                             "backend-specific storage expansion contract and lab evidence"
                         ),
+                        "enable_flag": "PROXMOX_MCP_DOMAIN_PROMOTIONS_EXPAND_STORAGE_LVMTHIN_LIVE",
                     },
                 )
             if spec.name == "benchmark_storage":
@@ -1704,6 +1733,201 @@ def _storage_expansion_plan_for(
             "execution_status",
         ],
     }
+
+
+async def _execute_verify_backup_live(
+    spec: DomainToolSpec,
+    request: ToolRequest,
+    parameters: dict[str, object],
+    payload: dict[str, object],
+    context: ToolExecutionContext,
+    endpoint: str | None,
+) -> dict[str, object]:
+    _ = spec
+    backend = _backup_verification_backend(payload)
+    volume = parameters.get("volume")
+    artifact = volume if isinstance(volume, str) and volume else str(payload.get("archive") or "")
+    if not artifact:
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="Backup verification requires a bound volume/archive artifact",
+        )
+    repository = payload.get("repository", request.target.storage_id)
+    if context.proxmox_client is None:
+        raise ToolExecutionError(
+            error_code="PROXMOX_API_ERROR",
+            message="Proxmox API client is not configured",
+            retryable=False,
+        )
+    if not endpoint:
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="Backup verification endpoint could not be resolved",
+        )
+    try:
+        data = await context.proxmox_client.get(endpoint)
+    except Exception as exc:  # noqa: BLE001
+        raise ToolExecutionError(
+            error_code="PROXMOX_API_ERROR",
+            message="Backup artifact lookup failed",
+            details={"backend": backend, "artifact": artifact},
+            retryable=False,
+        ) from exc
+    if data is None:
+        raise ToolExecutionError(
+            error_code="NOT_FOUND",
+            message="Backup artifact not found for verification",
+            details={"backend": backend, "artifact": artifact, "repository": repository},
+        )
+    # Bound success: artifact must resolve; checksum/size fields recorded when present.
+    size = None
+    digest = None
+    if isinstance(data, dict):
+        size = data.get("size")
+        digest = data.get("sha256") or data.get("digest") or data.get("checksum")
+    verification_status = "verified_present"
+    if backend == "pbs" and digest is None and size is None:
+        # PBS may return a content listing stub; require at least one binding field.
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="PBS verification did not return artifact binding fields",
+            details={"backend": backend, "artifact": artifact, "repository": repository},
+        )
+    return {
+        "backend": backend,
+        "repository": repository,
+        "artifact": artifact,
+        "verification_source": "pbs" if backend == "pbs" else "pve-local",
+        "verification_status": verification_status,
+        "size": size,
+        "digest": digest,
+        "audit_fields": [
+            "backend",
+            "repository",
+            "artifact",
+            "verification_source",
+            "verification_status",
+            "size",
+            "digest",
+        ],
+    }
+
+
+async def _execute_expand_storage_lvmthin_live(
+    spec: DomainToolSpec,
+    request: ToolRequest,
+    payload: dict[str, object],
+    context: ToolExecutionContext,
+) -> dict[str, object]:
+    _ = spec
+    backend = _storage_backend(payload)
+    if backend != "lvmthin":
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="Live expand_storage is only implemented for lvmthin backends",
+            details={"backend": backend},
+        )
+    plan = _storage_expansion_plan_for(request, payload)
+    requested_size = payload.get("requested_size")
+    if not isinstance(requested_size, str) or not requested_size:
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="Storage expansion requested_size is required for lvmthin",
+        )
+    storage_id = request.target.storage_id or request.target.resource_id
+    thinpool = payload.get("thinpool") or payload.get("pool")
+    vgname = payload.get("vgname") or payload.get("volume")
+    if not isinstance(thinpool, str) or not thinpool:
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="LVM-thin expansion requires thinpool/pool",
+        )
+    if not isinstance(vgname, str) or not vgname:
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="LVM-thin expansion requires vgname/volume",
+        )
+    _validate_lvmthin_expand_args(requested_size=requested_size, vgname=vgname, thinpool=thinpool)
+    # Fail closed unless SSH is available — live path uses lvextend on the thin pool.
+    if context.ssh_client is None:
+        raise ToolExecutionError(
+            error_code="NOT_IMPLEMENTED",
+            message="LVM-thin expansion requires SSH connector for lvextend",
+            details={"backend": backend, "preflight": plan.get("preflight_checks")},
+        )
+    # Args are allowlisted; still quote for defense-in-depth against shell metacharacters.
+    command = (
+        "lvextend -L "
+        f"{shlex.quote(requested_size)} {shlex.quote(vgname)}/{shlex.quote(thinpool)}"
+    )
+    result = await _execute_ssh_command(
+        DomainToolSpec(
+            name="expand_storage",
+            category="storage",
+            permission="storage.capacity.expand",
+            risk="high",
+            dry_run=True,
+            connector="hybrid",
+            method="POST",
+            live_supported=True,
+        ),
+        command,
+        request,
+        context,
+    )
+    ssh_payload = _ssh_result_payload_for(
+        DomainToolSpec(
+            name="expand_storage",
+            category="storage",
+            permission="storage.capacity.expand",
+            risk="high",
+            dry_run=True,
+            connector="hybrid",
+            method="POST",
+            live_supported=True,
+        ),
+        command,
+        result,
+        context,
+    )
+    return {
+        "backend": backend,
+        "storage_id": storage_id,
+        "requested_size": requested_size,
+        "thinpool": thinpool,
+        "vgname": vgname,
+        "execution_status": "executed",
+        "command_hash": ssh_payload.get("command_hash"),
+        "ssh_result": {
+            "exit_status": result.exit_status,
+            "stdout": ssh_payload.get("stdout", ""),
+            "stderr": ssh_payload.get("stderr", ""),
+            "redacted": True,
+        },
+        "preflight_checks": plan.get("preflight_checks"),
+        "audit_fields": [
+            "backend",
+            "storage_id",
+            "requested_size",
+            "thinpool",
+            "vgname",
+            "command_hash",
+            "execution_status",
+        ],
+    }
+
+
+def _validate_lvmthin_expand_args(*, requested_size: str, vgname: str, thinpool: str) -> None:
+    """Reject shell metacharacters / unsafe LVM identifiers before SSH execution."""
+    size_pattern = re.compile(r"^\+?[0-9]+([bBkKmMgGtTpPeE]([iI]?[bB])?)?$")
+    if not size_pattern.fullmatch(requested_size):
+        raise ToolExecutionError(
+            error_code="INVALID_REQUEST",
+            message="Unsafe or invalid LVM requested_size for expand_storage",
+        )
+    for field, value in (("vgname", vgname), ("thinpool", thinpool)):
+        _validate_endpoint_segment(field, value)
+        _validate_command_argument(field, value)
 
 
 def _storage_expansion_preflight_checks(backend: str) -> list[str]:

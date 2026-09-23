@@ -7,9 +7,13 @@ import {
   HardDrive,
   HeartPulse,
   LayoutDashboard,
+  ListTodo,
+  Radar,
   Search,
+  Server,
   Settings2,
   ShieldCheck,
+  Users,
   Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -17,14 +21,18 @@ import { cn } from "@/lib/utils";
 const BASE_COMMANDS = [
   { to: "/", label: "Overview", hint: "Gateway status", icon: LayoutDashboard },
   { to: "/tools", label: "Tools", hint: "Browse and invoke", icon: Wrench },
+  { to: "/inventory", label: "Inventory", hint: "Nodes and guests", icon: Server },
+  { to: "/tasks", label: "Tasks", hint: "UPID tracker", icon: ListTodo },
   { to: "/audit", label: "Audit", hint: "Live event stream", icon: Activity },
   { to: "/health", label: "Health", hint: "Dependencies & doctor", icon: HeartPulse },
+  { to: "/observability", label: "Observability", hint: "Alerts & trends", icon: Radar },
   { to: "/approvals", label: "Approvals", hint: "Dangerous ops queue", icon: ShieldCheck },
   { to: "/config", label: "Config", hint: "Hot-apply settings", icon: Settings2 },
 ] as const;
 
 const ADMIN_COMMANDS = [
   { to: "/servers", label: "Servers", hint: "Managed Proxmox hosts", icon: HardDrive },
+  { to: "/access", label: "Access", hint: "Users, roles & ACL", icon: Users },
   { to: "/secrets", label: "Secrets", hint: "API & service tokens", icon: FileKey2 },
   { to: "/runtime", label: "Runtime", hint: "Restart & apply state", icon: Gauge },
 ] as const;

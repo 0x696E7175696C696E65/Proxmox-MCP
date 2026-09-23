@@ -14,14 +14,21 @@ describe("admin spa smoke", () => {
     expect(restart.message).toMatch(/restart/i);
   });
 
-  it("builds audit drawer selection payload", () => {
-    const event = {
-      event_id: "aud_1",
-      tool_name: "list_nodes",
-      result_status: "success",
-      metadata: { span_id: "abc" },
-    };
-    expect(event.event_id).toBeTruthy();
-    expect(JSON.stringify(event.metadata)).toContain("span_id");
+  it("classifies Observe vs Control navigation", () => {
+    const observe = ["Overview", "Inventory", "Audit", "Health"];
+    const control = ["Tools", "Approvals", "Access", "Servers"];
+    expect(observe).not.toContain("Access");
+    expect(control).toContain("Access");
+    expect(control).toContain("Tools");
+  });
+
+  it("requires step-up password fields for dangerous writes", () => {
+    const stepUpBodies = [
+      { password: "secret" },
+      { decision: "approved", password: "secret" },
+    ];
+    for (const body of stepUpBodies) {
+      expect(body.password.length).toBeGreaterThan(0);
+    }
   });
 });

@@ -177,6 +177,9 @@ def test_admin_login_csrf_and_config(tmp_path, monkeypatch: pytest.MonkeyPatch) 
     )
     assert login.status_code == 200
     csrf = login.json()["csrf_token"]
+    set_cookie = login.headers.get("set-cookie", "")
+    assert "proxmox_mcp_admin_session=" in set_cookie
+    assert "Path=/admin" in set_cookie or "path=/admin" in set_cookie.lower()
     assert client.get("/admin/api/me").status_code == 200
 
     audit = client.get("/admin/api/audit")

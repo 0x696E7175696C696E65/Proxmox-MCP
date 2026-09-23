@@ -84,7 +84,11 @@ def make_context(
         settings=Settings(environment="test"),
         audit_writer=writer,
         ssh_client=client,
-        ssh_command_policy=SshCommandPolicy() if policy is None else policy,
+        ssh_command_policy=SshCommandPolicy(
+            allowed_file_roots=frozenset({"/srv/proxmox-mcp"})
+        )
+        if policy is None
+        else policy,
         ssh_session_manager=SshSessionManager() if session_manager is None else session_manager,
         ssh_recording_store=InMemorySshRecordingStore()
         if recording_store is None

@@ -118,8 +118,8 @@ async def test_queue_pending_decide_consume_roundtrip() -> None:
         target=target,
         input_payload={"force": True},
         actor=actor,
-        risk_level="critical",
-        risk_score=95,
+        risk_level="high",
+        risk_score=80,
         summary={"tool_name": "delete_vm"},
     )
     assert queued.created is True
@@ -135,8 +135,8 @@ async def test_queue_pending_decide_consume_roundtrip() -> None:
         operation="vm.delete",
         target=target,
         input_payload={"force": True},
-        risk_level="critical",
-        risk_score=95,
+        risk_level="high",
+        risk_score=80,
     )
     assert pending_fail.valid is False
 
@@ -144,6 +144,16 @@ async def test_queue_pending_decide_consume_roundtrip() -> None:
         queued.approval_request_id,
         decision="approved",
         decided_by="admin",
+        decided_by_user_id="admin-user-1",
+        reason="ok",
+    )
+    assert decided is not None
+    assert decided.quorum_pending is True
+    decided = await store.decide(
+        queued.approval_request_id,
+        decision="approved",
+        decided_by="admin2",
+        decided_by_user_id="admin-user-2",
         reason="ok",
     )
     assert decided is not None
@@ -156,8 +166,8 @@ async def test_queue_pending_decide_consume_roundtrip() -> None:
         operation="vm.delete",
         target=target,
         input_payload={"force": True},
-        risk_level="critical",
-        risk_score=95,
+        risk_level="high",
+        risk_score=80,
     )
     assert ok.valid is True
     again = store.consume(
@@ -275,8 +285,11 @@ def test_admin_decide_requires_step_up_and_returns_token(
     )
     assert ok.status_code == 200
     body = ok.json()
-    assert body["approval"]["status"] == "approved"
-    assert isinstance(body.get("approval_token"), str)
+    # High-risk defaults to dual-control: first admin vote stays pending.
+    assert body["approval"]["status"] == "pending"
+    assert body.get("quorum_pending") is True
+    assert body.get("approval_token") is None
+    assert body["approval"]["required_approvals"] == 2
     listed = client.get("/admin/api/approvals").json()["approvals"]
     assert all("approval_token" not in row for row in listed)
 

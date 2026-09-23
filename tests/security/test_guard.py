@@ -219,6 +219,7 @@ async def test_security_guard_mints_pending_approval_without_token() -> None:
     assert isinstance(response, ToolErrorResponse)
     assert response.error.code == "APPROVAL_REQUIRED"
     assert "approval_request_id" in response.error.details
+    assert "approval_resume_secret" in response.error.details
     pending = await store.list_approvals(status="pending")
     assert len(pending) == 1
     assert pending[0]["approval_request_id"] == response.error.details["approval_request_id"]

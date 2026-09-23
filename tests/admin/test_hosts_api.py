@@ -157,17 +157,21 @@ def test_list_hosts_seeds_and_returns_active(admin_bundle: AdminClientBundle) ->
     assert body["hosts"][0]["secrets_ready"] is True
 
 
+def _pw(**fields: object) -> dict[str, object]:
+    return {"password": "secret123", **fields}
+
+
 def test_create_and_update_host(admin_bundle: AdminClientBundle) -> None:
     create = admin_bundle.client.post(
         "/admin/api/hosts",
-        json={
-            "host_id": "pve-b",
-            "name": "PVE B",
-            "api_endpoint": "https://192.168.10.200:8006",
-            "tls_verify": True,
-            "credential_ref_path": "clusters/pve-b/proxmox-api",
-            "enabled": True,
-        },
+        json=_pw(
+            host_id="pve-b",
+            name="PVE B",
+            api_endpoint="https://192.168.10.200:8006",
+            tls_verify=True,
+            credential_ref_path="clusters/pve-b/proxmox-api",
+            enabled=True,
+        ),
         headers={"X-CSRF-Token": admin_bundle.csrf},
     )
     assert create.status_code == 201
@@ -175,14 +179,14 @@ def test_create_and_update_host(admin_bundle: AdminClientBundle) -> None:
 
     update = admin_bundle.client.put(
         "/admin/api/hosts/pve-b",
-        json={
-            "host_id": "pve-b",
-            "name": "PVE B Renamed",
-            "api_endpoint": "https://192.168.10.201:8006",
-            "tls_verify": False,
-            "credential_ref_path": "clusters/pve-b/proxmox-api",
-            "enabled": True,
-        },
+        json=_pw(
+            host_id="pve-b",
+            name="PVE B Renamed",
+            api_endpoint="https://192.168.10.201:8006",
+            tls_verify=False,
+            credential_ref_path="clusters/pve-b/proxmox-api",
+            enabled=True,
+        ),
         headers={"X-CSRF-Token": admin_bundle.csrf},
     )
     assert update.status_code == 200
@@ -191,8 +195,10 @@ def test_create_and_update_host(admin_bundle: AdminClientBundle) -> None:
 
 def test_delete_active_host_conflict(admin_bundle: AdminClientBundle) -> None:
     admin_bundle.client.get("/admin/api/hosts")
-    delete = admin_bundle.client.delete(
+    delete = admin_bundle.client.request(
+        "DELETE",
         "/admin/api/hosts/homelab",
+        json={"password": "secret123"},
         headers={"X-CSRF-Token": admin_bundle.csrf},
     )
     assert delete.status_code == 409
@@ -202,14 +208,14 @@ def test_activate_missing_secrets_no_restart(admin_bundle: AdminClientBundle) ->
     admin_bundle.client.get("/admin/api/hosts")
     admin_bundle.client.post(
         "/admin/api/hosts",
-        json={
-            "host_id": "pve-b",
-            "name": "PVE B",
-            "api_endpoint": "https://192.168.10.200:8006",
-            "tls_verify": True,
-            "credential_ref_path": "clusters/pve-b/proxmox-api",
-            "enabled": True,
-        },
+        json=_pw(
+            host_id="pve-b",
+            name="PVE B",
+            api_endpoint="https://192.168.10.200:8006",
+            tls_verify=True,
+            credential_ref_path="clusters/pve-b/proxmox-api",
+            enabled=True,
+        ),
         headers={"X-CSRF-Token": admin_bundle.csrf},
     )
     calls: list[int] = []
@@ -217,6 +223,7 @@ def test_activate_missing_secrets_no_restart(admin_bundle: AdminClientBundle) ->
 
     r = admin_bundle.client.post(
         "/admin/api/hosts/pve-b/activate",
+        json={"password": "secret123"},
         headers={"X-CSRF-Token": admin_bundle.csrf},
     )
     assert r.status_code == 400
@@ -233,6 +240,7 @@ def test_activate_ok_restarts(admin_bundle: AdminClientBundle) -> None:
 
     r = admin_bundle.client.post(
         "/admin/api/hosts/homelab/activate",
+        json={"password": "secret123"},
         headers={"X-CSRF-Token": admin_bundle.csrf},
     )
     assert r.status_code == 200
@@ -248,14 +256,14 @@ def test_activate_ok_restarts(admin_bundle: AdminClientBundle) -> None:
 
 def test_create_duplicate_host_returns_409(admin_bundle: AdminClientBundle) -> None:
     admin_bundle.client.get("/admin/api/hosts")
-    payload = {
-        "host_id": "homelab",
-        "name": "Duplicate",
-        "api_endpoint": "https://192.168.10.137:8006",
-        "tls_verify": False,
-        "credential_ref_path": "clusters/homelab/proxmox-api",
-        "enabled": True,
-    }
+    payload = _pw(
+        host_id="homelab",
+        name="Duplicate",
+        api_endpoint="https://192.168.10.137:8006",
+        tls_verify=False,
+        credential_ref_path="clusters/homelab/proxmox-api",
+        enabled=True,
+    )
     r = admin_bundle.client.post(
         "/admin/api/hosts",
         json=payload,
@@ -268,14 +276,17 @@ def test_create_duplicate_host_returns_409(admin_bundle: AdminClientBundle) -> N
 def test_probe_host_success(admin_bundle: AdminClientBundle) -> None:
     admin_bundle.client.get("/admin/api/hosts")
     version_body = json.dumps({"data": {"version": "8.3.0"}}).encode("utf-8")
-    mock_resp = MagicMock()
-    mock_resp.read.return_value = version_body
-    mock_resp.__enter__ = MagicMock(return_value=mock_resp)
-    mock_resp.__exit__ = MagicMock(return_value=False)
 
-    with patch("proxmox_mcp.admin.hosts.urlopen", return_value=mock_resp):
+    with patch(
+        "proxmox_mcp.security.egress.https_request_no_redirect",
+        return_value=(200, version_body),
+    ), patch(
+        "proxmox_mcp.security.egress.validate_https_url_host",
+        return_value=MagicMock(),
+    ):
         r = admin_bundle.client.post(
             "/admin/api/hosts/homelab/probe",
+            json={"password": "secret123"},
             headers={"X-CSRF-Token": admin_bundle.csrf},
         )
 
@@ -290,18 +301,19 @@ def test_probe_host_without_secrets(admin_bundle: AdminClientBundle) -> None:
     admin_bundle.client.get("/admin/api/hosts")
     admin_bundle.client.post(
         "/admin/api/hosts",
-        json={
-            "host_id": "pve-b",
-            "name": "PVE B",
-            "api_endpoint": "https://192.168.10.200:8006",
-            "tls_verify": True,
-            "credential_ref_path": "clusters/pve-b/proxmox-api",
-            "enabled": True,
-        },
+        json=_pw(
+            host_id="pve-b",
+            name="PVE B",
+            api_endpoint="https://192.168.10.200:8006",
+            tls_verify=True,
+            credential_ref_path="clusters/pve-b/proxmox-api",
+            enabled=True,
+        ),
         headers={"X-CSRF-Token": admin_bundle.csrf},
     )
     r = admin_bundle.client.post(
         "/admin/api/hosts/pve-b/probe",
+        json={"password": "secret123"},
         headers={"X-CSRF-Token": admin_bundle.csrf},
     )
     assert r.status_code == 200
@@ -313,12 +325,12 @@ def test_probe_host_without_secrets(admin_bundle: AdminClientBundle) -> None:
 def test_hosts_mutations_require_csrf(admin_bundle: AdminClientBundle) -> None:
     r = admin_bundle.client.post(
         "/admin/api/hosts",
-        json={
-            "host_id": "pve-c",
-            "name": "PVE C",
-            "api_endpoint": "https://192.168.10.210:8006",
-            "tls_verify": True,
-            "credential_ref_path": "clusters/pve-c/proxmox-api",
-        },
+        json=_pw(
+            host_id="pve-c",
+            name="PVE C",
+            api_endpoint="https://192.168.10.210:8006",
+            tls_verify=True,
+            credential_ref_path="clusters/pve-c/proxmox-api",
+        ),
     )
     assert r.status_code == 403

@@ -231,6 +231,7 @@ async def test_verify_backup_live_returns_backend_specific_unsupported_response(
         "connector": "proxmox_api",
         "backend": "pve-local",
         "required_evidence": "backend-specific backup verification contract and lab evidence",
+        "enable_flag": "PROXMOX_MCP_DOMAIN_PROMOTIONS_VERIFY_BACKUP_LIVE",
     }
     assert client.requests == []
 

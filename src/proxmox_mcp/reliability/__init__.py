@@ -206,6 +206,22 @@ class ProxmoxTaskStore(Protocol):
 
     async def get_by_upid(self, upid: str) -> ProxmoxTask: ...
 
+    async def list_tasks(
+        self,
+        *,
+        limit: int = 100,
+        status: str | None = None,
+        node: str | None = None,
+    ) -> list[ProxmoxTask]: ...
+
+    async def update_observed_state(
+        self,
+        upid: str,
+        *,
+        status: str,
+        last_observed_state: str | None,
+    ) -> ProxmoxTask: ...
+
 
 class DatabaseProxmoxTaskStore:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
@@ -259,6 +275,151 @@ class DatabaseProxmoxTaskStore:
             if record is None:
                 raise KeyError(upid)
             return _task_from_record(record)
+
+    async def list_tasks(
+        self,
+        *,
+        limit: int = 100,
+        status: str | None = None,
+        node: str | None = None,
+    ) -> list[ProxmoxTask]:
+        async with self._session_factory() as session:
+            statement = select(ProxmoxTaskRecord).order_by(ProxmoxTaskRecord.updated_at.desc())
+            if status is not None:
+                statement = statement.where(ProxmoxTaskRecord.status == status)
+            statement = statement.limit(min(max(limit, 1), 500))
+            records = list((await session.scalars(statement)).all())
+        tasks = [_task_from_record(record) for record in records]
+        if node is None:
+            return tasks
+        return [
+            task
+            for task in tasks
+            if str(task.target.get("node") or "") == node or _node_from_upid(task.upid) == node
+        ]
+
+    async def update_observed_state(
+        self,
+        upid: str,
+        *,
+        status: str,
+        last_observed_state: str | None,
+    ) -> ProxmoxTask:
+        now = datetime.now(UTC)
+        async with self._session_factory() as session:
+            record = await session.scalar(
+                select(ProxmoxTaskRecord).where(ProxmoxTaskRecord.upid == upid)
+            )
+            if record is None:
+                raise KeyError(upid)
+            record.status = status
+            record.last_observed_state = last_observed_state
+            record.updated_at = now
+            await session.commit()
+            return _task_from_record(record)
+
+
+class InMemoryProxmoxTaskStore:
+    """Test/dev task store with list + refresh semantics."""
+
+    def __init__(self) -> None:
+        self._by_upid: dict[str, ProxmoxTask] = {}
+
+    async def record_task(
+        self,
+        *,
+        upid: str,
+        operation: str,
+        method: str,
+        endpoint: str,
+        target: dict[str, object],
+        request_fingerprint: str,
+        idempotency_key: str | None,
+        status: str = "running",
+        retryable: bool = True,
+        last_observed_state: str | None = None,
+    ) -> ProxmoxTask:
+        existing = self._by_upid.get(upid)
+        if existing is not None:
+            return existing
+        now = datetime.now(UTC)
+        task = ProxmoxTask(
+            task_id=f"proxmox_task_{uuid4().hex}",
+            upid=upid,
+            operation=operation,
+            method=method,
+            endpoint=endpoint,
+            target=target,
+            request_fingerprint=request_fingerprint,
+            idempotency_key=idempotency_key,
+            status=status,
+            retryable=retryable,
+            last_observed_state=last_observed_state,
+            created_at=now,
+            updated_at=now,
+        )
+        self._by_upid[upid] = task
+        return task
+
+    async def get_by_upid(self, upid: str) -> ProxmoxTask:
+        task = self._by_upid.get(upid)
+        if task is None:
+            raise KeyError(upid)
+        return task
+
+    async def list_tasks(
+        self,
+        *,
+        limit: int = 100,
+        status: str | None = None,
+        node: str | None = None,
+    ) -> list[ProxmoxTask]:
+        rows = sorted(self._by_upid.values(), key=lambda t: t.updated_at, reverse=True)
+        out: list[ProxmoxTask] = []
+        for task in rows:
+            if status is not None and task.status != status:
+                continue
+            if node is not None and str(task.target.get("node") or "") != node:
+                if _node_from_upid(task.upid) != node:
+                    continue
+            out.append(task)
+            if len(out) >= min(max(limit, 1), 500):
+                break
+        return out
+
+    async def update_observed_state(
+        self,
+        upid: str,
+        *,
+        status: str,
+        last_observed_state: str | None,
+    ) -> ProxmoxTask:
+        task = await self.get_by_upid(upid)
+        updated = ProxmoxTask(
+            task_id=task.task_id,
+            upid=task.upid,
+            operation=task.operation,
+            method=task.method,
+            endpoint=task.endpoint,
+            target=task.target,
+            request_fingerprint=task.request_fingerprint,
+            idempotency_key=task.idempotency_key,
+            status=status,
+            retryable=task.retryable,
+            last_observed_state=last_observed_state,
+            created_at=task.created_at,
+            updated_at=datetime.now(UTC),
+        )
+        self._by_upid[upid] = updated
+        return updated
+
+
+def _node_from_upid(upid: str) -> str | None:
+    # UPID:<node>:...
+    parts = upid.split(":")
+    if len(parts) >= 2 and parts[0] == "UPID":
+        return parts[1] or None
+    return None
 
 
 class RedisLockClient(Protocol):

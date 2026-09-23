@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from proxmox_mcp.audit.writer import AuditWriter
 from proxmox_mcp.auth import AuthenticatedSession
@@ -41,6 +41,7 @@ class ToolExecutionContext:
     trend_backend: TrendBackend | None = None
     idempotency_store: IdempotencyStore | None = None
     proxmox_task_store: ProxmoxTaskStore | None = None
+    approval_store: Any | None = None
     audit_metadata: dict[str, object] = field(default_factory=_empty_audit_metadata)
 
     @property

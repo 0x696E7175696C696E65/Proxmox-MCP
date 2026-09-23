@@ -4,8 +4,6 @@ import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol, cast
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
@@ -31,8 +29,6 @@ class LivenessPayload(BaseModel):
 
     status: Literal["ok"]
     service: str = Field(min_length=1)
-    environment: str = Field(min_length=1)
-    port: int = Field(ge=1, le=65535)
 
 
 class ReadinessPayload(BaseModel):
@@ -285,28 +281,61 @@ class ProductionStateDependencyChecker:
 
 class TlsDependencyChecker:
     async def check(self, settings: Settings) -> DependencyCheck:
+        from proxmox_mcp.server.tls import TlsConfigurationError, resolve_tls_mode
+
         tls = settings.tls
-        if tls.generate_self_signed:
+        try:
+            mode = resolve_tls_mode(tls)
+        except TlsConfigurationError as exc:
+            return DependencyCheck(
+                name="tls",
+                required=True,
+                status="unavailable",
+                detail=str(exc),
+            )
+
+        if (
+            settings.environment == "production"
+            and mode == "generate"
+            and not settings.allow_generated_tls
+        ):
+            return DependencyCheck(
+                name="tls",
+                required=True,
+                status="unavailable",
+                detail=(
+                    "production requires BYOC cert_file+key_file "
+                    "(or PROXMOX_MCP_ALLOW_GENERATED_TLS=true)"
+                ),
+            )
+
+        if mode == "generate":
             return DependencyCheck(
                 name="tls",
                 required=True,
                 status="ok",
-                detail="self-signed certificate generation enabled",
+                detail=(
+                    "generate mode: local HTTPS certificate will be created "
+                    "(trust generated ca.crt in clients)"
+                ),
             )
 
         if tls.cert_file is not None and tls.key_file is not None:
+            detail = "BYOC certificate and key configured"
+            if tls.ca_file is not None:
+                detail += " with operator CA"
             return DependencyCheck(
                 name="tls",
                 required=True,
                 status="ok",
-                detail="certificate and key configured",
+                detail=detail,
             )
 
         return DependencyCheck(
             name="tls",
             required=True,
             status="unavailable",
-            detail="certificate and key required when generation is disabled",
+            detail="BYOC mode requires cert_file and key_file",
         )
 
 
@@ -433,11 +462,11 @@ class SiemDeliveryDependencyChecker:
 
 
 def build_liveness_payload(settings: Settings) -> LivenessPayload:
+    _ = settings
+    # Intentionally omit environment/port — anonymous recon surface.
     return LivenessPayload(
         status="ok",
         service="enterprise-proxmox-mcp",
-        environment=settings.environment,
-        port=settings.server_port,
     )
 
 
@@ -496,10 +525,20 @@ async def _probe_required_https_url(name: str, base_url: str) -> DependencyCheck
 
 
 def _blocking_probe_ready(url: str) -> None:
-    request = Request(url, method="GET")  # noqa: S310 - operator-configured HTTPS endpoint.
+    from urllib.error import URLError
+
+    from proxmox_mcp.security.egress import https_request_no_redirect
+
+    # Readiness probes must not follow redirects or rebind DNS to metadata/CGNAT.
     try:
-        with urlopen(request, timeout=5) as response:  # noqa: S310
-            if response.status >= 400:
-                raise RuntimeError(f"HTTP {response.status}")
-    except (HTTPError, URLError) as exc:
+        status, _body = https_request_no_redirect(
+            url,
+            method="GET",
+            timeout_seconds=5.0,
+            allow_private=True,
+            allow_public=True,
+        )
+    except (ValueError, URLError) as exc:
         raise RuntimeError(exc.__class__.__name__) from exc
+    if status >= 400:
+        raise RuntimeError(f"HTTP {status}")

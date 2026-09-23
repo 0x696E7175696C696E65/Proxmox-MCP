@@ -59,6 +59,34 @@ Readiness:
 curl -fk -H "Authorization: Bearer $PROXMOX_MCP_SERVICE_TOKEN" https://localhost:8443/health/ready
 ```
 
+## 4b. TLS (HTTPS always, including localhost)
+
+**Generate** local material (writes `proxmox-mcp.crt`, `proxmox-mcp.key`, and `ca.crt` for client trust):
+
+```bash
+proxmox-mcp tls generate --out-dir ./certs/local --cn localhost
+# Import ./certs/local/ca.crt into your browser / MCP client trust store
+export PROXMOX_MCP_TLS__MODE=generate
+export PROXMOX_MCP_TLS__GENERATED_CERT_DIR=./certs/local
+```
+
+**BYOC** (your cert, or a leaf signed by your private CA):
+
+```bash
+export PROXMOX_MCP_TLS__MODE=byoc
+export PROXMOX_MCP_TLS__CERT_FILE=./certs/local/tls.crt
+export PROXMOX_MCP_TLS__KEY_FILE=./certs/local/tls.key
+export PROXMOX_MCP_TLS__CA_FILE=./certs/local/ca.crt   # optional; validates chain
+
+# Or mint a leaf signed by your CA:
+proxmox-mcp tls generate --out-dir ./certs/local \
+  --ca-cert ./certs/my-ca.crt --ca-key ./certs/my-ca.key \
+  --cn mcp.home.arpa --san mcp.home.arpa
+proxmox-mcp tls validate
+```
+
+Production rejects `mode=generate` unless `PROXMOX_MCP_ALLOW_GENERATED_TLS=true`.
+
 ## 5. Admin control plane
 
 Open `https://localhost:8443/admin` and sign in with the bootstrap admin username/password.

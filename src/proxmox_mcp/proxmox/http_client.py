@@ -6,13 +6,13 @@ import ssl
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, cast
-from urllib.error import HTTPError, URLError
+from urllib.error import URLError
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 
 from pydantic import SecretStr
 
 from proxmox_mcp.proxmox.client import ProxmoxApiError
+from proxmox_mcp.security.egress import https_request_no_redirect
 
 
 @dataclass(slots=True)
@@ -32,6 +32,7 @@ class ProxmoxHttpApiClient:
         password: SecretStr | None = None,
         tls_verify: bool = True,
         timeout_seconds: int = 20,
+        allow_public_endpoint: bool = False,
     ) -> None:
         if (token_id is None or token_secret is None) == (username is None or password is None):
             raise ValueError("Configure exactly one Proxmox lab authentication method")
@@ -43,6 +44,7 @@ class ProxmoxHttpApiClient:
         self._password = password
         self._tls_verify = tls_verify
         self._timeout_seconds = timeout_seconds
+        self._allow_public_endpoint = allow_public_endpoint
         self._ticket: ProxmoxTicket | None = None
 
     async def get(
@@ -99,28 +101,26 @@ class ProxmoxHttpApiClient:
     ) -> object:
         url = self._url_for(path, params)
         body = None if data is None else urlencode(_string_values(data)).encode()
-        request = Request(  # noqa: S310 - lab endpoint is explicitly user configured.
-            url,
-            data=body,
-            headers=self._headers_for(method),
-            method=method,
-        )
+        headers = self._headers_for(method)
         if body is not None:
-            request.add_header("Content-Type", "application/x-www-form-urlencoded")
+            headers["Content-Type"] = "application/x-www-form-urlencoded"
 
         try:
-            with urlopen(  # noqa: S310 - lab endpoint is explicitly user configured.
-                request,
-                timeout=self._timeout_seconds,
-                context=self._ssl_context(),
-            ) as response:
-                payload = response.read()
-        except HTTPError as exc:
+            status, payload = https_request_no_redirect(
+                url,
+                method=method,
+                headers=headers,
+                data=body,
+                timeout_seconds=float(self._timeout_seconds),
+                ssl_context=self._ssl_context(),
+                allow_private=True,
+                allow_public=self._allow_public_endpoint,
+            )
+        except ValueError as exc:
             raise ProxmoxApiError(
-                "Proxmox API returned an error",
-                status_code=exc.code,
-                retryable=exc.code >= 500,
-                details={"path": path, "method": method},
+                "Proxmox API endpoint rejected by egress policy",
+                retryable=False,
+                details={"path": path, "method": method, "reason": str(exc)},
             ) from exc
         except TimeoutError as exc:
             raise ProxmoxApiError(
@@ -135,6 +135,14 @@ class ProxmoxHttpApiClient:
                 retryable=True,
                 details={"path": path, "method": method, "reason": str(exc.reason)},
             ) from exc
+
+        if status >= 400:
+            raise ProxmoxApiError(
+                "Proxmox API returned an error",
+                status_code=status,
+                retryable=status >= 500,
+                details={"path": path, "method": method},
+            )
 
         return _decode_proxmox_payload(payload)
 
@@ -168,28 +176,25 @@ class ProxmoxHttpApiClient:
                 "password": self._password.get_secret_value(),
             }
         ).encode()
-        request = Request(  # noqa: S310 - lab endpoint is explicitly user configured.
-            f"{self._api_endpoint}/api2/json/access/ticket",
-            data=body,
-            headers={
-                "Accept": "application/json",
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-            method="POST",
-        )
         try:
-            with urlopen(  # noqa: S310 - lab endpoint is explicitly user configured.
-                request,
-                timeout=self._timeout_seconds,
-                context=self._ssl_context(),
-            ) as response:
-                ticket_data = _decode_proxmox_payload(response.read())
-        except HTTPError as exc:
+            status, payload = https_request_no_redirect(
+                f"{self._api_endpoint}/api2/json/access/ticket",
+                method="POST",
+                headers={
+                    "Accept": "application/json",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                data=body,
+                timeout_seconds=float(self._timeout_seconds),
+                ssl_context=self._ssl_context(),
+                allow_private=True,
+                allow_public=self._allow_public_endpoint,
+            )
+        except ValueError as exc:
             raise ProxmoxApiError(
-                "Proxmox ticket authentication failed",
-                status_code=exc.code,
+                "Proxmox ticket endpoint rejected by egress policy",
                 retryable=False,
-                details={"path": "/access/ticket", "method": "POST"},
+                details={"path": "/access/ticket", "method": "POST", "reason": str(exc)},
             ) from exc
         except TimeoutError as exc:
             raise ProxmoxApiError(
@@ -205,6 +210,15 @@ class ProxmoxHttpApiClient:
                 details={"path": "/access/ticket", "method": "POST", "reason": str(exc.reason)},
             ) from exc
 
+        if status >= 400:
+            raise ProxmoxApiError(
+                "Proxmox ticket authentication failed",
+                status_code=status,
+                retryable=False,
+                details={"path": "/access/ticket", "method": "POST"},
+            )
+
+        ticket_data = _decode_proxmox_payload(payload)
         if not isinstance(ticket_data, Mapping):
             raise ProxmoxApiError("Proxmox ticket response is invalid", retryable=False)
 

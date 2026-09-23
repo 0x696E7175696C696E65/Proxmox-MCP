@@ -88,3 +88,27 @@ def test_service_token_middleware_rate_limits_failed_auth(
     limited = client.get("/mcp", headers={"Authorization": "Bearer wrong"})
     assert limited.status_code == 429
     assert limited.headers.get("retry-after") == "60"
+
+
+def test_missing_bearer_does_not_trip_auth_lockout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    limiter = SlidingWindowRateLimiter(max_failures=3, window_seconds=60.0)
+    monkeypatch.setattr(
+        "proxmox_mcp.server.auth_middleware.FAILED_AUTH_LIMITER",
+        limiter,
+    )
+    settings = Settings(
+        auth_mode="service_token",
+        service_token=SecretStr("expected-token"),
+    )
+    client = TestClient(_build_app(settings))
+
+    for _ in range(5):
+        assert client.get("/mcp").status_code == 401
+        assert client.get("/mcp", headers={"Authorization": "Bearer "}).status_code == 401
+
+    # Still accepts a valid token — missing auth must not lock the IP.
+    ok = client.get("/mcp", headers={"Authorization": "Bearer expected-token"})
+    assert ok.status_code == 200
+    assert ok.text == "authenticated"

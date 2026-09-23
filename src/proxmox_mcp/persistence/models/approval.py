@@ -28,3 +28,5 @@ class ApprovalRecord(Base):
     decided_by: Mapped[str | None] = mapped_column(String(128))
     reason: Mapped[str | None] = mapped_column(Text)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    required_approvals: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    resume_secret_hash: Mapped[str | None] = mapped_column(String(64))

@@ -112,3 +112,23 @@ async def test_storage_expansion_remains_backend_guarded(
     result = cast(dict[str, object], response.result)
     expansion_plan = cast(dict[str, object], result["result"])
     assert expansion_plan["execution_status"] == "guarded"
+
+
+async def test_storage_expansion_live_fail_closed_without_promotion_flag(
+    lab_config: LabEnvironmentConfig,
+    lab_client: ProxmoxHttpApiClient,
+    lab_read_role_assignment: RoleAssignment,
+    lab_tool_context_factory: Any,
+    optional_lab_node: str,
+    optional_lab_storage: str,
+) -> None:
+    if lab_config.profile != "pve-9-storage-local-local-lvm":
+        pytest.skip(
+            "Select PROXMOX_MCP_LAB_PROFILE=pve-9-storage-local-local-lvm "
+            "for storage promotion gates"
+        )
+    # Live path remains skip-safe / fail-closed until promotion flag + lab evidence.
+    pytest.skip(
+        "Live LVM-thin expand_storage is implemented behind "
+        "PROXMOX_MCP_DOMAIN_PROMOTIONS_EXPAND_STORAGE_LVMTHIN_LIVE but pending lab evidence"
+    )

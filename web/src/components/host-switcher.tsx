@@ -31,6 +31,8 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { FieldLabel } from "@/components/form-section";
 import { cn } from "@/lib/utils";
 
 export function shortHostLabel(endpoint: string): string {
@@ -78,6 +80,7 @@ export function HostCatalogProvider({
   const [error, setError] = useState<string | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const [pending, setPending] = useState<ManagedHost | null>(null);
+  const [stepUpPassword, setStepUpPassword] = useState("");
   const [activating, setActivating] = useState(false);
   const [overlay, setOverlay] = useState<{
     host: ManagedHost;
@@ -145,12 +148,17 @@ export function HostCatalogProvider({
 
   const confirmActivate = useCallback(async () => {
     if (!pending) return;
+    if (!stepUpPassword.trim()) {
+      setError("Confirm your admin password to switch hosts");
+      return;
+    }
     const host = pending;
     setActivating(true);
     setError(null);
     try {
-      await AdminApi.activateHost(host.host_id);
+      await AdminApi.activateHost(host.host_id, stepUpPassword);
       setPending(null);
+      setStepUpPassword("");
       await runWait(host);
     } catch (err) {
       // Connection drop is expected if the process exits before the response
@@ -160,6 +168,7 @@ export function HostCatalogProvider({
         /failed to fetch|network|load failed|connection|aborted/i.test(message) ||
         message === "Failed to fetch";
       setPending(null);
+      setStepUpPassword("");
       if (looksLikeDrop) {
         setError(null);
         await runWait(host);
@@ -169,7 +178,7 @@ export function HostCatalogProvider({
     } finally {
       setActivating(false);
     }
-  }, [pending, runWait]);
+  }, [pending, runWait, stepUpPassword]);
 
   const value = useMemo<HostCatalogState>(
     () => ({
@@ -184,6 +193,7 @@ export function HostCatalogProvider({
       requestActivate: (host) => {
         if (host.host_id === activeHostId || !host.enabled) return;
         setError(null);
+        setStepUpPassword("");
         setPending(host);
       },
       clearBanner: () => setSuccessBanner(null),
@@ -208,9 +218,12 @@ export function HostCatalogProvider({
           host={pending}
           busy={activating}
           error={error}
+          password={stepUpPassword}
+          onPasswordChange={setStepUpPassword}
           onCancel={() => {
             if (!activating) {
               setPending(null);
+              setStepUpPassword("");
               setError(null);
             }
           }}
@@ -233,12 +246,16 @@ function SwitchHostConfirm({
   host,
   busy,
   error,
+  password,
+  onPasswordChange,
   onCancel,
   onConfirm,
 }: {
   host: ManagedHost;
   busy: boolean;
   error: string | null;
+  password: string;
+  onPasswordChange: (value: string) => void;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -295,6 +312,26 @@ function SwitchHostConfirm({
             </Alert>
           ) : null}
 
+          <div className="space-y-1.5">
+            <FieldLabel htmlFor="switch-host-stepup">Admin password (step-up)</FieldLabel>
+            <Input
+              id="switch-host-stepup"
+              type="password"
+              value={password}
+              onChange={(e) => onPasswordChange(e.target.value)}
+              autoComplete="current-password"
+              disabled={busy}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !busy && secretsOk && password.trim()) {
+                  onConfirm();
+                }
+              }}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Host switch restarts MCP — re-enter your admin password to confirm.
+            </p>
+          </div>
+
           {error ? (
             <Alert variant="destructive" className="py-2">
               <AlertDescription className="text-xs">{error}</AlertDescription>
@@ -308,7 +345,7 @@ function SwitchHostConfirm({
             <Button
               type="button"
               size="sm"
-              disabled={busy || !secretsOk}
+              disabled={busy || !secretsOk || !password.trim()}
               onClick={onConfirm}
             >
               {busy ? <Loader2 className="size-3.5 animate-spin" /> : null}

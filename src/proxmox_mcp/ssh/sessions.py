@@ -100,14 +100,25 @@ class SshSessionManager:
         self._sessions[record.session_id] = record
         return record
 
-    def get_active_session(self, session_id: str) -> SshSessionRecord:
+    def get_active_session(
+        self,
+        session_id: str,
+        *,
+        actor: Actor | None = None,
+    ) -> SshSessionRecord:
         record = self._sessions.get(session_id)
         if record is None or not record.active:
             raise SshSessionNotFoundError("SSH session is not active")
+        if actor is not None and (
+            record.actor_user_id != actor.user_id
+            or record.actor_agent_id != actor.agent_id
+            or record.tenant_id != actor.tenant_id
+        ):
+            raise SshSessionNotFoundError("SSH session is not active")
         return record
 
-    def close_session(self, session_id: str) -> SshSessionRecord:
-        record = self.get_active_session(session_id)
+    def close_session(self, session_id: str, *, actor: Actor | None = None) -> SshSessionRecord:
+        record = self.get_active_session(session_id, actor=actor)
         updated = record.model_copy(update={"closed_at": datetime.now(UTC)})
         self._sessions[session_id] = updated
         return updated
@@ -191,7 +202,12 @@ class DatabaseSshSessionStore:
             await session.commit()
             return record
 
-    async def get_active_session(self, session_id: str) -> SshSessionRecord:
+    async def get_active_session(
+        self,
+        session_id: str,
+        *,
+        actor: Actor | None = None,
+    ) -> SshSessionRecord:
         async with self._session_factory() as session:
             model = await session.scalar(
                 select(SshSessionRecordModel).where(SshSessionRecordModel.session_id == session_id)
@@ -201,10 +217,18 @@ class DatabaseSshSessionStore:
             record = _model_to_record(model)
             if not record.active:
                 raise SshSessionNotFoundError("SSH session is not active")
+            if actor is not None and (
+                record.actor_user_id != actor.user_id
+                or record.actor_agent_id != actor.agent_id
+                or record.tenant_id != actor.tenant_id
+            ):
+                raise SshSessionNotFoundError("SSH session is not active")
             return record
 
-    async def close_session(self, session_id: str) -> SshSessionRecord:
-        record = await self.get_active_session(session_id)
+    async def close_session(
+        self, session_id: str, *, actor: Actor | None = None
+    ) -> SshSessionRecord:
+        record = await self.get_active_session(session_id, actor=actor)
         closed_at = datetime.now(UTC)
         updated = record.model_copy(update={"closed_at": closed_at})
         async with self._session_factory() as session:

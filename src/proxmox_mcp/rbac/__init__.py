@@ -19,6 +19,10 @@ def _empty_strings() -> frozenset[str]:
 class Role:
     name: str
     permissions: frozenset[Permission] = field(default_factory=_empty_permissions)
+    denied_permissions: frozenset[Permission] = field(default_factory=_empty_permissions)
+    # Tool ACL: None = permission-packs only (legacy); frozenset = deny-by-default grants.
+    granted_tools: frozenset[str] | None = None
+    denied_tools: frozenset[str] = field(default_factory=_empty_strings)
 
     @classmethod
     def read_only(cls) -> Role:
@@ -28,12 +32,42 @@ class Role:
                 {
                     "cluster.read",
                     "node.read",
+                    "node.logs.read",
                     "vm.read",
+                    "vm.config.read",
                     "lxc.read",
+                    "lxc.config.read",
                     "storage.read",
+                    "storage.iso.read",
+                    "lxc.template.read",
                     "firewall.read",
+                    "network.read",
+                    "network.config.read",
+                    "network.sdn.read",
+                    "monitoring.read",
+                    "monitoring.health.read",
+                    "monitoring.cpu.read",
+                    "monitoring.ram.read",
+                    "monitoring.disk.read",
+                    "monitoring.network.read",
+                    "monitoring.zfs.read",
+                    "monitoring.smart.read",
+                    "monitoring.ceph.read",
+                    "monitoring.metrics.read",
+                    "monitoring.alerts.read",
+                    "monitoring.trends.read",
+                    "helper.catalog.read",
+                    "helper.script.preview",
+                    "helper.script.execution.read",
+                    "user.read",
+                    "group.read",
+                    "role.read",
+                    "permission.read",
+                    "audit.read",
+                    "approval.status.read",
                 }
             ),
+            granted_tools=None,
         )
 
     @classmethod
@@ -50,14 +84,25 @@ class Role:
                     "snapshot.create",
                 }
             ),
+            denied_permissions=frozenset(
+                {
+                    "vm.lifecycle.destroy",
+                    "lxc.lifecycle.destroy",
+                }
+            ),
         )
 
     @classmethod
     def administrator(cls) -> Role:
-        return cls(name="Administrator", permissions=frozenset({"*"}))
+        return cls(
+            name="Administrator",
+            permissions=frozenset({"*"}),
+            granted_tools=frozenset({"*"}),
+        )
 
     @classmethod
     def cluster_admin(cls) -> Role:
+        """Broad cluster ops without disk wipe, node power, or firewall disable."""
         return cls(
             name="ClusterAdmin",
             permissions=frozenset(
@@ -68,10 +113,80 @@ class Role:
                     "lxc.*",
                     "storage.*",
                     "firewall.*",
-                    "permissions.*",
+                    "network.*",
+                    "monitoring.*",
+                    "user.read",
+                    "group.read",
+                    "role.read",
+                    "permission.read",
+                    "backup.*",
+                    "snapshot.*",
+                    "ha.*",
+                    "ceph.*",
+                    "sdn.*",
+                    "media.*",
+                    "helper.catalog.read",
+                    "helper.script.preview",
+                    "helper.script.execution.read",
+                    "audit.read",
+                    "approval.status.read",
+                }
+            ),
+            denied_permissions=frozenset(
+                {
+                    "storage.disk.wipe",
+                    "node.power.reboot",
+                    "node.power.shutdown",
+                    "firewall.config.write",
+                    "vm.lifecycle.destroy",
+                    "lxc.lifecycle.destroy",
+                    "ceph.osd.remove",
+                    "ceph.pool.delete",
+                    "user.delete",
+                    "permissions.write",
+                    "permission.write",
                 }
             ),
         )
+
+    @classmethod
+    def admin_console(cls) -> Role:
+        """Admin UI invoke identity — least privilege, never *."""
+        return cls(
+            name="AdminConsole",
+            permissions=Role.cluster_admin().permissions | Role.read_only().permissions,
+            denied_permissions=Role.cluster_admin().denied_permissions
+            | frozenset(
+                {
+                    "ssh.*",
+                    "helper.*",
+                }
+            ),
+        )
+
+
+McpServiceRoleName = str
+
+
+def role_from_mcp_name(name: str) -> Role:
+    """Map settings role names to Role instances (MCP service-token bindings)."""
+    normalized = name.strip().lower().replace("-", "_")
+    mapping = {
+        "read_only": Role.read_only,
+        "readonly": Role.read_only,
+        "operator": Role.operator,
+        "cluster_admin": Role.cluster_admin,
+        "clusteradmin": Role.cluster_admin,
+        "administrator": Role.administrator,
+        "admin": Role.administrator,
+    }
+    factory = mapping.get(normalized)
+    if factory is None:
+        raise ValueError(
+            f"Unknown MCP service role {name!r}; expected one of "
+            "read_only, operator, cluster_admin, administrator"
+        )
+    return factory()
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,7 +295,21 @@ class RBACEvaluator:
         )
 
     def _role_allows(self, role: Role, permission: Permission) -> bool:
+        if any(_permission_matches(denied, permission) for denied in role.denied_permissions):
+            return False
         return any(_permission_matches(granted, permission) for granted in role.permissions)
+
+    def tool_allowed(self, role: Role, tool_name: str) -> bool:
+        """Deny-by-default tool ACL when granted_tools is set; deny wins."""
+        from proxmox_mcp.rbac.capability import _tool_matches_any
+
+        if _tool_matches_any(tool_name, role.denied_tools):
+            return False
+        if role.granted_tools is None:
+            return True
+        if not role.granted_tools:
+            return False
+        return _tool_matches_any(tool_name, role.granted_tools)
 
 
 def _permission_matches(granted: Permission, requested: Permission) -> bool:

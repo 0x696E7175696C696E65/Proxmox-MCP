@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useSearchParams } from "react-router-dom";
 import { Copy, RefreshCw, ShieldCheck } from "lucide-react";
 import { AdminApi, type ApprovalRow } from "../api";
 import { useAuth } from "../auth";
@@ -39,7 +39,9 @@ type StepUpAction =
 
 export function ApprovalsPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role !== "operator";
+  const isAdmin = user?.role === "admin";
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkId = searchParams.get("id");
   const [rows, setRows] = useState<ApprovalRow[]>([]);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("pending");
   const [enabled, setEnabled] = useState(true);
@@ -49,6 +51,7 @@ export function ApprovalsPage() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<ApprovalRow | null>(null);
   const [issuedToken, setIssuedToken] = useState<string | null>(null);
+  const [retryHint, setRetryHint] = useState<string | null>(null);
   const [stepUp, setStepUp] = useState<StepUpAction | null>(null);
   const [stepUpPassword, setStepUpPassword] = useState("");
   const [stepUpReason, setStepUpReason] = useState("");
@@ -88,6 +91,40 @@ export function ApprovalsPage() {
     return () => window.clearInterval(id);
   }, [pendingCount, statusFilter]);
 
+  useEffect(() => {
+    if (!deepLinkId) return;
+    void AdminApi.approval(deepLinkId)
+      .then((resp) => setSelected(resp.approval))
+      .catch((err: Error) => setError(err.message));
+  }, [deepLinkId]);
+
+  useEffect(() => {
+    return () => {
+      setIssuedToken(null);
+      setRetryHint(null);
+    };
+  }, []);
+
+  function openDetail(row: ApprovalRow) {
+    setSelected(row);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("id", row.approval_request_id);
+      return next;
+    });
+  }
+
+  function closeDetail() {
+    setSelected(null);
+    setIssuedToken(null);
+    setRetryHint(null);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete("id");
+      return next;
+    });
+  }
+
   function openStepUp(action: StepUpAction) {
     setError(null);
     setMessage(null);
@@ -120,9 +157,11 @@ export function ApprovalsPage() {
       setStepUp(null);
       if (result.approval_token) {
         setIssuedToken(result.approval_token);
+        setRetryHint(result.retry_hint ?? null);
         setMessage("Approved — copy the one-time token now; it is shown once.");
       } else {
         setIssuedToken(null);
+        setRetryHint(null);
         setMessage(stepUp.decision === "rejected" ? "Request denied" : "Decision recorded");
       }
       setSelected(result.approval);
@@ -162,8 +201,10 @@ export function ApprovalsPage() {
           <AlertTitle className="text-sm">One-time approval token</AlertTitle>
           <AlertDescription className="mt-2 space-y-2">
             <p className="text-xs text-muted-foreground">
-              Shown once. Paste into the agent retry as{" "}
-              <span className="font-mono">options.approval_token</span>. Never store in audit logs.
+              Agents should retry with{" "}
+              <span className="font-mono">options.approval_request_id</span> (no token paste).
+              Token below is optional for non-agent clients and is shown once — never store in audit
+              logs.
             </p>
             <div className="flex flex-wrap items-center gap-2">
               <code className="max-w-full break-all rounded-md border border-border bg-muted/40 px-2 py-1.5 font-mono text-[11px]">
@@ -173,10 +214,21 @@ export function ApprovalsPage() {
                 <Copy className="size-3.5" />
                 Copy
               </Button>
-              <Button type="button" size="sm" variant="ghost" onClick={() => setIssuedToken(null)}>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setIssuedToken(null);
+                  setRetryHint(null);
+                }}
+              >
                 Dismiss
               </Button>
             </div>
+            {retryHint ? (
+              <p className="text-xs text-muted-foreground">{retryHint}</p>
+            ) : null}
           </AlertDescription>
         </Alert>
       ) : null}
@@ -188,7 +240,8 @@ export function ApprovalsPage() {
               Policy
             </CardTitle>
             <p className="text-xs text-muted-foreground">
-              Changes apply to the live MCP guard without restart.
+              Live MCP guard switches — no restart. These gate high/critical tools before the
+              Approvals queue.
             </p>
           </CardHeader>
           <CardContent className="space-y-3 px-4 pb-4">
@@ -209,7 +262,7 @@ export function ApprovalsPage() {
               <span>
                 <span className="font-medium text-foreground">Dangerous operations enabled</span>
                 <span className="mt-0.5 block text-xs text-muted-foreground">
-                  Allow high/critical tools when policy permits.
+                  Master switch. Off = all high/critical tools hard-denied (no queue).
                 </span>
               </span>
             </label>
@@ -223,7 +276,8 @@ export function ApprovalsPage() {
               <span>
                 <span className="font-medium text-foreground">Require approval</span>
                 <span className="mt-0.5 block text-xs text-muted-foreground">
-                  Queue dangerous ops for explicit approve/deny.
+                  On = queue for admin approve/deny. Off = dangerous tools run if ACL allows
+                  (still audited).
                 </span>
               </span>
             </label>
@@ -284,7 +338,7 @@ export function ApprovalsPage() {
             <EmptyState
               icon={ShieldCheck}
               title="No approvals in this view"
-              description="When an agent hits a gated dangerous operation, a pending row is minted here with an approval_request_id. Approve to receive a one-time token for the agent retry."
+              description="When an agent hits a gated mutation, a pending row is minted with an approval_request_id. Approve so the agent can retry with that id (closed-loop; no token paste). A one-time token remains available for non-agent clients."
               action={
                 <Button asChild size="sm" variant="outline">
                   <NavLink to="/tools">Browse tools</NavLink>
@@ -321,7 +375,7 @@ export function ApprovalsPage() {
                     <TableRow
                       key={row.approval_request_id}
                       className="cursor-pointer"
-                      onClick={() => setSelected(row)}
+                      onClick={() => openDetail(row)}
                     >
                       <TableCell className="px-3 py-2 font-mono text-[11px]">
                         {row.operation}
@@ -337,6 +391,11 @@ export function ApprovalsPage() {
                       </TableCell>
                       <TableCell className="px-3 py-2 font-mono text-[11px]">
                         {row.status}
+                        {(row.required_approvals ?? 1) > 1 ? (
+                          <div className="text-[10px] text-muted-foreground">
+                            {row.approval_count ?? 0}/{row.required_approvals} quorum
+                          </div>
+                        ) : null}
                       </TableCell>
                       <TableCell
                         className="px-3 py-2 font-mono text-[11px] text-muted-foreground"
@@ -382,7 +441,7 @@ export function ApprovalsPage() {
                             <Button
                               size="xs"
                               variant="ghost"
-                              onClick={() => setSelected(row)}
+                              onClick={() => openDetail(row)}
                             >
                               Detail
                             </Button>
@@ -398,7 +457,7 @@ export function ApprovalsPage() {
         </div>
       </div>
 
-      <Sheet open={selected !== null} onOpenChange={(open) => !open && setSelected(null)}>
+      <Sheet open={selected !== null} onOpenChange={(open) => !open && closeDetail()}>
         <SheetContent side="right" className="w-full sm:max-w-md">
           {selected ? (
             <>
@@ -410,6 +469,10 @@ export function ApprovalsPage() {
               </SheetHeader>
               <div className="space-y-3 px-4 text-[13px]">
                 <DetailRow label="Status" value={selected.status} />
+                <DetailRow
+                  label="Quorum"
+                  value={`${selected.approval_count ?? 0}/${selected.required_approvals ?? 1}`}
+                />
                 <DetailRow
                   label="Actor"
                   value={`${selected.actor_user_id} / ${selected.actor_agent_id}`}

@@ -35,6 +35,46 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("doctor", help="Validate configuration and probe dependencies")
     subparsers.add_parser("migrate", help="Apply Alembic migrations")
 
+    tls = subparsers.add_parser(
+        "tls",
+        help="HTTPS certificate helpers (generate local material or validate BYOC)",
+    )
+    tls_sub = tls.add_subparsers(dest="tls_command", required=True)
+    gen = tls_sub.add_parser(
+        "generate",
+        help=(
+            "Generate HTTPS cert+key (self-signed, or leaf signed by operator CA "
+            "when --ca-cert/--ca-key are set). Always writes ca.crt for client trust."
+        ),
+    )
+    gen.add_argument(
+        "--out-dir",
+        default=None,
+        help="Output directory (default: PROXMOX_MCP_TLS__GENERATED_CERT_DIR)",
+    )
+    gen.add_argument("--cn", default=None, help="Certificate common name")
+    gen.add_argument(
+        "--san",
+        action="append",
+        default=[],
+        help="Subject Alternative Name (repeatable). Defaults include localhost/127.0.0.1",
+    )
+    gen.add_argument("--days", type=int, default=None, help="Validity in days (max 825)")
+    gen.add_argument(
+        "--ca-cert",
+        default=None,
+        help="Operator CA certificate (PEM) — sign generated leaf with your CA",
+    )
+    gen.add_argument(
+        "--ca-key",
+        default=None,
+        help="Operator CA private key (PEM) — required with --ca-cert",
+    )
+    tls_sub.add_parser(
+        "validate",
+        help="Validate TLS settings (generate or BYOC) without starting the server",
+    )
+
     tools = subparsers.add_parser("tools", help="Tool catalog commands")
     tools_sub = tools.add_subparsers(dest="tools_command", required=True)
     list_parser = tools_sub.add_parser("list", help="List registered tools")
@@ -74,11 +114,76 @@ def main(argv: list[str] | None = None) -> int:
     if command == "migrate":
         return _migrate()
 
+    if command == "tls":
+        return _tls_command(args)
+
     if command == "tools" and args.tools_command == "list":
         _print_tools(status_filter=args.status)
         return 0
 
     print(f"Unknown command: {command}", file=sys.stderr)
+    return 2
+
+
+def _tls_command(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from pydantic import SecretStr
+
+    from proxmox_mcp.config import TlsSettings
+    from proxmox_mcp.server.tls import TlsConfigurationError, generate_tls_material, resolve_tls_config
+
+    if args.tls_command == "validate":
+        settings = Settings()
+        try:
+            runtime = resolve_tls_config(settings.tls)
+        except TlsConfigurationError as exc:
+            print(f"tls: {exc}", file=sys.stderr)
+            return 1
+        print(f"ok mode={runtime.metadata.get('mode')} generated={runtime.metadata.get('generated')}")
+        if runtime.metadata.get("ca_file"):
+            print(f"trust_ca={runtime.metadata['ca_file']}")
+        print(f"cert={runtime.metadata.get('cert_file')}")
+        return 0
+
+    if args.tls_command == "generate":
+        base = Settings().tls
+        updates: dict[str, object] = {
+            "mode": "generate",
+            "generate_self_signed": True,
+        }
+        if args.out_dir:
+            updates["generated_cert_dir"] = args.out_dir
+        if args.cn:
+            updates["common_name"] = args.cn
+        if args.san:
+            updates["subject_alt_names"] = tuple(args.san)
+        if args.days is not None:
+            updates["validity_days"] = args.days
+        if args.ca_cert:
+            updates["ca_file"] = args.ca_cert
+        if args.ca_key:
+            updates["ca_key_file"] = SecretStr(args.ca_key)
+        tls = base.model_copy(update=updates)
+        try:
+            runtime = generate_tls_material(
+                tls,
+                output_dir=Path(args.out_dir) if args.out_dir else None,
+            )
+        except TlsConfigurationError as exc:
+            print(f"tls generate: {exc}", file=sys.stderr)
+            return 1
+        print(f"generated cert={runtime.metadata.get('cert_file')}")
+        print(f"trust_ca={runtime.metadata.get('ca_file')}")
+        print("key=**********")
+        if runtime.metadata.get("signed_by_operator_ca"):
+            print("signed_by=operator_ca")
+        else:
+            print("signed_by=self_signed")
+        print("Import trust_ca into browsers/MCP clients for verified local HTTPS.")
+        return 0
+
+    print(f"Unknown tls command: {args.tls_command}", file=sys.stderr)
     return 2
 
 

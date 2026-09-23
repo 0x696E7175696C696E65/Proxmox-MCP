@@ -231,6 +231,7 @@ async def test_expand_storage_live_returns_backend_specific_guard() -> None:
         "connector": "hybrid",
         "backend": "lvmthin",
         "required_evidence": "backend-specific storage expansion contract and lab evidence",
+        "enable_flag": "PROXMOX_MCP_DOMAIN_PROMOTIONS_EXPAND_STORAGE_LVMTHIN_LIVE",
     }
     assert client.executions == []
 

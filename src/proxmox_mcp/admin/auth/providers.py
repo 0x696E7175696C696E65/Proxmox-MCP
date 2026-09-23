@@ -20,7 +20,7 @@ SESSION_TTL = SESSION_ABSOLUTE_TTL
 SESSION_COOKIE = "proxmox_mcp_admin_session"
 CSRF_HEADER = "x-csrf-token"
 
-AdminRole = Literal["admin", "operator"]
+AdminRole = Literal["admin", "operator", "viewer"]
 
 
 def _new_id(prefix: str) -> str:
@@ -71,6 +71,8 @@ class LocalPasswordProvider:
             if not verify_password_or_dummy(password_hash, password):
                 return None
             assert record is not None
+            if getattr(record, "disabled_at", None) is not None:
+                return None
             record.last_login_at = datetime.now(UTC)
             await session.commit()
             role = _normalize_role(getattr(record, "role", None))
@@ -114,6 +116,10 @@ class LocalPasswordProvider:
             user = await session.get(AdminUserRecord, record.user_id)
             if user is None:
                 return None
+            if getattr(user, "disabled_at", None) is not None:
+                record.revoked_at = now
+                await session.commit()
+                return None
             record.expires_at = now + SESSION_IDLE_TTL
             await session.commit()
             return AdminSession(
@@ -135,10 +141,28 @@ class LocalPasswordProvider:
             record.revoked_at = datetime.now(UTC)
             await session.commit()
 
+    async def revoke_user_sessions(self, user_id: str) -> int:
+        now = datetime.now(UTC)
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(AdminSessionRecord).where(
+                    AdminSessionRecord.user_id == user_id,
+                    AdminSessionRecord.revoked_at.is_(None),
+                )
+            )
+            records = list(result.scalars().all())
+            for record in records:
+                record.revoked_at = now
+            await session.commit()
+            return len(records)
+
     async def verify_user_password(self, user_id: str, password: str) -> bool:
         async with self._session_factory() as session:
             record = await session.get(AdminUserRecord, user_id)
-            password_hash = None if record is None else record.password_hash
+            if record is None or getattr(record, "disabled_at", None) is not None:
+                verify_password_or_dummy(None, password)
+                return False
+            password_hash = record.password_hash
             return verify_password_or_dummy(password_hash, password)
 
     async def ensure_bootstrap_user(self, username: str, password: str) -> None:
@@ -173,4 +197,6 @@ class LocalPasswordProvider:
 def _normalize_role(value: object) -> AdminRole:
     if value == "operator":
         return "operator"
+    if value == "viewer":
+        return "viewer"
     return "admin"

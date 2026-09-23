@@ -12,6 +12,7 @@ ErrorCode = Literal[
     "AUTHENTICATION_FAILED",
     "SESSION_EXPIRED",
     "RBAC_DENIED",
+    "TOOL_NOT_GRANTED",
     "POLICY_DENIED",
     "APPROVAL_REQUIRED",
     "APPROVAL_EXPIRED",
@@ -67,7 +68,15 @@ class RequestOptions(StrictBaseModel):
     include_impact_analysis: bool = False
     idempotency_key: str | None = None
     approval_token: str | None = None
+    approval_request_id: str | None = None
+    approval_resume_secret: str | None = None
     timeout_seconds: int | None = Field(default=None, ge=1, le=3600)
+
+
+class MutatorRequestOptions(RequestOptions):
+    """Agent-facing options for tools that support dry-run — default safe."""
+
+    dry_run: bool = True
 
 
 class PaginationInput(StrictBaseModel):

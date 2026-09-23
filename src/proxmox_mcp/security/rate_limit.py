@@ -54,6 +54,8 @@ FAILED_AUTH_LIMITER = SlidingWindowRateLimiter(max_failures=10, window_seconds=6
 FAILED_ADMIN_LOGIN_LIMITER = SlidingWindowRateLimiter(max_failures=10, window_seconds=60.0)
 # Failed step-up password checks (decide / policy / restart / secrets).
 FAILED_ADMIN_STEP_UP_LIMITER = SlidingWindowRateLimiter(max_failures=5, window_seconds=60.0)
+# Per-actor dry-run mutation probes (abuse / reconnaissance throttle).
+DRY_RUN_LIMITER = SlidingWindowRateLimiter(max_failures=60, window_seconds=60.0)
 
 
 def client_ip_from_scope(scope: dict[str, object]) -> str:

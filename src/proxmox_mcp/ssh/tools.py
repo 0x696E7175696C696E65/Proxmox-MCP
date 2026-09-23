@@ -59,7 +59,8 @@ class SshSessionResult(BaseModel):
 
     session_id: str
     recording_ref: str | None = None
-    status: Literal["open", "closed"]
+    status: Literal["open", "closed", "would_close"]
+    dry_run: bool = False
 
 
 def _empty_entries() -> list[dict[str, object]]:
@@ -183,8 +184,8 @@ SSH_TOOL_SPECS: tuple[SshToolSpec, ...] = (
         "ssh",
         "ssh.session.close",
         "medium",
-        False,
-        False,
+        True,
+        True,
         "close_session",
         CloseSshSessionParameters,
         SshSessionResult,
@@ -204,9 +205,9 @@ SSH_TOOL_SPECS: tuple[SshToolSpec, ...] = (
         "download_file",
         "ssh",
         "ssh.file.download",
-        "medium",
-        False,
-        False,
+        "high",
+        True,
+        True,
         "download",
         DownloadFileParameters,
         SshFileTransferResult,
@@ -383,7 +384,7 @@ async def _handle_execute(
                 error_code="INVALID_REQUEST",
                 message="Interactive SSH execution requires an active session_id",
             )
-        await _active_session(context, session_id)
+        await _active_session(context, session_id, request)
 
     context.audit_metadata.update(
         {
@@ -479,8 +480,14 @@ async def _handle_close_session(
     request: ToolRequest, context: ToolExecutionContext
 ) -> dict[str, object]:
     parameters = CloseSshSessionParameters.model_validate(request.parameters)
+    if request.options.dry_run:
+        return {
+            "dry_run": True,
+            "session_id": parameters.session_id,
+            "status": "would_close",
+        }
     try:
-        session = await _close_session(context, parameters.session_id)
+        session = await _close_session(context, parameters.session_id, request)
     except SshSessionNotFoundError as exc:
         raise ToolExecutionError(
             error_code="NOT_FOUND",
@@ -534,6 +541,12 @@ async def _handle_download(
 ) -> dict[str, object]:
     parameters = DownloadFileParameters.model_validate(request.parameters)
     _enforce_remote_path(context, parameters.remote_path)
+    if request.options.dry_run:
+        return {
+            "dry_run": True,
+            "operation": "download",
+            "remote_path": parameters.remote_path,
+        }
     try:
         content = await _ssh_client(context).download(
             _target_for(request),
@@ -736,10 +749,11 @@ async def _open_session(
     )
 
 
-async def _close_session(context: ToolExecutionContext, session_id: str):
+async def _close_session(context: ToolExecutionContext, session_id: str, request: ToolRequest):
+    actor = _actor_for(context, request)
     if context.ssh_session_store is not None:
-        return await context.ssh_session_store.close_session(session_id)
-    return _session_manager(context).close_session(session_id)
+        return await context.ssh_session_store.close_session(session_id, actor=actor)
+    return _session_manager(context).close_session(session_id, actor=actor)
 
 
 async def _attach_recording(context: ToolExecutionContext, session_id: str, recording_ref: str):
@@ -758,12 +772,15 @@ def _recording_store(context: ToolExecutionContext):
     return context.ssh_recording_store
 
 
-async def _active_session(context: ToolExecutionContext, session_id: str) -> None:
+async def _active_session(
+    context: ToolExecutionContext, session_id: str, request: ToolRequest
+) -> None:
+    actor = _actor_for(context, request)
     try:
         if context.ssh_session_store is not None:
-            await context.ssh_session_store.get_active_session(session_id)
+            await context.ssh_session_store.get_active_session(session_id, actor=actor)
         else:
-            _session_manager(context).get_active_session(session_id)
+            _session_manager(context).get_active_session(session_id, actor=actor)
     except SshSessionNotFoundError as exc:
         raise ToolExecutionError(
             error_code="NOT_FOUND",

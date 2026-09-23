@@ -292,9 +292,9 @@ Mutating tools must support idempotency where Proxmox behavior allows it. Danger
 | `execute_ssh` | `ssh.command.execute` | critical | true | ssh |
 | `execute_ssh_interactive` | `ssh.session.interactive` | critical | false | ssh |
 | `open_ssh_session` | `ssh.session.open` | high | false | ssh |
-| `close_ssh_session` | `ssh.session.close` | medium | false | ssh |
+| `close_ssh_session` | `ssh.session.close` | medium | true | ssh |
 | `upload_file` | `ssh.file.upload` | high | true | ssh |
-| `download_file` | `ssh.file.download` | medium | false | ssh |
+| `download_file` | `ssh.file.download` | high | true | ssh |
 | `sftp_list` | `ssh.sftp.list` | low | false | ssh |
 | `sftp_mkdir` | `ssh.sftp.mkdir` | medium | true | ssh |
 | `sftp_delete` | `ssh.sftp.delete` | critical | true | ssh |
